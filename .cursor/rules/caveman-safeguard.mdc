@@ -1,0 +1,8 @@
+---
+description: Protects gestalt knowledge base entries from output compression when caveman mode or similar skills are active
+alwaysApply: true
+---
+
+# Caveman Safeguard
+
+When caveman/compression mode is active, read and apply `gestalt/.cursor/references/caveman-safeguard.md` before any gestalt write.

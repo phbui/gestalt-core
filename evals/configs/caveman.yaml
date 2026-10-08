@@ -1,0 +1,20 @@
+# derived from .claude/skills/caveman/SKILL.md (Evals table + Grammar rules)
+skill: caveman
+trigger_cases:
+  - prompt: "Switch to caveman mode for the rest of this session"
+    should_trigger: true
+  - prompt: "Why is my React component re-rendering?"
+    should_trigger: true
+  - prompt: "Compress the gestalt knowledge entries to use fewer tokens"
+    should_trigger: false
+    routes_to: "mutate"
+output_assertions:
+  - type: not_contains
+    value: "Certainly"
+    description: "Grammar rule: drop pleasantries"
+  - type: not_contains
+    value: "happy to help"
+    description: "Grammar rule: drop pleasantries"
+  - type: not_contains
+    value: "basically"
+    description: "Grammar rule: drop filler words"

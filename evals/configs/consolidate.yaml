@@ -1,0 +1,39 @@
+# derived from .claude/skills/consolidate/SKILL.md (Evals table + per-mode report formats)
+# 2026-08-11: absorbed the former gestalt (status), recall, and publish skills as modes.
+skill: consolidate
+trigger_cases:
+  - prompt: "Consolidate gestalt — promote anything in Letta that should be permanent and add missing cross-links"
+    should_trigger: true
+  - prompt: "Run a memory cleanup pass — prune duplicates and merge fragmented knowledge across the four layers"
+    should_trigger: true
+  - prompt: "Show me gestalt status"
+    should_trigger: true
+  - prompt: "How healthy is my gestalt setup right now?"
+    should_trigger: true
+  - prompt: "What did I learn about the spatial pipeline last week?"
+    should_trigger: true
+  - prompt: "Show me superseded facts about platform deploy that have changed"
+    should_trigger: true
+  - prompt: "Generate a gestalt briefing for the team Claude Project"
+    should_trigger: true
+  - prompt: "Publish a condensed knowledge snapshot for onboarding a new engineer"
+    should_trigger: true
+  - prompt: "Pull the latest Notion/Linear updates into gestalt"
+    should_trigger: false
+    routes_to: "sync"
+  - prompt: "Search the web for how CRDT-based collaboration works"
+    should_trigger: false
+    routes_to: "research"
+  - prompt: "Push my changes to the upstream remote"
+    should_trigger: false
+    routes_to: "commit"
+output_assertions:
+  - type: contains_section
+    value: "## Consolidation Report"
+    description: "run mode Step 5 report format mandates this heading"
+  - type: contains_section
+    value: "### Index Status"
+    description: "run mode Step 5 report format requires this subsection"
+  - type: regex
+    value: "MANIFEST: \\d+ entries"
+    description: "run mode Step 5: literal 'MANIFEST: {N} entries' field"

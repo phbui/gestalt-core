@@ -1,0 +1,23 @@
+sentence-transformers>=3.0
+sqlite-vec>=0.1.0
+# <2: mcp 2.0.0 removed mcp.server.fastmcp, which gestalt-mcp-server.py imports.
+# <1.30: gestalt-mcp-server.py sets mcp.settings.host, which the Settings model dropped after
+# 1.29 — a fresh venv on node06 (2026-09-07) resolved the newest 1.x and the service died with
+# '"Settings" object has no field "host"'. Every working node runs 1.29.1.
+mcp[cli]>=1.0,<1.30
+httpx>=0.27
+# nomic-embed-text-v1.5 loads with trust_remote_code=True and its modeling file
+# imports einops; without it the index build dies at model load.
+einops>=0.7
+# sentence-transformers pulls torch in transitively with no CUDA pin, so a bare
+# `uv/pip install -r` can resolve a torch cuXXX wheel newer than the node's
+# installed NVIDIA driver — torch then silently falls back to CPU with no
+# error, and a full-corpus --force embed pins every core for tens of minutes
+# instead of finishing on the GPU in seconds (verified 2026-08-18: driver
+# 572.70/CUDA 12.8 + torch's default cu130 resolve = CPU fallback). On a node
+# with an NVIDIA GPU, after installing this file, reinstall torch against the
+# index matching `nvidia-smi`'s "CUDA Version" header, e.g. for CUDA 12.8:
+#   uv pip install --index-url https://download.pytorch.org/whl/cu128 --force-reinstall torch
+# tools/gestalt-index-builder.py now refuses a >500-chunk --force embed when
+# it detects this mismatch (_warn_if_gpu_wasted) rather than silently
+# spinning CPU.

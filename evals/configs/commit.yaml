@@ -1,0 +1,20 @@
+# derived from .claude/skills/commit/SKILL.md (Evals table + Step 3 subject convention, Step 4 prompt, Step 5 rule)
+skill: commit
+trigger_cases:
+  - prompt: "Commit these changes"
+    should_trigger: true
+  - prompt: "Commit my staged work with a message about fixing the auth middleware bug"
+    should_trigger: true
+  - prompt: "Open a PR for this branch with a multi-persona review"
+    should_trigger: false
+    routes_to: "pr"
+output_assertions:
+  - type: regex
+    value: "^(feat|fix|refactor|docs|chore|test|perf|style|ci)\\([a-zA-Z0-9_-]+\\): .+"
+    description: "Step 3: subject line convention <type>(<scope>): <description>"
+  - type: regex
+    value: "\\(y\\) approve \\| \\(e\\) edit \\| \\(n\\) cancel"
+    description: "Step 4 mandates this exact confirmation prompt"
+  - type: not_contains
+    value: "git add -A"
+    description: "Step 5/Rules: never use git add -A or git add ."

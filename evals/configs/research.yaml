@@ -1,0 +1,23 @@
+# derived from .claude/skills/research/SKILL.md (Evals table + Sources section, grounding tags, numbered citation rule)
+skill: research
+trigger_cases:
+  - prompt: "Research the tradeoffs between Qdrant and Pinecone for vector search"
+    should_trigger: true
+  - prompt: "Best practices for real-time sync in offline-first PWAs in 2026"
+    should_trigger: true
+  - prompt: "What did we learn last week about the spatial pipeline?"
+    should_trigger: false
+    routes_to: "consolidate"
+output_assertions:
+  - type: contains_section
+    value: "### Sources"
+    description: "Step 5 output format mandates a numbered Sources list"
+  - type: contains_section
+    value: "### Overview"
+    description: "Step 5 final briefing template"
+  - type: regex
+    value: "\\[(VERIFIED|INFERRED|UNVERIFIED)\\]"
+    description: "researcher agents tag every claim"
+  - type: regex
+    value: "\\[[0-9]+\\]"
+    description: "inline numbered citations tied to Sources list"

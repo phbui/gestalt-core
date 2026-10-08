@@ -1,0 +1,53 @@
+---
+paths:
+  - "**/docs/pitches/**/srs.md"
+  - "**/docs/systems/**/srs.md"
+---
+
+# SRS Flow Requirements
+
+When writing an SRS, requirements must cover both individual components AND the flows that connect them.
+
+## The Problem
+
+Component requirements like "the system shall display a CTA" and "the system shall display a library" can individually pass verification while the user experience is broken — because nothing specifies what happens when the user clicks the CTA or how the library connects to the next step.
+
+## Rule: Every User Journey Needs a Flow Requirement
+
+For every user-facing feature, include at least one flow requirement that traces the end-to-end journey:
+
+```markdown
+##### PREFIX-FR-XXX: [Feature] user journey
+
+- _Statement:_ When the user [trigger], the system shall [step 1], then [step 2],
+  then [step 3]. Specifically: [trigger] opens [view A] containing [component B]
+  and [component C]. Selecting an item in [component B] calls [action] which
+  [result]. Selecting an item in [component C] navigates to [destination] and
+  [side effect].
+- _Rationale:_ Individual component requirements (INT-001, INT-002, INT-003)
+  specify what each element does but not how they connect. This requirement
+  specifies the navigation flow.
+- _Acceptance:_ The complete user journey from [trigger] to [final state] works
+  end-to-end without dead navigation or disconnected components.
+```
+
+## Rule: Specify Transitions, Not Just States
+
+Bad: "The system shall display a CTA" (what happens when clicked?)
+Good: "The system shall display a CTA that, when clicked, opens the snapshot library view containing both template selection and previous snapshots."
+
+Bad: "The system shall present a template selection view" (how does the user get there? what happens on select?)
+Good: "Within the library view opened by the CTA, the system shall present templates. Selecting a template creates a chat session with the canned prompt and closes the library."
+
+## Rule: Specify Data Contract Field Names
+
+Interface requirements between frontend and backend must include exact field names:
+
+```markdown
+- _Statement:_ The GET /api/v1/items endpoint shall return JSON with shape:
+  `{ items: ItemResponse[], total: number }` where ItemResponse contains
+  `{ id: string, title: string, html_content: string }`. The frontend
+  TypeScript interface must use these exact field names.
+```
+
+This prevents mismatches where the backend returns `html_content` but the frontend expects `html`.

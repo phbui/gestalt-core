@@ -1,0 +1,23 @@
+# derived from .claude/skills/audit/SKILL.md (Evals table + Evidence Grounding block, Phase 3 report format)
+skill: audit
+trigger_cases:
+  - prompt: "Run a final quality audit on the c7-comms pitch implementation before we merge"
+    should_trigger: true
+  - prompt: "Audit the changes on this branch — check for DRY violations, performance issues, and architecture problems"
+    should_trigger: true
+  - prompt: "Check whether gestalt entries match the actual code in platform/"
+    should_trigger: false
+    routes_to: "review"
+output_assertions:
+  - type: contains_section
+    value: "### Summary"
+    description: "Phase 3 Audit Report format requires a Summary subsection with CRITICAL/MAJOR/MINOR counts"
+  - type: regex
+    value: "\\[(verified|suspected)\\]"
+    description: "Evidence Grounding rule: tag each finding [verified] or [suspected]"
+  - type: regex
+    value: "(ARCH|QUAL|PERF|REQ)-\\d+"
+    description: "Reviewer OUTPUT specs mandate finding IDs"
+  - type: not_contains
+    value: "Target N findings"
+    description: "FORBIDDEN block: quota-fabrication phrasing must not appear"

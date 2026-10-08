@@ -1,0 +1,76 @@
+# Golden retrieval cases for the five synthetic entries in knowledge/.
+# They exist so `python3 evals/retrieval/run_retrieval_evals.py --mode fts` runs on a fresh clone.
+# Replace them with questions about your own notes. A good case is phrased the way you would ask it,
+# not in the entry's own words.
+cases:
+  - query: "how do I combine two search methods that score on different scales"
+    expect_slug: sample-rank-fusion
+    bucket: ops
+    hard: true
+    source: authored
+  - query: "what constant stops one list's first result from dominating"
+    expect_slug: sample-rank-fusion
+    expect_block: k-constant
+    bucket: ops
+    hard: true
+    source: authored
+  - query: "why not just add the raw scores from the two methods"
+    expect_slug: sample-rank-fusion
+    expect_block: why-rank-not-score
+    bucket: ops
+    source: authored
+  - query: "what does the agent see when a session begins"
+    expect_slug: sample-session-hooks
+    expect_block: injection
+    bucket: ops
+    source: authored
+  - query: "how big should the text pushed into the agent's context be"
+    expect_slug: sample-session-hooks
+    expect_block: budget
+    bucket: ops
+    hard: true
+    source: authored
+  - query: "what should a script do when it hits an internal error and must not interrupt the user"
+    expect_slug: sample-session-hooks
+    expect_block: failure
+    bucket: ops
+    hard: true
+    source: authored
+  - query: "how do I write up an outage so it can be searched later"
+    expect_slug: sample-incident-record
+    bucket: ops
+    hard: true
+    source: authored
+  - query: "what makes a good rule at the end of a write-up"
+    expect_slug: sample-incident-record
+    expect_block: standing-rule
+    bucket: ops
+    source: authored
+  - query: "how long should the first line of a commit be"
+    expect_slug: sample-commit-conventions
+    expect_block: subject-line
+    bucket: ops
+    source: authored
+  - query: "what proves that a bug fix really fixes the bug"
+    expect_slug: sample-commit-conventions
+    expect_block: discriminating-test
+    bucket: ops
+    hard: true
+    source: authored
+  - query: "interval for a score averaged over queries"
+    expect_slug: sample-evaluation-statistics
+    expect_block: bootstrap
+    bucket: ops
+    source: authored
+  - query: "is system A really better than system B on the same questions"
+    expect_slug: sample-evaluation-statistics
+    expect_block: paired-test
+    bucket: ops
+    hard: true
+    source: authored
+  - query: "what should I publish next to a retrieval number"
+    expect_slug: sample-evaluation-statistics
+    expect_block: disclosure
+    bucket: ops
+    hard: true
+    source: authored

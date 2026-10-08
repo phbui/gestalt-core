@@ -1,0 +1,33 @@
+# derived from .claude/skills/requirements/SKILL.md (dispatch table + per-mode formats)
+# 2026-08-11: absorbed the former srs, adr, sdd, pitch, system, promote, and implement
+# skills as subcommand modes; former routes_to targets now trigger this skill.
+skill: requirements
+trigger_cases:
+  - prompt: "Explain the difference between an SRS and an SDD"
+    should_trigger: true
+  - prompt: "Inspect the c8-grag pitch's requirements documents"
+    should_trigger: true
+  - prompt: "Write the SRS for the new auth pitch"
+    should_trigger: true
+  - prompt: "Write down why we chose postgres over dynamo as an ADR"
+    should_trigger: true
+  - prompt: "Write a software design document from the spec"
+    should_trigger: true
+  - prompt: "Start a new bet folder for this feature idea"
+    should_trigger: true
+  - prompt: "Set up a new system folder for grounding"
+    should_trigger: true
+  - prompt: "Move these decisions into the durable system docs"
+    should_trigger: true
+  - prompt: "Take this spec all the way to working code"
+    should_trigger: true
+  - prompt: "Fix these 12 linter errors"
+    should_trigger: false
+    routes_to: "fix"
+  - prompt: "Build me a quick prototype of the settings page from this description"
+    should_trigger: false
+    routes_to: "build"
+output_assertions:
+  - type: regex
+    value: "What would you like to know more about\\?"
+    description: "explain mode inspect branch mandates this exact closing line"

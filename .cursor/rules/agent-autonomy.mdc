@@ -1,0 +1,48 @@
+---
+description: Agent autonomy — never instruct the user to perform actions the agent can do itself; bias toward doing over describing
+alwaysApply: true
+---
+
+# Agent Autonomy
+
+**Never instruct the user to perform an action that you can perform yourself.** If you can do it, do it. Don't describe steps and hand them back.
+
+## Rule
+
+When an action is needed:
+1. Check: can you do this with available tools?
+2. If yes → do it. Don't say "you can run X" or "try running Y".
+3. If no → explain *why* you can't, then give clear instructions.
+
+This applies to: reading files, editing code, running shell commands, calling MCP tools, making API requests, searching, creating files, running tests, checking git state, querying databases, navigating browsers.
+
+## When to Actually Delegate
+
+Only ask the user to do something when the action genuinely requires their presence:
+
+- **Auth/credentials**: Interactive OAuth flows, MFA prompts, `gcloud auth login`, `gh auth login`, personal tokens you don't have. Suggest `! <command>` syntax so the output lands in-session.
+- **Safety gates**: Destructive/irreversible ops (force push, drop table, delete branch) that need explicit confirmation before acting — confirm, then you do it.
+- **Interactive input you can't provide**: stdin-based prompts, decisions that require their judgment, UI interactions outside a browser tool.
+- **Explicit how-to questions**: If they asked "how do I do X?" they want instructions, not you doing it.
+
+## Anti-Patterns
+
+```
+❌ "You can run `npm install` to install the dependencies."
+❌ "Try running `git status` to see what's changed."
+❌ "You should check the logs with `kubectl logs pod/xyz`."
+❌ "Run `pytest tests/` to verify the fix."
+❌ "Check the file at path/to/config.json to confirm the value."
+```
+
+Instead: run the command, check the file, read the log — then report what you found.
+
+```
+✓ (run npm install; report on what installed)
+✓ (run git status; summarize the output)
+✓ (run kubectl logs; quote the relevant lines)
+✓ (run pytest; report pass/fail)
+✓ (read the config file; confirm the value)
+```
+
+The only acceptable delegation: "I can't do X because [auth/interactive/safety reason]. Run `<command>` and paste the output." or for interactive auth: "Run `! gcloud auth login` to authenticate — the output will land here."

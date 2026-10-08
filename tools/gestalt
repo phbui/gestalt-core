@@ -1,0 +1,750 @@
+#!/bin/bash
+set -euo pipefail
+
+# readlink -f: resolve the ~/.local/bin/gestalt symlink to the real script,
+# otherwise dirname yields ~/.local/bin and indices get written into ~/.local.
+GESTALT_DIR="${GESTALT_DIR:-$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)}"
+
+# Load .env the same way .claude/hooks/lib.sh does, so GESTALT_PYTHON and the
+# service URLs resolve without the caller having to export them by hand.
+if [ -f "$GESTALT_DIR/.env" ]; then
+    set -a; . "$GESTALT_DIR/.env"; set +a
+fi
+
+# Knowledge entries are UTF-8 and full of em-dashes and arrows. Python's stdout
+# defaults to the locale codec (cp1252 on Windows), which raises
+# UnicodeEncodeError mid-print and truncates results.
+export PYTHONIOENCODING="${PYTHONIOENCODING:-utf-8}"
+
+# The real rules live in claude-tree/rules/*.md. The old RULES_DIR ($GESTALT_DIR/rules) never existed, so the
+# manifest printed "## Rules (none)" and add-rule/links/graph pointed at nothing (B-02, finished 2026-10-06).
+CLAUDE_RULES_DIR="$GESTALT_DIR/claude-tree/rules"
+KNOWLEDGE_DIR="$GESTALT_DIR/knowledge"
+MANIFEST="$GESTALT_DIR/MANIFEST.md"
+# Paper literature notes (slug paper-*) are most entries and about 80 percent of MANIFEST.md, so they
+# get their own file in the same per-entry format (2026-10-06, roadmap L2). MANIFEST.md keeps a pointer.
+MANIFEST_PAPERS="$GESTALT_DIR/MANIFEST-papers.md"
+GRAPH="$GESTALT_DIR/GRAPH.md"
+SOURCES="$GESTALT_DIR/SOURCES.md"
+BRANCHES="$GESTALT_DIR/BRANCHES.md"
+
+# Untracked knowledge files stay out of the indices. Every node regenerates MANIFEST/GRAPH on pull and commits
+# the result, so a file that exists on one laptop only makes every other node's rebuild differ and blocks
+# fleet-sync there with a dirty MANIFEST (2026-09-06: eight untracked paper stubs on mobile did this to
+# the hub and the laptop2). Applies only inside a git checkout that already tracks knowledge/ (a synthetic fixture
+# or a brand-new KB is indexed whole); GESTALT_INDEX_UNTRACKED=1 includes them on purpose.
+_UNTRACKED_KNOWLEDGE=""
+if [ "${GESTALT_INDEX_UNTRACKED:-0}" != 1 ] && git -C "$GESTALT_DIR" ls-files -- knowledge 2>/dev/null | grep -q .; then
+    _UNTRACKED_KNOWLEDGE="$(git -C "$GESTALT_DIR" ls-files --others --exclude-standard -- knowledge 2>/dev/null | sed 's#^knowledge/##')"
+fi
+is_indexed_entry() {  # $1 = path of a knowledge entry; false when git says it is untracked
+    [ -n "$_UNTRACKED_KNOWLEDGE" ] || return 0
+    printf '%s\n' "$_UNTRACKED_KNOWLEDGE" | grep -qxF "$(basename "$1")" && return 1
+    return 0
+}
+# GESTALT_INDEX_FROM_INDEX=1 indexes what git holds (staged plus committed) instead of the working tree.
+# The working tree on a shared laptop carries other sessions' unstaged edits, so an index committed from it
+# names anchors that exist in no commit and every other node's post-merge rebuild disagrees (2026-09-06:
+# three entries, hub and laptop2 dirty after each pull). The post-merge hook and index commits use this; an
+# interactive rebuild before `git add` still sees the working tree by default.
+if [ "${GESTALT_INDEX_FROM_INDEX:-0}" = 1 ] && git -C "$GESTALT_DIR" ls-files -- knowledge 2>/dev/null | grep -q .; then
+    _INDEX_SNAP="$(mktemp -d "${TMPDIR:-/tmp}/gestalt-index.XXXXXX")"
+    trap 'rm -rf "$_INDEX_SNAP"' EXIT
+    git -C "$GESTALT_DIR" ls-files -z -- knowledge | git -C "$GESTALT_DIR" checkout-index -z --stdin --prefix="$_INDEX_SNAP/"
+    KNOWLEDGE_DIR="$_INDEX_SNAP/knowledge"
+fi
+
+slugify() {
+    echo "$1" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9]/-/g' | sed 's/--*/-/g' | sed 's/^-//;s/-$//'
+}
+
+today() {
+    date +%Y-%m-%d
+}
+
+# --- extraction backends -------------------------------------------------------
+# `rg` lives in ~/.local/bin here, which a NON-INTERACTIVE shell (ssh host 'cmd',
+# a git hook fired over SSH, a systemd unit) does not have on PATH. Both extract
+# helpers below used to swallow that with `2>/dev/null || true`, so a rebuild in
+# such a shell produced a MANIFEST with every Links:/Blocks: line missing and no
+# error — shipped exactly that way in 3980e9b on 2026-08-17. Fall back to grep,
+# and refuse to write indices we know are degraded.
+export PATH="${HOME:-/nonexistent}/.local/bin:${HOME:-/nonexistent}/bin:$PATH"
+# Deterministic indices across nodes: sort order must not depend on the caller's locale (en_US
+# collation ignores hyphens, C does not — "ci-watcher" vs "civic" flipped between the laptop and
+# the MSI, so every post-merge regen on the other node dirtied MANIFEST.md and blocked the next pull).
+export LC_ALL=C
+if command -v rg >/dev/null 2>&1; then EXTRACTOR=rg; else EXTRACTOR=grep; fi
+
+xgrep() {  # xgrep <rg-pattern> <grep-E-pattern>
+    if [ "$EXTRACTOR" = rg ]; then rg -o "$1" 2>/dev/null || true
+    else grep -oE "$2" 2>/dev/null || true; fi
+}
+
+assert_readable_entries() {
+    local dir="$1" f
+    for f in "$dir"/*.md; do
+        [ -e "$f" ] || continue
+        if head -c 9 "$f" 2>/dev/null | grep -q GITCRYPT; then
+            echo "ERROR: $f is still encrypted (git-crypt locked)." >&2
+            echo "       Run: git-crypt unlock <keyfile>   — refusing to regenerate indices from ciphertext." >&2
+            exit 3
+        fi
+    done
+}
+
+extract_wikilinks() {
+    local file="$1"
+    # Strip inline code spans first so literal TOML like `[[tool.uv.index]]` is not
+    # mistaken for a wikilink.
+    sed 's/`[^`]*`//g' "$file" 2>/dev/null | xgrep '\[\[([^\]#|]+)' '\[\[[^]#|]+' | sed 's/\[\[//g' | sort -u | tr '\n' ' ' || true
+}
+
+extract_block_ids() {
+    local file="$1"
+    # Anchors DEFINED in this file, not anchors it merely cites.
+    #
+    # Two removals before extracting, in order:
+    #   1. inline code spans — a caret token in prose or backticks (a grep pattern
+    #      like `^title:`) is not an anchor.
+    #   2. wikilinks — `[[other-entry#^their-anchor]]` names an anchor that lives in
+    #      OTHER-ENTRY. Extracting it here attributed it to the citing file, so
+    #      MANIFEST claimed <kb-entry>.md owned ^anti-patterns, ^emdash-tell,
+    #      ^invariants and ^register-formal (all defined in <kb-entry>.md) and that
+    #      <kb-entry>.md owned ^style (defined in <kb-entry>.md). Five
+    #      false ownership claims across two entries, and a lookup following MANIFEST
+    #      would open the wrong file.
+    # Parentheses scope the || true so rg output actually reaches sort/tr/sed.
+    (sed -e 's/`[^`]*`//g' -e 's/\[\[[^]]*\]\]//g' "$file" 2>/dev/null \
+        | xgrep '\^[a-z][a-z0-9-]*' '\^[a-z][a-z0-9-]*') | sort -u | tr '\n' ', ' | sed 's/, $//' || true
+}
+
+regenerate_manifest() {
+    local paper_count=0
+    # Papers stream to fd 3 into a temp file, then land in MANIFEST-papers.md in one write.
+    local papers_tmp; papers_tmp="$(mktemp)"
+    exec 3>"$papers_tmp"
+    {
+        echo "# Gestalt Manifest"
+        echo ""
+        echo "> Auto-generated. Do not edit manually. Regenerated on every write."
+        echo ""
+        echo "## Rules"
+        echo ""
+        if ls "$CLAUDE_RULES_DIR"/*.md 1>/dev/null 2>&1; then
+            for f in "$CLAUDE_RULES_DIR"/*.md; do
+                slug=$(basename "$f" .md)
+                # Claude rules carry no description key, so the first heading stands in for it.
+                desc=$(grep -m1 '^# ' "$f" 2>/dev/null | sed 's/^# *//' || true)
+                echo "- \`$slug\` — $desc"
+            done
+        else
+            echo "(none)"
+        fi
+        echo ""
+        echo "## Knowledge"
+        echo ""
+        if ls "$KNOWLEDGE_DIR"/*.md 1>/dev/null 2>&1; then
+            for f in "$KNOWLEDGE_DIR"/*.md; do
+                is_indexed_entry "$f" || continue
+                slug=$(basename "$f" .md)
+                # || true prevents set -e abort when grep finds no match (file has no frontmatter field)
+                title=$(grep '^title:' "$f" 2>/dev/null | head -1 | sed 's/^title: *//;s/^"//;s/"$//' || true)
+                ktype=$(grep '^type:' "$f" 2>/dev/null | head -1 | sed 's/^type: *//' || true)
+                links=$(extract_wikilinks "$f")
+                blocks=$(extract_block_ids "$f")
+
+                # Same block either way. Paper blocks go to fd 3, everything else stays on stdout.
+                out=1
+                case "$slug" in paper-*) out=3; paper_count=$((paper_count + 1)) ;; esac
+                {
+                    echo "### $slug"
+                    echo "${ktype:-note} | ${title:-$slug}"
+                    # BRE [^ ][^ ]*, not GNU-only \+ — BSD sed takes \+ literally and the [[brackets]] silently vanish (macOS, 2026-08-28)
+                    [ -n "$links" ] && echo "Links: $(echo "$links" | sed 's/ *$//' | sed 's/\([^ ][^ ]*\)/[[\1]]/g')"
+                    [ -n "$blocks" ] && echo "Blocks: $blocks"
+                    echo ""
+                } >&"$out"
+            done
+        else
+            echo "(none)"
+        fi
+        if [ "$paper_count" -gt 0 ]; then
+            echo "## Papers"
+            echo ""
+            echo "$paper_count literature notes (slug begins paper-) are indexed in MANIFEST-papers.md, in the same per-entry format. Look one up with gestalt_manifest(\"paper-<name>\") or grep that file."
+            echo ""
+        fi
+    } > "$MANIFEST"
+    exec 3>&-
+    if [ "$paper_count" -gt 0 ]; then
+        { echo "# Gestalt Manifest: Papers"
+          echo ""
+          echo "> Auto-generated. Do not edit manually. Regenerated on every write. Holds the $paper_count paper-* entries; every other entry is in MANIFEST.md."
+          echo ""
+          echo "## Knowledge"
+          echo ""
+          cat "$papers_tmp"; } > "$MANIFEST_PAPERS"
+    else
+        rm -f "$MANIFEST_PAPERS"
+    fi
+    rm -f "$papers_tmp"
+    echo "Regenerated: $MANIFEST"
+}
+
+regenerate_graph() {
+    {
+        echo "# Data Flow Graph"
+        echo ""
+        echo "> Auto-generated from \`## Data Flow\` sections across knowledge entries. Do not edit manually."
+        echo ""
+
+        if ls "$KNOWLEDGE_DIR"/*.md 1>/dev/null 2>&1; then
+            for f in "$KNOWLEDGE_DIR"/*.md; do
+                is_indexed_entry "$f" || continue
+                slug=$(basename "$f" .md)
+                if grep -q '^## Data Flow' "$f" 2>/dev/null; then  # grep, not rg: rg is absent from non-interactive PATH on some nodes and the failure was silent
+                    echo "### $slug"
+                    # Guarded '$d': when Data Flow is the file's LAST section the range ends at EOF, so an
+                    # unconditional '$d' eats the final content line (emptied 4 entries, found 2026-08-30).
+                    # Delete the last line only when it is the next section's heading. Trailing ';' is for BSD sed.
+                    # Body headings are demoted one level so nested '### Inputs' cannot collide with the '### <slug>' sections.
+                    sed -n '/^## Data Flow/,/^## [^#]/p' "$f" | sed '${/^## [^#]/d;}' | tail -n +2 | sed 's/^###/####/'
+                    echo ""
+                fi
+            done
+        fi
+    } > "$GRAPH"
+    echo "Regenerated: $GRAPH"
+}
+
+cmd_add_rule() {
+    echo "=== Add Gestalt Rule ==="
+    echo ""
+
+    read -rp "Description (one-line summary): " description
+    [ -z "$description" ] && echo "Error: description required" && exit 1
+
+    read -rp "Globs (file patterns, e.g. **/*.py) [optional]: " globs
+    read -rp "Always apply? (y/n) [n]: " always_apply
+    read -rp "Tags (comma-separated) [optional]: " tags
+
+    slug=$(slugify "$description")
+    filepath="$CLAUDE_RULES_DIR/$slug.md"
+
+    if [ -f "$filepath" ]; then
+        echo "Error: $filepath already exists. Edit it directly or use a different name."
+        exit 1
+    fi
+
+    always_val="false"
+    [ "$always_apply" = "y" ] && always_val="true"
+
+    echo ""
+    echo "Enter rule body (markdown). Press Ctrl+D when done:"
+    echo "---"
+    body=$(cat)
+
+    # Claude rules carry no frontmatter: the first heading is the description the manifest lists.
+    # Globs, always-apply and tags only matter to the Cursor mirror, so print them for that step.
+    mkdir -p "$CLAUDE_RULES_DIR"
+    cat > "$filepath" <<RULEBODY
+# $description
+
+$body
+RULEBODY
+
+    echo ""
+    echo "Wrote: $filepath"
+    echo "Mirror it to .cursor/rules/$slug.mdc (globs: ${globs:-none}, alwaysApply: $always_val, tags: ${tags:-none}) per dual-agent-sync.md."
+    regenerate_manifest
+}
+
+cmd_add_knowledge() {
+    echo "=== Add Gestalt Knowledge ==="
+    echo ""
+
+    read -rp "Title (short, descriptive): " title
+    [ -z "$title" ] && echo "Error: title required" && exit 1
+
+    read -rp "Type (note/reference) [note]: " type
+    [ -z "$type" ] && type="note"
+
+    read -rp "Repo (if repo-specific) [optional]: " repo
+    read -rp "Tags (comma-separated) [optional]: " tags
+    read -rp "Aliases (comma-separated) [optional]: " aliases
+
+    slug=$(slugify "$title")
+    filepath="$KNOWLEDGE_DIR/$slug.md"
+
+    if [ -f "$filepath" ]; then
+        echo "Error: $filepath already exists. Edit it directly or use a different name."
+        exit 1
+    fi
+
+    echo ""
+    echo "Enter body (markdown). Use [[wikilinks]] and ^block-ids. Press Ctrl+D when done:"
+    echo "---"
+    body=$(cat)
+
+    {
+        echo "---"
+        echo "type: $type"
+        echo "title: \"$title\""
+        [ -n "$repo" ] && echo "repo: $repo"
+        echo "tags: [$(echo "$tags" | sed 's/,/, /g')]"
+        [ -n "$aliases" ] && echo "aliases: [$(echo "$aliases" | sed 's/,/, /g')]"
+        echo "created: $(today)"
+        echo "updated: $(today)"
+        echo "---"
+        echo ""
+        echo "$body"
+    } > "$filepath"
+
+    echo ""
+    echo "Wrote: $filepath"
+    regenerate_manifest
+    regenerate_graph
+}
+
+cmd_list() {
+    if [ -f "$MANIFEST" ]; then
+        cat "$MANIFEST"
+    else
+        echo "No manifest found. Run: gestalt rebuild"
+    fi
+}
+
+cmd_search() {
+    local query="${1:-}"
+    if [ -z "$query" ]; then
+        echo "Usage: gestalt search <query>"
+        exit 1
+    fi
+
+    local db_path="$GESTALT_DIR/.search/gestalt.db"
+    local python="${GESTALT_PYTHON:-$HOME/.claude/gestalt/venv/bin/python3}"
+
+    if [ ! -f "$db_path" ]; then
+        echo "Error: search index not found at $db_path"
+        echo "Run: gestalt rebuild"
+        exit 1
+    fi
+
+    if [ ! -x "$python" ]; then
+        echo "Error: Python not found at $python"
+        echo "Set GESTALT_PYTHON to override the venv path."
+        exit 1
+    fi
+
+    "$python" - "$GESTALT_DIR" "$query" <<'PYEOF'
+import sys, textwrap
+from pathlib import Path
+
+gestalt_dir, query = sys.argv[1], sys.argv[2]
+
+# F5 (<kb-entry>): a raw hyphenated
+# query ("fleet-check happy path") handed straight to `sections_fts MATCH ?`
+# crashes — FTS5's query-parser reads a leading "-token" as a NOT filter, so
+# "fleet-check" raised "no such column: check". Share the fix with the MCP
+# server instead of re-deriving it: gestalt_search_fts() (tools/gestalt-mcp-server.py
+# ~90-127) builds its FTS5 MATCH expression through fts_tokens() (~61-69),
+# which quotes every token and ORs them — safe against hyphens and every other
+# FTS5 operator. Imported via the importable shim (tools/gestalt_mcp_server.py)
+# rather than duplicated, since both modules live in the same tools/ dir and
+# the import is cheap (mcp/sentence_transformers/sqlite_vec stay lazy inside it).
+tools_dir = str(Path(gestalt_dir) / "tools")
+if tools_dir not in sys.path:
+    sys.path.insert(0, tools_dir)
+from gestalt_mcp_server import gestalt_search_fts
+
+rows = gestalt_search_fts(query, limit=5)
+
+if not rows:
+    print(f"No results for: {query}")
+    sys.exit(0)
+
+print(f"Top {len(rows)} results for: {query}\n")
+for i, row in enumerate(rows, 1):
+    slug      = row["slug"]
+    heading   = row["heading"]
+    block_id  = row["block_id"] or ""
+    content   = row["content"]
+    file_path = row["file_path"]
+    preview   = " ".join(content.split())[:200]
+    if len(preview) < len(" ".join(content.split())):
+        preview += "..."
+    ref = f"[[{slug}#{'^' + block_id if block_id else heading}]]"
+    print(f"  {i}. {ref}  ({file_path})")
+    print(f"     {heading}")
+    print(f"     {textwrap.fill(preview, width=72, subsequent_indent='     ')}")
+    print()
+PYEOF
+}
+
+cmd_links() {
+    local slug="${1:-}"
+    if [ -z "$slug" ]; then
+        echo "Usage: gestalt links <slug>"
+        exit 1
+    fi
+
+    local target="$KNOWLEDGE_DIR/$slug.md"
+    if [ ! -f "$target" ]; then
+        target="$CLAUDE_RULES_DIR/$slug.md"
+    fi
+    if [ ! -f "$target" ]; then
+        echo "Entry not found: $slug"
+        exit 1
+    fi
+
+    echo "=== Links for: $slug ==="
+    echo ""
+
+    echo "--- Outgoing ---"
+    links=$(extract_wikilinks "$target")
+    if [ -n "$links" ]; then
+        for link in $links; do
+            if [ -f "$KNOWLEDGE_DIR/$link.md" ] || [ -f "$CLAUDE_RULES_DIR/$link.md" ]; then
+                echo "  → [[$link]] ✓"
+            else
+                echo "  → [[$link]] ✗ (not found)"
+            fi
+        done
+    else
+        echo "  (none)"
+    fi
+    echo ""
+
+    echo "--- Incoming ---"
+    incoming=$(rg -l "\[\[$slug" "$KNOWLEDGE_DIR"/ "$CLAUDE_RULES_DIR"/ 2>/dev/null | while read -r f; do
+        basename "$f" | sed 's/\.md$//'
+    done)
+    if [ -n "$incoming" ]; then
+        echo "$incoming" | while read -r src; do
+            echo "  ← [[$src]]"
+        done
+    else
+        echo "  (none)"
+    fi
+    echo ""
+
+    echo "--- Block IDs ---"
+    blocks=$(extract_block_ids "$target")
+    if [ -n "$blocks" ]; then
+        echo "  $blocks"
+    else
+        echo "  (none)"
+    fi
+}
+
+cmd_flow() {
+    local source="${1:-}"
+    local target="${2:-}"
+    if [ -z "$source" ] || [ -z "$target" ]; then
+        echo "Usage: gestalt flow <source-slug> <target-slug>"
+        exit 1
+    fi
+
+    echo "=== Data Flow: $source → $target ==="
+    echo ""
+
+    if [ -f "$GRAPH" ]; then
+        rg -i --color=always -C 3 "$source\|$target" "$GRAPH" 2>/dev/null || echo "No direct flow found in GRAPH.md"
+    else
+        echo "GRAPH.md not found. Run: gestalt rebuild"
+    fi
+}
+
+cmd_sources() {
+    if [ -f "$SOURCES" ]; then
+        cat "$SOURCES"
+    else
+        echo "No sources file found. Run /sync to discover external sources."
+    fi
+}
+
+cmd_branches() {
+    if [ -f "$BRANCHES" ]; then
+        cat "$BRANCHES"
+    else
+        echo "No branch tracking file found. Run /learn or /review to start tracking."
+    fi
+}
+
+cmd_rebuild() {
+    assert_readable_entries "$KNOWLEDGE_DIR"
+    regenerate_manifest
+    regenerate_graph
+    # Sanity gate: a healthy corpus always yields Links:/Blocks: lines. Zero of them means
+    # the extractor was broken (missing rg with no fallback, locked files, empty dir) and we
+    # are about to commit a stripped index — see the PATH note above.
+    # …but only when the corpus actually carries ^block-ids to extract: a synthetic fixture
+    # (tests/) or a brand-new KB legitimately has none, and must not be refused.
+    local manifests=("$MANIFEST"); [ -f "$MANIFEST_PAPERS" ] && manifests+=("$MANIFEST_PAPERS")
+    if [ -s "$MANIFEST" ] && ! grep -q '^Blocks: ' "${manifests[@]}" && grep -rqE ' \^[a-z0-9][a-z0-9-]*\s*$' "$KNOWLEDGE_DIR" 2>/dev/null; then
+        echo "ERROR: regenerated MANIFEST.md has no Blocks: lines — extraction failed; not trusting this run." >&2
+        echo "       (extractor=$EXTRACTOR, PATH=$PATH)" >&2
+        exit 4
+    fi
+    # PER-ANCHOR gate. The check above only fires when Blocks lines vanish ENTIRELY, so a
+    # partially degraded extraction passes it: on 2026-09-05 the committed MANIFEST carried 20
+    # anchors that had been deleted from their entries long before, and neither the gate nor
+    # anything else noticed the index pointing at anchors that did not exist. Every anchor the
+    # freshly written MANIFEST claims must be findable in its own entry.
+    bad_anchors="$(MANIFEST="$MANIFEST" MANIFEST_PAPERS="$MANIFEST_PAPERS" KNOWLEDGE_DIR="$KNOWLEDGE_DIR" python3 -c "
+import os, pathlib
+kd = pathlib.Path(os.environ['KNOWLEDGE_DIR'])
+mans = [pathlib.Path(os.environ[k]) for k in ('MANIFEST', 'MANIFEST_PAPERS') if pathlib.Path(os.environ[k]).exists()]
+slug = None; bad = []
+for ln in chr(10).join(m.read_text(errors='replace') for m in mans).split(chr(10)):
+    if ln.startswith('### '):
+        slug = ln[4:].strip()
+    elif ln.startswith('Blocks: ') and slug:
+        f = kd / (slug + '.md')
+        t = f.read_text(errors='replace') if f.exists() else ''
+        bad += [slug + a for a in (x.strip() for x in ln[8:].split(',') if x.strip()) if a not in t]
+print(len(bad), ' '.join(bad[:5]))
+" 2>/dev/null)"
+    if [ -n "$bad_anchors" ] && [ "${bad_anchors%% *}" != 0 ]; then
+        echo "ERROR: regenerated MANIFEST.md lists anchors that do not exist in their entry: $bad_anchors" >&2
+        echo "       This means extraction is degraded or an entry changed underneath; not trusting this run." >&2
+        exit 4
+    fi
+    echo "Rebuilt: MANIFEST.md, MANIFEST-papers.md, GRAPH.md"
+}
+
+cmd_graph() {
+    local format="${1:-text}"
+
+    declare -A node_labels=()
+    declare -A node_types=()
+    declare -a edges=()
+
+    if ls "$KNOWLEDGE_DIR"/*.md 1>/dev/null 2>&1; then
+        for f in "$KNOWLEDGE_DIR"/*.md; do
+            is_indexed_entry "$f" || continue
+            slug=$(basename "$f" .md)
+            title=$(grep '^title:' "$f" 2>/dev/null | head -1 | sed 's/^title: *//;s/^"//;s/"$//' || true)
+            ktype=$(grep '^type:' "$f" 2>/dev/null | head -1 | sed 's/^type: *//' || true)
+            node_labels["$slug"]="${title:-$slug}"
+            node_types["$slug"]="${ktype:-knowledge}"
+
+            for target in $(extract_wikilinks "$f"); do
+                [ -n "$target" ] && edges+=("$slug|$target")
+            done
+        done
+    fi
+
+    # No rule nodes: the dead RULES_DIR/*.mdc scan matched nothing, and adding claude-tree/rules would change
+    # the graph output (B-02, 2026-10-06).
+
+    total="${#node_labels[@]}"
+    total_edges="${#edges[@]}"
+
+    if [ "$total" -eq 0 ]; then
+        echo "No entries in gestalt yet."
+        return
+    fi
+
+    if [ "$format" = "mermaid" ]; then
+        echo "graph LR"
+        for slug in "${!node_labels[@]}"; do
+            safe_id=$(echo "$slug" | sed 's/-/_/g')
+            type="${node_types[$slug]}"
+            echo "    ${safe_id}[\"${slug} (${type})\"]"
+        done
+        for edge in "${edges[@]}"; do
+            src=$(echo "$edge" | cut -d'|' -f1 | sed 's/-/_/g')
+            tgt=$(echo "$edge" | cut -d'|' -f2 | sed 's/-/_/g')
+            echo "    ${src} --> ${tgt}"
+        done
+    else
+        echo "=== Gestalt Graph ==="
+        echo ""
+        echo "Nodes: $total  |  Edges: $total_edges"
+        echo ""
+
+        echo "--- Entries ---"
+        for slug in $(echo "${!node_labels[@]}" | tr ' ' '\n' | sort); do
+            type="${node_types[$slug]}"
+            label="${node_labels[$slug]}"
+            printf "  [%-9s] %-35s  %s\n" "$type" "$slug" "$label"
+        done
+        echo ""
+
+        if [ "$total_edges" -gt 0 ]; then
+            echo "--- Connections ---"
+            for edge in "${edges[@]}"; do
+                src=$(echo "$edge" | cut -d'|' -f1)
+                tgt=$(echo "$edge" | cut -d'|' -f2)
+                echo "  $src  -->  $tgt"
+            done
+            echo ""
+        fi
+
+        isolated=()
+        for slug in "${!node_labels[@]}"; do
+            has_edge=false
+            for edge in "${edges[@]+"${edges[@]}"}"; do
+                [ -z "$edge" ] && continue
+                src=$(echo "$edge" | cut -d'|' -f1)
+                tgt=$(echo "$edge" | cut -d'|' -f2)
+                if [ "$src" = "$slug" ] || [ "$tgt" = "$slug" ]; then
+                    has_edge=true
+                    break
+                fi
+            done
+            [ "$has_edge" = false ] && isolated+=("$slug")
+        done
+        if [ ${#isolated[@]} -gt 0 ]; then
+            echo "--- Isolated (no connections) ---"
+            printf '  %s\n' "${isolated[@]}" | sort
+            echo ""
+        fi
+    fi
+}
+
+cmd_health() {
+    local letta_url="${LETTA_URL:-http://localhost:8283/v1}"; letta_url="${letta_url%/v1}"
+    local graphiti_url="${GRAPHITI_URL:-http://localhost:8200}"
+    local db_path="$GESTALT_DIR/.search/gestalt.db"
+    local state_dir="${GESTALT_STATE_DIR:-$HOME/.claude/gestalt}"
+    local letta_agent_id_file="$state_dir/letta-agent-id.txt"
+    local python="${GESTALT_PYTHON:-$state_dir/venv/bin/python3}"
+
+    echo "=== Gestalt Health ==="
+    echo ""
+
+    # --- systemd service (system-level, not user) ---
+    local svc_status
+    svc_status=$(systemctl is-active gestalt-services.service 2>/dev/null || true)
+    svc_status=$(echo "$svc_status" | head -1 | tr -d '[:space:]')
+    [ -z "$svc_status" ] && svc_status="unknown"
+    if [ "$svc_status" = "active" ]; then
+        printf "  %-20s %s\n" "gestalt-services" "OK (running)"
+    else
+        printf "  %-20s %s\n" "gestalt-services" "WARN ($svc_status)"
+    fi
+
+    # --- Letta ---
+    local letta_http
+    letta_http=$(curl -sL -o /dev/null -w "%{http_code}" --connect-timeout 2 "$letta_url/v1/health" 2>/dev/null || true)
+    [ -z "$letta_http" ] && letta_http="000"
+    if [ "$letta_http" = "200" ]; then
+        printf "  %-20s %s\n" "Letta" "OK ($letta_url)"
+    else
+        printf "  %-20s %s\n" "Letta" "WARN (HTTP $letta_http — $letta_url)"
+    fi
+
+    # --- Letta memory block count ---
+    if [ "$letta_http" = "200" ] && [ -f "$letta_agent_id_file" ]; then
+        local agent_id
+        agent_id=$(cat "$letta_agent_id_file")
+        local block_info
+        block_info=$(curl -sL --connect-timeout 2 \
+            "$letta_url/v1/agents/$agent_id" 2>/dev/null \
+            | "$python" -c "
+import sys,json
+a=json.load(sys.stdin)
+blocks=a.get('memory',{}).get('blocks',[])
+filled=sum(1 for b in blocks if b.get('value','').strip())
+print(f'{filled}/{len(blocks)} populated')
+" 2>/dev/null \
+            || echo "?")
+        printf "  %-20s %s\n" "  Letta blocks" "$block_info"
+    fi
+
+    # --- Graphiti ---
+    local graphiti_http
+    graphiti_http=$(curl -sL -o /dev/null -w "%{http_code}" --connect-timeout 2 "$graphiti_url/health" 2>/dev/null || true)
+    [ -z "$graphiti_http" ] && graphiti_http="000"
+    if [ "$graphiti_http" = "200" ]; then
+        printf "  %-20s %s\n" "Graphiti" "OK ($graphiti_url)"
+    else
+        printf "  %-20s %s\n" "Graphiti" "WARN (HTTP $graphiti_http — $graphiti_url)"
+    fi
+
+    # --- FalkorDB (via docker) ---
+    local falkor_state
+    falkor_state=$(docker inspect --format '{{.State.Status}}' gestalt-falkordb 2>/dev/null || true)
+    falkor_state=$(echo "$falkor_state" | head -1 | tr -d '[:space:]')
+    [ -z "$falkor_state" ] && falkor_state="not found"
+    if [ "$falkor_state" = "running" ]; then
+        printf "  %-20s %s\n" "FalkorDB" "OK (docker: running)"
+    else
+        printf "  %-20s %s\n" "FalkorDB" "WARN (docker: $falkor_state)"
+    fi
+
+    # --- Search index ---
+    if [ -f "$db_path" ]; then
+        local section_count
+        section_count=$(sqlite3 "$db_path" "SELECT COUNT(*) FROM sections_meta;" 2>/dev/null || echo "?")
+        local size_kb
+        size_kb=$(du -k "$db_path" 2>/dev/null | cut -f1 || echo "?")
+        printf "  %-20s %s\n" "Search index" "OK ($section_count sections, ${size_kb}KB)"
+    else
+        printf "  %-20s %s\n" "Search index" "MISSING — run: gestalt rebuild"
+    fi
+
+    echo ""
+}
+
+usage() {
+    cat <<EOF
+gestalt — Agent-agnostic knowledge base for AI coding agents
+
+Usage:
+  gestalt add rule          Add a convention/standard (.mdc)
+  gestalt add knowledge     Add a how-to, reference, or learned pattern (.md)
+
+  gestalt list              Show manifest (all entries)
+  gestalt search <query>    Search across all content (including ^block-ids)
+  gestalt links <slug>      Show incoming/outgoing links for an entry
+  gestalt flow <src> <tgt>  Find data flow between two entries
+  gestalt sources           Show external source registry
+  gestalt branches          Show branch tracking state
+
+  gestalt rebuild           Regenerate MANIFEST.md + GRAPH.md
+  gestalt graph [mermaid]   Show relationship graph (text or mermaid format)
+
+  gestalt health            Show health of all services (Letta, Graphiti, FalkorDB, systemd)
+
+  gestalt help              Show this message
+
+Cursor commands (in chat):
+  /save                     Capture from current conversation
+  /learn                    Deep-scan a repo or topic
+  /review                   Audit knowledge base against code
+  /discuss                  Critical rubber-duck session
+  /sync                     Pull from external sources (Notion, Linear, Slack)
+  /publish                  Generate briefing for Claude Projects
+
+Claude Code commands (in chat):
+  Same as above — commands are in .claude/commands/
+
+Environment:
+  GESTALT_DIR               Override gestalt root (default: auto-detected)
+EOF
+}
+
+case "${1:-help}" in
+    add)
+        case "${2:-}" in
+            rule)      cmd_add_rule ;;
+            knowledge) cmd_add_knowledge ;;
+            *)         echo "Usage: gestalt add {rule|knowledge}" && exit 1 ;;
+        esac
+        ;;
+    list)     cmd_list ;;
+    search)   cmd_search "${2:-}" ;;
+    links)    cmd_links "${2:-}" ;;
+    flow)     cmd_flow "${2:-}" "${3:-}" ;;
+    sources)  cmd_sources ;;
+    branches) cmd_branches ;;
+    rebuild)  cmd_rebuild ;;
+    graph)    cmd_graph "${2:-text}" ;;
+    health)   cmd_health ;;
+    help|--help|-h) usage ;;
+    *)        echo "Unknown command: $1" && usage && exit 1 ;;
+esac

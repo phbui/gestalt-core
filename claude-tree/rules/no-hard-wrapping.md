@@ -1,0 +1,21 @@
+---
+---
+
+# No Hard Wrapping
+
+**One paragraph is one line.** Never insert newlines inside a paragraph to keep source lines under some column width. This is a hard rule and it holds unless the user explicitly asks for wrapped source.
+
+Applies to every prose surface you author or edit: LaTeX bodies, Markdown, commit messages, PR descriptions, review comments, Slack messages, email bodies, knowledge entries, and any file you hand back to a human. Let the editor and the renderer wrap; that is their job.
+
+## Why
+
+Hard-wrapped source is an AI tell, and it actively costs the user work. Mid-paragraph breaks make diffs unreadable, because editing one word reflows and dirties every following line of the paragraph. They also survive copy-paste into rendered surfaces, where they show up as ragged or broken line spacing that the user then has to strip by hand.
+
+## Applying it
+
+- Editing a file that is already hard-wrapped: match the file when you are making a small surgical edit inside it, but unwrap the paragraphs when the user asks you to fix the formatting, and never introduce new wrapping into a file that does not have it.
+- Reflowing an existing document is a **source-only** change. Prove it: render before and after and diff the extracted text. For LaTeX that is `pdftotext -layout` on both PDFs; the diff must be empty.
+- Structural lines stay on their own lines. In LaTeX that means `\begin{...}`, `\end{...}`, `\item`, `\section`, `\label`, `\caption`'s enclosing environment, display math delimiters, and table rows ending in `\\`. Unwrapping prose does not mean collapsing structure.
+- Long is fine. A 2,000-character paragraph on one line is correct.
+
+Related: the-relevant-entry records the same one-paragraph-one-line habit in the user's own manuscript prose, which is how the mismatch becomes visible when generated text is pasted beside his.

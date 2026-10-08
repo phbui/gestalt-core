@@ -1,0 +1,23 @@
+# derived from .claude/skills/learn/SKILL.md (Evals table + scanner citation rules, Linking Rules)
+skill: learn
+trigger_cases:
+  - prompt: "Learn the repo-a repo and create gestalt coverage for it"
+    should_trigger: true
+  - prompt: "Learn about the deployment pipeline that connects repo-a to repo-b"
+    should_trigger: true
+  - prompt: "Verify all gestalt entries are accurate and find stale claims"
+    should_trigger: false
+    routes_to: "review"
+output_assertions:
+  - type: regex
+    value: "(file|\\.py|\\.ts|\\.md):[0-9]+"
+    description: "each scanner RETURN requires file:line citations"
+  - type: regex
+    value: "\\[\\[[^\\]]+\\]\\]"
+    description: "Linking Rules mandate [[wikilinks]]"
+  - type: regex
+    value: "\\^[a-zA-Z0-9_-]+"
+    description: "Linking Rules mandate ^block-id anchors"
+  - type: contains_section
+    value: "## Data Flow"
+    description: "Linking Rules require Data Flow section for pipeline entries"

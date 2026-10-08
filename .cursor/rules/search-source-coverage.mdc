@@ -1,0 +1,14 @@
+---
+description: Search coverage gaps — WebSearch cannot see reddit.com or stackoverflow.com; route around via APIs and never present a coverage gap as coverage
+alwaysApply: true
+---
+
+# Search Source Coverage
+
+`WebSearch` cannot see `reddit.com` or `stackoverflow.com`, and gives no warning: a query whose best answer lives there returns a confident synthesis from SEO reposts and Medium mirrors, with no error and no flag. The rule is not "search harder." It is: **never let a coverage gap pass as coverage.**
+
+- Before answering from search, ask whether the best answer would plausibly live on a forum (lived experience with a tool, an error message, a workaround, version-specific breakage). If yes: route around the gap with the real APIs (`api.stackexchange.com`, `arctic-shift.photon-reddit.com` for Reddit, HN Algolia, `gh search issues`) AND say in one line which sources you reached and which you could not.
+- Never write "Reddit users report…" on the strength of an article that quotes them; never treat a thin result set as evidence of absence; `site:reddit.com` silently returns non-Reddit results.
+- Start queries short and broad, change the words (not the order) when one underperforms, prefer primary sources over top-ranked ones, stop at saturation and say so if you stop early.
+
+Full evidence, the exact curl recipes, query craft, and scope: `gestalt/.cursor/references/search-source-coverage.md` and `gestalt/knowledge/the-relevant-entry.md`.

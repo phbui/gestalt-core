@@ -1,0 +1,21 @@
+# Eval config for /investigate — derived from SKILL.md Evals table
+skill: investigate
+trigger_cases:
+  - prompt: "Investigate why snapshot messages drop during reconnect in the PWA"
+    should_trigger: true
+  - prompt: "Help me understand how the tool registry in agentic-backend works"
+    should_trigger: true
+  - prompt: "Should we adopt CRDTs for offline collaboration? Talk me through tradeoffs"
+    should_trigger: false   # routes to /discuss
+output_assertions:
+  - type: contains_section
+    value: "### Sources"
+  - type: regex
+    value: "\\[(VERIFIED|INFERRED|UNVERIFIED)\\]"
+    description: "worker outputs carry grounding tags"
+  - type: regex
+    value: "(file|\\.py|\\.ts|\\.md):[0-9]+"
+    description: "code claims carry file:line citations"
+  - type: not_contains
+    value: "N/N files checked"
+    description: "coverage-quota phrasing was removed 2026-07-02; must not reappear"

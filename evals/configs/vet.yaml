@@ -1,0 +1,35 @@
+# Eval config for /vet — derived from SKILL.md Final Report + Orchestration Rules
+# (/vet has no `## Evals` section of its own; assertions below are traced to the
+#  binding contracts in .claude/skills/vet/SKILL.md rather than to an Evals table.)
+skill: vet
+trigger_cases:
+  - prompt: "Vet the fellowship proposal before I submit it"
+    should_trigger: true
+  - prompt: "Run an eval-loop review on docs/paper/paper.md with venue personas"
+    should_trigger: true
+  - prompt: "Review this PR for correctness bugs"
+    should_trigger: false   # routes to /pr
+  - prompt: "Audit the pitch implementation now that /build finished"
+    should_trigger: false   # routes to /audit
+output_assertions:
+  - type: regex
+    value: "(SUBMIT-READY|READY WITH NEEDS-PHI|NOT READY)"
+    description: "Final Report opens with one of the three verdicts"
+  - type: regex
+    value: "NEEDS-PHI"
+    description: "human-only queue is emitted (Gate 3 is mandatory)"
+  - type: regex
+    value: "\\[(VERIFIED|INFERRED|UNVERIFIED)\\]"
+    description: "worker return-claims carry grounding tags (Orchestration Rule 3)"
+  - type: regex
+    value: "(VERIFIED|REFUTED|UNVERIFIABLE)"
+    description: "verdicts on the document's own claims use the reconciled vocabulary"
+  - type: regex
+    value: "(file|\\.md|\\.tex|\\.typ|\\.py):[0-9]+"
+    description: "every finding cites file:line (Orchestration Rule 1)"
+  - type: not_contains
+    value: "target at least"
+    description: "finding quotas are a protocol violation (Orchestration Rule 1)"
+  - type: not_contains
+    value: "verified by inspection"
+    description: "math must be verified by execution, never inspection (Rule 2)"

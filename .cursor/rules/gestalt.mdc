@@ -1,0 +1,92 @@
+---
+description: Gestalt knowledge base — learned rules and knowledge for this workspace. Always check gestalt before answering questions or working on tasks.
+alwaysApply: true
+---
+
+# Gestalt
+
+`gestalt/` is a knowledge base at the workspace root. Learned conventions and reference knowledge that persist across sessions. Agent-agnostic — works with both Cursor and Claude Code.
+
+## Always Reference Gestalt
+
+Before answering a question, suggesting an approach, or starting a task, check
+gestalt if there's any chance it holds relevant knowledge — search first (see Lookup),
+then read the entries it points at. Cite what you use: "Per gestalt/knowledge/platform.md,
+the deploy command is…". This applies to ALL tasks, not only when gestalt is
+mentioned. Default to checking, not skipping.
+
+## Lookup
+
+Search first. Never read an index whole: `MANIFEST.md` is about 200 KB.
+
+1. **Search** — `gestalt_search` with the question or topic finds the entry. `gestalt_route` finds the skill. Then read the one entry: `gestalt/knowledge/<slug>.md` or `gestalt/.cursor/rules/<slug>.mdc`.
+2. **MANIFEST.md** — slug-level index, for a slug's outgoing `links` and key `^block-ids`. Paper notes (`paper-*`) are indexed in `gestalt/MANIFEST-papers.md`, in the same format. Look up one slug with `gestalt_manifest('<slug>')`, which searches both files, or `grep -A4 '^### <slug>' gestalt/MANIFEST.md gestalt/MANIFEST-papers.md`. `gestalt_manifest('<few words>')` returns the matching entries, and with no argument it returns a short summary. Never read either file whole.
+3. **GRAPH.md** — data-flow index. Read when the question is cross-cutting: "what feeds into X?", "trace data from A to B", "how do these services connect?". **One extra read.**
+4. **SOURCES.md** — external source registry. Read when gestalt lacks context. Maps entries to Notion docs, Linear projects, Slack channels. Query those via MCP tools as fallback.
+
+### Resolving Links
+
+
+- `slug` → read `gestalt/knowledge/slug.md`
+- `slug` → read `gestalt/knowledge/slug.md`, find the line containing `^block-id`
+- `slug` → read `gestalt/knowledge/slug.md`, find the `## heading` section
+
+Knowledge entries can be per-repo (`knowledge/platform.md`) or cross-repo (`knowledge/deployment-pipeline.md`). The repos in this workspace are related — check for cross-repo entries when a task spans multiple repos.
+
+## Scope: Personal Knowledge Base
+
+`phbui/gestalt` is **personal**. Never write an entry — and never let auto-capture
+create one — for a repo or system owned by an employer or client, even when the
+workspace contains it and the entry would be useful: no internal repos, deploy
+topologies, API contracts, customer data models, access recipes, or incident
+writeups. Skip silently and say once: "Skipping gestalt capture — work-owned repo."
+
+**Generic techniques** learned at work are fine (a library gotcha, a debugging
+pattern, a Claude Code behavior) provided they carry no internal hostnames,
+identifiers, credentials, or architecture. A work-system entry found in
+`knowledge/` gets removed, not redacted.
+
+## Auto-Capture
+
+Subject to the scope rule above. When you read a **personal** repo's README, Taskfile, or pyproject.toml and no gestalt entry exists for that repo, create one at `gestalt/knowledge/<repo>.md`. If one exists and is stale, rewrite it. Then regenerate indices. Confirm briefly: "Updated gestalt."
+
+When the user corrects a mistake, update gestalt proactively. Confirm briefly: "Updated gestalt." Don't ask — just do it.
+
+**Write philosophy:** see `gestalt-operations.md` §Write Philosophy — entries read as authoritative reference, never as mistake logs.
+
+### Linking Rules
+
+When writing or updating entries:
+- Use `wikilinks` inline to reference other entries (not frontmatter `relates_to`)
+- Add `^block-id` anchors to key facts, service boundaries, data connection points
+- Include `## Data Flow` sections for entries that describe pipelines or inter-service connections
+- Place links contextually — next to the sentence that explains *why* they're related
+
+Before creating a new entry, check MANIFEST.md. Update existing entries rather than duplicate.
+
+After any write, regenerate all indices per `gestalt-operations.md` §Index Regeneration.
+
+## Agent Teams
+
+Write-heavy operations (`/learn`, `/review`, `/sync`) fan out to parallel scanner
+agents, each with a focused scope, then you synthesize. Read operations stay
+sequential — the index keeps lookup to 2-3 reads. Ceiling and worker-prompt
+structure: `proactive-parallelism.md` and `references/orchestration.md`. Agent
+definitions: `claude-tree/agents/` (Claude Code, exposed to the harness via the
+`gestalt/.claude` compat symlink — F10), `.cursor/agents/` (Cursor).
+
+## Gestalt Commands: Execution Rules
+
+See `gestalt-operations.md` §Command Execution Rules — every step is mandatory, no spot checks.
+
+## Sync Rule
+
+`gestalt/.cursor/` is generated from `gestalt/claude-tree/` (reachable by that name or via the `gestalt/.claude` compat symlink, F10). Edit `claude-tree/` only. Then run `tools/sync-cursor-tree.py --write`, and never edit `.cursor/` by hand. Details: `dual-agent-sync.md`.
+
+## Auto-Save
+
+When the conversation is long and context is approaching its limit, run `/save` proactively to capture knowledge before the chat is summarized. Don't wait to be asked.
+
+## Commands
+
+For the full current command and skill list, see `references/skill-index.md` (canonical).

@@ -1,0 +1,9 @@
+---
+description: Use Mermaid syntax for diagrams in files; ASCII art for terminal output
+globs: "**/*.md,**/*.mdc"
+alwaysApply: false
+---
+
+# Mermaid Diagrams
+
+Use Mermaid fenced code blocks (` ```mermaid `) for diagrams in files — never ASCII art, PlantUML, or images. In terminal output (chat messages), Mermaid doesn't render — use `+--+` ASCII boxes instead. Full box-drawing patterns (flowcharts, decision flows, sequence diagrams): `gestalt/.cursor/references/mermaid-diagrams.md`.

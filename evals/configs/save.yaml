@@ -1,0 +1,17 @@
+# derived from .claude/skills/save/SKILL.md (Evals table + Step 5 wikilink validation, Step 3 conventions)
+skill: save
+trigger_cases:
+  - prompt: "Save what we learned this session about the spatial pipeline migration"
+    should_trigger: true
+  - prompt: "/save — capture the auth middleware bug we just fixed"
+    should_trigger: true
+  - prompt: "Learn the platform repo from scratch"
+    should_trigger: false
+    routes_to: "learn"
+output_assertions:
+  - type: regex
+    value: "\\[\\[[^\\]]+\\]\\]"
+    description: "Step 5 requires validating [[wikilinks]] in new/updated entries"
+  - type: regex
+    value: "\\^[A-Za-z0-9_-]+"
+    description: "written entries carry ^block-id anchors"

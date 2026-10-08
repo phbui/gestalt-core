@@ -1,0 +1,20 @@
+# derived from .claude/skills/swarm-check/SKILL.md (Evals table + Step 4 report template, coverage rule)
+skill: swarm-check
+trigger_cases:
+  - prompt: "I changed the data-api /spatial/radius response schema — check the ripple across the workspace"
+    should_trigger: true
+  - prompt: "I just renamed an env var in repo-a — what else needs to change?"
+    should_trigger: true
+  - prompt: "Fix all 12 of these basedpyright errors"
+    should_trigger: false
+    routes_to: "fix"
+output_assertions:
+  - type: contains_section
+    value: "## Cross-Repo Impact Report"
+    description: "Step 4 synthesis template mandates this heading"
+  - type: regex
+    value: "[0-9]+/[0-9]+ checked"
+    description: "COVERAGE rule: every item in scope MUST be checked, report N/N"
+  - type: regex
+    value: "(AFFECTED|CLEAR|UNCHECKED)"
+    description: "Step 4 Affected Repos table Status column values"

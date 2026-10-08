@@ -1,0 +1,25 @@
+# derived from claude-tree/skills/capture/SKILL.md (Step 6: "Confirm in ONE line: `captured [type]: <text> (due …)` — no elaboration"; Step 2 commit line includes "(due: <date or none>)")
+skill: capture
+trigger_cases:
+  - prompt: "Remember this: I want to switch to Polars instead of Pandas for the transform layer"
+    should_trigger: true
+  - prompt: "Note that I prefer tabs over spaces in this codebase"
+    should_trigger: true
+  - prompt: "I'll follow up on the AWS billing dispute next week, capture that as a commitment"
+    should_trigger: true
+  - prompt: "Turn this session into a durable knowledge entry with proper citations and cross-links"
+    should_trigger: false
+    routes_to: "save"
+  - prompt: "Merge duplicate facts across the memory layers and promote anything worth keeping permanently"
+    should_trigger: false
+    routes_to: "consolidate"
+output_assertions:
+  - type: regex
+    value: "^captured (idea|pref|commit): .+"
+    description: "Step 6 mandates this exact one-line confirmation format"
+  - type: regex
+    value: "\\(due"
+    description: "Step 6 confirmation always includes a due status"
+  - type: not_contains
+    value: "\n\n"
+    description: "Step 6: confirm in ONE line, no elaboration"

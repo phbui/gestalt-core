@@ -1,0 +1,105 @@
+{
+ "generated_utc": "2026-10-08T05:36:43Z",
+ "environment": {
+  "python": "3.12.3",
+  "platform": "Linux-6.6.87.2-microsoft-standard-WSL2-x86_64-with-glibc2.39",
+  "sqlite": "3.45.1",
+  "sqlite_vec": "0.1.9",
+  "numpy": "2.5.3",
+  "torch": "2.11.0+cu128",
+  "sentence_transformers": "6.0.0",
+  "ir_datasets": "0.6.3",
+  "device": "cuda:0",
+  "gpu": "NVIDIA GeForce RTX 4090 Laptop GPU",
+  "embedding_model": "nomic-ai/nomic-embed-text-v1.5",
+  "embedding_revision": "e9b6763023c676ca8431644204f50c2b100d9aab",
+  "doc_prefix": "search_document: ",
+  "query_prefix": "search_query: ",
+  "rrf_k": 60,
+  "code_sha256": {
+   "evals/retrieval/beir_bench.py": "a2b21090d36bccabe9243ebaba234921c42d4426bf0658b3a0bae12848d8b4bd",
+   "evals/retrieval/run_retrieval_evals.py": "eafd4551567fa960925e53efbeee8679b0f11277d0519ae126db1cfade7de393",
+   "tools/gestalt_embed_config.py": "9d5874890041e148c581dfd3579cccfd8955da1a7f9abba3155cc46a4f4d8c5f"
+  }
+ },
+ "results": {
+  "beir/scifact": {
+   "documents": 5183,
+   "queries": 300,
+   "systems": {
+    "bm25": {
+     "ndcg10": 0.6824,
+     "ci95_bootstrap": [
+      0.6378,
+      0.7251
+     ]
+    },
+    "dense": {
+     "ndcg10": 0.6937,
+     "ci95_bootstrap": [
+      0.6504,
+      0.7359
+     ]
+    },
+    "hybrid": {
+     "ndcg10": 0.7373,
+     "ci95_bootstrap": [
+      0.6958,
+      0.7774
+     ]
+    }
+   },
+   "tests": {
+    "hybrid_vs_bm25": {
+     "mean_difference": 0.0549,
+     "p_value": 5e-05,
+     "permutations": 20000
+    },
+    "hybrid_vs_dense": {
+     "mean_difference": 0.0437,
+     "p_value": 0.00035,
+     "permutations": 20000
+    }
+   }
+  },
+  "beir/nfcorpus": {
+   "documents": 3633,
+   "queries": 323,
+   "systems": {
+    "bm25": {
+     "ndcg10": 0.3217,
+     "ci95_bootstrap": [
+      0.2875,
+      0.3563
+     ]
+    },
+    "dense": {
+     "ndcg10": 0.3437,
+     "ci95_bootstrap": [
+      0.308,
+      0.3785
+     ]
+    },
+    "hybrid": {
+     "ndcg10": 0.3606,
+     "ci95_bootstrap": [
+      0.3249,
+      0.3962
+     ]
+    }
+   },
+   "tests": {
+    "hybrid_vs_bm25": {
+     "mean_difference": 0.0389,
+     "p_value": 5e-05,
+     "permutations": 20000
+    },
+    "hybrid_vs_dense": {
+     "mean_difference": 0.0169,
+     "p_value": 0.00655,
+     "permutations": 20000
+    }
+   }
+  }
+ }
+}

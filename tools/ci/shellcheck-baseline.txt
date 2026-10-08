@@ -1,0 +1,46 @@
+bin/check-staleness.sh	SC2034	MANIFEST="$GESTALT_DIR/MANIFEST.md"
+claude-tree/hooks/fleet-publish.sh	SC1090	FLEET_ENV="$HOME/.fleet/fleet.env"; [ -f "$FLEET_ENV" ] && . "$FLEET_ENV"
+claude-tree/hooks/gestalt-stop.sh	SC2034	GRAPHITI_GROUP="${GRAPHITI_GROUP_ID:-gestalt}"
+claude-tree/hooks/lib.sh	SC1090	set -a; source "$ENV_FILE"; set +a
+claude-tree/hooks/lib.sh	SC1090	set -a; source "$FLEET_ENV"; set +a
+claude-tree/hooks/lib.sh	SC2034	LOG="$STATE_DIR/health.log"
+claude-tree/hooks/post-compact-reinject.sh	SC2034	TIER1_BLOCKS="${GESTALT_TIER1_BLOCKS:-core_directives|user_preferences|session_patterns|guidance|pending_items}"
+claude-tree/hooks/resident-no-ask.sh	SC2034	INPUT=$(cat)
+claude-tree/hooks/statusline.sh	SC1090	source "$CACHE"
+tools/backup.sh	SC1090	[ -f "$ENV_FILE" ] && { set -a; source "$ENV_FILE"; set +a; }
+tools/backup.sh	SC2164	cd "$GESTALT_DIR"
+tools/fleet/bin/backup-offsite	SC1090	set -a; . "$ENV_FILE"; set +a
+tools/fleet/bin/claude-seat	SC2209	case "$a" in --resume|-r) mode=resume;; --continue|-c) mode=continue;; esac
+tools/fleet/bin/dispatch-watch	SC1010	ledger done "$msg"; echo "$msg"
+tools/fleet/bin/fleet	SC1090	FLEET_ENV="$HOME/.fleet/fleet.env"; [ -f "$FLEET_ENV" ] && . "$FLEET_ENV"
+tools/fleet/bin/fleet-check	SC1090	FLEET_ENV="$HOME/.fleet/fleet.env"; [ -f "$FLEET_ENV" ] && . "$FLEET_ENV"
+tools/fleet/bin/fleet-check-daily	SC1090	FLEET_ENV="$HOME/.fleet/fleet.env"; [ -f "$FLEET_ENV" ] && . "$FLEET_ENV"
+tools/fleet/bin/fleet-heartbeat	SC1090	FLEET_ENV="$HOME/.fleet/fleet.env"; [ -f "$FLEET_ENV" ] && . "$FLEET_ENV"
+tools/fleet/bin/fleet-sync	SC1090	CFG="$HOME/.fleet/fleet.env"; [ -f "$CFG" ] && . "$CFG"
+tools/fleet/bin/fleet-sync	SC2064	echo $$ > "$d/pid"; trap "rm -rf '$d'" EXIT   # $d expanded now: the local is gone by the time the trap fires
+tools/fleet/bin/fleet-sync	SC2125	if [ -n "$up" ]; then read -r a b < <(git_ "$p" rev-list --left-right --count HEAD..."$up" | awk '{print $1, $2}'); else a=?; b=?; fi
+tools/fleet/bin/gestalt-optimal	SC1090	FLEET_ENV="$HOME/.fleet/fleet.env"; [ -f "$FLEET_ENV" ] && . "$FLEET_ENV"
+tools/fleet/bin/letta-refresh-pending	SC1090	FLEET_ENV="$HOME/.fleet/fleet.env"; [ -f "$FLEET_ENV" ] && . "$FLEET_ENV"
+tools/fleet/bin/phone-publish	SC1090	if [ -f "$ENV" ]; then set -a; . "$ENV"; set +a; fi
+tools/fleet/bin/spin-up	SC2011	{ [ -n "$ids" ] && docker inspect $ids --format '{{index .Config.Labels "spinup.name"}}'; ls "$SPINUP_DIR"/*.json 2>/dev/null | xargs -rn1 basename | sed 's/\.json$//'; } | sort -u | while read -r n; do row "$n"; done
+tools/fleet/bin/spin-up	SC2046	set -- $(alloc)
+tools/fleet/falkordb-migrate.sh	SC2034	BEAT=$(docker exec gestalt-graphiti sh -c 'echo $(( $(date +%s) - $(date -r /tmp/queue-heartbeat +%s) ))' 2>/dev/null || echo 0)
+tools/fleet/falkordb-migrate.sh	SC2034	UTIL=$(/usr/lib/wsl/lib/nvidia-smi --query-gpu=utilization.gpu --format=csv,noheader,nounits 2>/dev/null | tr -d ' ' || echo 0)
+tools/fleet/falkordb-migrate.sh	SC2034	for i in $(seq 1 20); do
+tools/fleet/harden-hub.sh	SC1083	b=$(git -C "$GESTALT" rev-list --count HEAD..@{u} 2>/dev/null || echo '?')
+tools/fleet/harden-hub.sh	SC2034	DISTRO="${WSL_DISTRO:-Ubuntu-24.04}"
+tools/fleet/newtab/sign-xpi.sh	SC2010	SIGNED="$(ls -t "$OUTDIR"/*.xpi 2>/dev/null | grep -v unsigned | head -1 || true)"
+tools/gestalt	SC2209	if command -v rg >/dev/null 2>&1; then EXTRACTOR=rg; else EXTRACTOR=grep; fi
+tools/gestalt-graphiti-sync.sh	SC2155	export GESTALT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+tools/graphiti-verify.sh	SC2155	export GESTALT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+tools/install.sh	SC1090	set -a; source "$DOT_ENV"; set +a
+tools/letta-controls.sh	SC2155	export GESTALT_WORKSPACE="$(cd "$SCRIPT_DIR/../.." && pwd)"
+tools/render-toggle/sign-xpi.sh	SC2010	SIGNED="$(ls -t "$OUTDIR"/*.xpi 2>/dev/null | grep -v unsigned | head -1 || true)"
+tools/restore.sh	SC1090	[ -f "$ENV_FILE" ] && { set -a; source "$ENV_FILE"; set +a; }
+tools/restore.sh	SC2034	for i in $(seq 1 10); do
+tools/sc-play	SC2155	export XDG_RUNTIME_DIR="/run/user/$(id -u)"
+tools/tests/test-fleet-check-mcp-host.sh	SC2034	GESTALT_MCP_HOST=203.0.113.7
+tools/vol	SC2088	exec ssh laptop "~/Documents/GitHub/gestalt/tools/vol $(printf '%q ' "$@")"
+tools/vol	SC2155	export XDG_RUNTIME_DIR="/run/user/$(id -u)"
+tools/vol	SC2221	"")          ;;
+tools/vol	SC2222	''|*[!0-9]*) echo "usage: vol [N|up|down|mute]" >&2; exit 2 ;;

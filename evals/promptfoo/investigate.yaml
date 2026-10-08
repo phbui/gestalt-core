@@ -1,0 +1,26 @@
+# Exported from evals/configs/investigate.yaml by `python3 run_evals.py export investigate`.
+# Do not hand-edit -- re-run the export instead. See evals/README.md for the LLM-judge tier.
+providers:
+  - id: "file://../provider.py"  # pre-captured-output provider, see evals/provider.py
+prompts:
+  - "{{prompt}}"  # passthrough -- provider.py ignores the rendered prompt text and reads
+                   # evals/captured/<skill_case_id>.txt instead
+tests:
+  - vars:
+      skill_case_id: "investigate"
+    assert:
+      - type: contains
+        value: "### Sources"
+      # worker outputs carry grounding tags
+      - type: regex
+        value: "\\[(VERIFIED|INFERRED|UNVERIFIED)\\]"
+      # code claims carry file:line citations
+      - type: regex
+        value: "(file|\\.py|\\.ts|\\.md):[0-9]+"
+      # coverage-quota phrasing was removed 2026-07-02; must not reappear
+      - type: not-contains
+        value: "N/N files checked"
+      # LLM-judge tier (30%) -- grader provider intentionally unset here; set it via
+      # defaultTest.options.provider in a wrapping config, or --grader on the CLI.
+      - type: llm-rubric
+        value: "Output follows the /investigate skill's mandated structure: ### Sources; worker outputs carry grounding tags; code claims carry file:line citations; coverage-quota phrasing was removed 2026-07-02; must not reappear"

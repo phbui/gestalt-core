@@ -1,0 +1,25 @@
+.obsidian/
+STALENESS_REPORT.md
+.local-backup/
+backups/
+tools/.venv/*
+.search/
+__pycache__/
+.env
+
+# Runtime log — appends live and has captured API tokens; never commit.
+claude-tree/gestalt/health.log
+claude-tree/settings.json.bak.*
+
+# Agent working memory — machine-local, not shared
+claude-tree/agent-memory/*/
+# per-node state — regenerated locally, meaningless on other fleet nodes
+BRANCHES.md
+personal/claude-memory/.consolidate-lock
+.coverage
+tools/fleet/dashboard/uv.lock
+
+# PDF store for PDF++ annotation. Never commit publisher PDFs; see assets/pdf/README.md
+assets/pdf/*
+!assets/pdf/README.md
+.venv/

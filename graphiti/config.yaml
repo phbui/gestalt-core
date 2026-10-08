@@ -1,0 +1,60 @@
+llm:
+  # Local Ollama on the 4090 via its OpenAI-compatible /v1. mcp_server's
+  # factory routes any non-api.openai.com api_url through OpenAIGenericClient
+  # (PR #1146; requires the from-source image, see ../graphiti/Dockerfile).
+  # json_object: Ollama accepts json_schema but does not enforce it, so let
+  # Graphiti inject the schema into the prompt instead. Small-model caveat:
+  # a 14B model is the honest ceiling for 16GB VRAM; the first real
+  # extraction batch is a validation run, not a known-good path.
+  provider: "openai"
+  model: ${GRAPHITI_LLM_MODEL:qwen3:14b}
+  max_tokens: 8192
+  temperature: 0.0
+  structured_output_mode: ${LLM_STRUCTURED_OUTPUT_MODE:json_schema}
+  providers:
+    openai:
+      api_key: "ollama"
+      api_url: ${OLLAMA_BASE_URL:http://host.docker.internal:11434}/v1
+    anthropic:
+      api_key: ${ANTHROPIC_API_KEY:}
+      max_retries: 3
+
+# NOTE: the section MUST be named `embedder:` — the MCP config schema field is
+# `embedder` (src/config/schema.py), and an `embedding:` key is silently
+# ignored, leaving the OpenAI defaults in place.
+embedder:
+  # Same nomic-embed-text v1.5 family as the Phase 3 semantic index, served by
+  # the host Ollama's OpenAI-compatible /v1/embeddings (768 dims verified).
+  # Replaces the tools/embedding-shim.py :8201 route, which is Linux-systemd
+  # only and never ran on the MSI. api_key is a dummy Ollama ignores.
+  provider: "openai"
+  model: "nomic-embed-text"
+  dimensions: 768
+  providers:
+    openai:
+      api_key: "ollama"
+      api_url: ${OLLAMA_BASE_URL:http://host.docker.internal:11434}/v1
+
+graphiti:
+  group_id: ${GRAPHITI_GROUP_ID:gestalt}
+
+# Same nesting rule as embedder: connection details go under
+# providers.falkordb (schema field is `uri`, not host/port). Bare host/port
+# keys under database: are silently ignored and the server falls back to the
+# image's INTERNAL redis at localhost:6379 — writes then land inside the
+# gestalt-graphiti container instead of the dedicated gestalt-falkordb
+# service (which has the AOF persistence and backups).
+database:
+  provider: "falkordb"
+  providers:
+    falkordb:
+      uri: "redis://falkordb:6379"
+      database: "default_db"
+
+server:
+  transport: "http"
+  port: 8000
+
+# Single local GPU: keep episode concurrency low (README: Ollama -> 1-5).
+concurrency:
+  semaphore_limit: ${SEMAPHORE_LIMIT:2}

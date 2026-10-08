@@ -1,0 +1,165 @@
+# Log rotation (2026-10-06, review X4). Every service uses json-file with a size cap so no
+# container log grows without bound. Docker fixes log config at container CREATION. These limits
+# therefore apply only when a container is next created. Do not apply this file to the hub outside
+# a maintenance window. Never recreate gestalt-falkordb casually: its data lives in the falkordb-data
+# volume, and the hub is often mid-ingest. Until it is recreated its log is unrotated, so watch it
+# with `docker inspect --format '{{.LogPath}}' gestalt-falkordb`.
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  letta-server:
+    image: letta/letta:0.16.8  # Updated 2026-08-31 — 0.16.7 default ctx 32k->128k + compaction overhaul; 0.16.8 pickle->JSON transport security fix. 0.6.7 had sunset model names
+    container_name: gestalt-letta
+    logging: *default-logging
+    ports:
+      - "127.0.0.1:8283:8283"
+    volumes:
+      - letta-data:/root/.letta
+      - letta-pgdata:/var/lib/postgresql/data
+    environment:
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      # Letta activates its Ollama provider only when this is set (verified
+      # against 0.16.6 source). Points at the host-side Ollama on the 4090 so
+      # Stop-hook agent turns stop billing ANTHROPIC_API_KEY — see
+      # knowledge/<kb-entry>.md ^gestalt-cost-leak. Empty = Anthropic-only.
+      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8283/v1/health/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  falkordb:
+    # v4.2.1 lacks db.idx.fulltext.queryRelationships, which graphiti-core
+    # 0.28.2 requires — episodes fail at edge dedup. Match the FalkorDB
+    # bundled in the graphiti MCP image (4.16.6).
+    image: falkordb/falkordb:v4.16.6
+    container_name: gestalt-falkordb
+    logging: *default-logging
+    ports:
+      - "127.0.0.1:6379:6379"
+    volumes:
+      # MUST mount where FalkorDB actually writes. The image sets
+      # FALKORDB_DATA_PATH=/var/lib/falkordb/data and its run.sh passes that as
+      # redis --dir, so a volume at /data was never the data directory: it held only
+      # a dangling `data` symlink and a stray nodesource_setup.sh (8K), while 66M of
+      # graph lived on the container WRITABLE LAYER. Any recreate or rm destroyed the
+      # graph, and every nightly backup tarball since 2026-08-18 contained no graph
+      # data at all. Found during the 2026-09-01 graphiti-incident recovery.
+      - falkordb-data:/var/lib/falkordb/data
+      - falkordb-data:/data
+    environment:
+      # AOF persistence so add_memory writes survive restarts.
+      # RDB-only with default save policy let writes vanish (see 2026-04 graphiti audit).
+      - REDIS_ARGS=--appendonly yes --appendfsync everysec
+      # Image default is "MAX_QUEUED_QUERIES 25 TIMEOUT 1000 RESULTSET_SIZE 10000".
+      # TIMEOUT is a per-query millisecond cap, and 1000 ms was the root cause of the
+      # mode-1 "Query timed out" episode failures during the 2026-09 drain: graphiti's
+      # entity and edge dedup queries run against a graph that grows all run, so the
+      # same chunk succeeded or failed depending on when it ran. Proven by raising it
+      # to 30000 at runtime, after which kb-home-mesh#9 landed first try having failed
+      # four times. A runtime GRAPH.CONFIG SET does NOT survive the nightly restart,
+      # which is why falkordb-timeout.timer exists as a belt; setting it here is the
+      # durable fix and lets that timer be retired.
+      # TIMEOUT 120000 since 2026-09-06: graphiti's RELATES_TO fulltext search (the OR-ed fact words plus
+      # the per-hit MATCH expansion) recorded exactly 30000 ms twice on a 2,870-edge graph and killed the
+      # episode; 120000 at runtime let the same episode complete in 64 s (resident-hub, wave 1 canary).
+      # Applies at the next falkordb recreate (maintenance window); the daily falkordb-timeout-applied
+      # check fails until then, on purpose.
+      - FALKORDB_ARGS=MAX_QUEUED_QUERIES 25 TIMEOUT 120000 RESULTSET_SIZE 10000
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  graphiti-mcp:
+    # Built from upstream mcp_server on main (graphiti-core 0.29.3), NOT the
+    # published zepai/knowledge-graph-mcp:1.0.2 tag: 1.0.2 (graphiti 0.28.2)
+    # silently ignores llm.providers.openai.api_url, so its LLM leg cannot be
+    # pointed at Ollama. Fix is PR getzep/graphiti#1146 (merged 2026-06-05, in
+    # mcp_server/src/services/factories.py, not in graphiti-core), and no
+    # published tag carries it. See graphiti/Dockerfile + tools/build-graphiti.sh.
+    build:
+      context: ./graphiti
+    image: gestalt-graphiti-mcp:main
+    container_name: gestalt-graphiti
+    logging: *default-logging
+    # Host port 8200 (container still listens on 8000 internally). Port 8000
+    # on the host is reserved for the platform gateway dev server.
+    ports:
+      - "127.0.0.1:8200:8000"
+    environment:
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - GRAPHITI_GROUP_ID=gestalt
+      # Local LLM + embeddings via Ollama's OpenAI-compatible /v1 (config.yaml
+      # reads these). SEMAPHORE_LIMIT low: single local GPU, not an API tier.
+      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      - GRAPHITI_LLM_MODEL=${GRAPHITI_LLM_MODEL:-qwen3:14b}
+      - SEMAPHORE_LIMIT=${GRAPHITI_SEMAPHORE_LIMIT:-2}
+    extra_hosts:
+      # Reach the host-side embedding shim (tools/embedding-shim.py on the
+      # docker0 bridge) from inside the container.
+      - "host.docker.internal:host-gateway"
+    volumes:
+      # MUST mount over /app/mcp/config/config.yaml — the server's --config
+      # CLI default points there and unconditionally clobbers the CONFIG_PATH
+      # env (graphiti_mcp_server.py:841), so mounting anywhere else (or
+      # setting CONFIG_PATH) is silently ignored and the image's bundled
+      # OpenAI-everything config wins.
+      - ./graphiti/config.yaml:/app/mcp/config/config.yaml:ro
+    depends_on:
+      falkordb:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      # /health alone lies: the HTTP layer stays green while the in-process queue
+      # worker is dead (2026-08-29 wedge nights), so a stale heartbeat kills PID 1
+      # and restart: unless-stopped revives the server with fresh workers.
+      #
+      # 2026-08-31: the 20-minute constant was actively destructive. The dGPU's
+      # ENFORCED power limit collapses to 10W under sustained thermal load (measured
+      # at 10W, 85W and 105W within one hour; ~6 min of load triggers it, clamps ran
+      # 26 min and once 105 min). While clamped the card runs at ~6.8% of its clock,
+      # every LLM call blocks, no heartbeat is written, and this check killed the
+      # container mid-episode, discarding the in-flight episode AND the entire
+      # in-memory queue. That is what lost the original 88 episodes, five more
+      # self-kills overnight. The kill was the mechanism; the thermal clamp is the
+      # cause, so the check now asks WHY the beat is stale instead of only HOW LONG.
+      #
+      # Two changes: the limit is 3600s rather than 1200s, and a stale beat is
+      # forgiven entirely while the host reports the GPU THROTTLED. The verdict file
+      # carries its own timestamp and is ignored past 300s, so a dead publisher
+      # cannot disarm the watchdog by leaving a stale THROTTLED behind, and a
+      # genuinely dead worker on a healthy GPU is still killed.
+      test: ["CMD", "sh", "-c", "curl -sf http://localhost:8000/health >/dev/null || exit 1; [ -f /tmp/queue-heartbeat ] || touch /tmp/queue-heartbeat; age=$$(( $$(date +%s) - $$(date -r /tmp/queue-heartbeat +%s) )); [ $$age -lt 3600 ] && exit 0; if [ -f /tmp/gpu-state ]; then fa=$$(( $$(date +%s) - $$(date -r /tmp/gpu-state +%s) )); if [ $$fa -lt 300 ] && grep -q THROTTLED /tmp/gpu-state; then echo gpu-throttled-not-killing; exit 0; fi; fi; echo stale-heartbeat; kill 1; exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+
+
+volumes:
+  letta-data:
+  letta-pgdata:
+  falkordb-data:

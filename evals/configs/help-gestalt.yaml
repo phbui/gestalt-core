@@ -1,0 +1,25 @@
+# derived from claude-tree/skills/help-gestalt/SKILL.md (Response step 3: "present the full index: Quick Reference table, Detailed Guide, Command Chains, Shared References")
+skill: help-gestalt
+trigger_cases:
+  - prompt: "What commands and skills does gestalt have available?"
+    should_trigger: true
+  - prompt: "Walk me through the full guide of gestalt commands and how they chain together"
+    should_trigger: true
+  - prompt: "Give me the complete list of gestalt commands and skills available"
+    should_trigger: true
+  - prompt: "What are my kitty terminal keybindings and how do I reload the config?"
+    should_trigger: false
+    routes_to: "help-kitty"
+  - prompt: "Bootstrap my Claude Code global config and MCP servers on this new machine"
+    should_trigger: false
+    routes_to: "setup"
+output_assertions:
+  - type: regex
+    value: "Shared References"
+    description: "Response step 3 requires this index component"
+  - type: regex
+    value: "Detailed Guide"
+    description: "Response step 3 requires this index component"
+  - type: regex
+    value: "Command Chains"
+    description: "Response step 3 requires this index component"

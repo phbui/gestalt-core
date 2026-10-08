@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "hooks": {
+    "sessionStart": [
+      {
+        "command": ".claude/hooks/gestalt-session-start.sh",
+        "timeout": 10
+      }
+    ],
+    "stop": [
+      {
+        "command": ".claude/hooks/gestalt-stop.sh",
+        "timeout": 30
+      }
+    ]
+  },
+  "_safety_hooks_note": "Cursor does not support PreToolUse/PostToolUse hook events. The safety guard scripts exist in .claude/hooks/safety-*.sh but cannot fire pre-execution in Cursor. This is a documented capability gap. The scripts are shared for reference and could be used if Cursor adds PreToolUse support in the future."
+}

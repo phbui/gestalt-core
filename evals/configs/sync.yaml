@@ -1,0 +1,20 @@
+# derived from .claude/skills/sync/SKILL.md (Evals table + Step 9 Report mandatory counts)
+skill: sync
+trigger_cases:
+  - prompt: "Sync gestalt with the latest from Notion, Linear, and Slack"
+    should_trigger: true
+  - prompt: "Pull the latest project updates from Linear into gestalt before our planning meeting"
+    should_trigger: true
+  - prompt: "Promote knowledge from Letta into permanent gestalt entries"
+    should_trigger: false
+    routes_to: "consolidate"
+output_assertions:
+  - type: regex
+    value: "Sources queried: [0-9]+/[0-9]+"
+    description: "Step 9: ALL sources from SOURCES.md MUST be accounted for"
+  - type: regex
+    value: "Conflicts flagged:"
+    description: "Step 9 mandatory summary field"
+  - type: regex
+    value: "No-change sources:"
+    description: "Step 9 mandatory summary field"

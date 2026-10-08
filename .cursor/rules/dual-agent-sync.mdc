@@ -1,0 +1,51 @@
+---
+description: The .cursor/ tree is generated from claude-tree/ by tools/sync-cursor-tree.py. Edit claude-tree/ only, then run --write
+globs: "gestalt/claude-tree/**,gestalt/.cursor/**"
+alwaysApply: false
+---
+
+# Dual-Agent Sync
+
+`gestalt/claude-tree/` is the source of truth for Claude Code (the `gestalt/.claude` symlink points at it). `gestalt/.cursor/` is a generated mirror for Cursor. Edit `claude-tree/` only. Then run `tools/sync-cursor-tree.py --write`. Never edit `.cursor/` by hand, because the next `--write` overwrites it.
+
+`tools/sync-cursor-tree.py --check` lists files that are missing, stale or extra in `.cursor/` and exits non-zero. `tests/test_dual_agent_parity.py` runs it, so parity is true by construction and a hand edit fails the test. The generator is deterministic and idempotent.
+
+Three Cursor-only files have no source and are never touched: `.cursor/hetslam.md`, `.cursor/hooks.json`, `.cursor/mcp.json`. Edit those by hand.
+
+## What the generator does
+
+| Source in `claude-tree/` | Output in `.cursor/` | Translation |
+|---|---|---|
+| `rules/<name>.md` | `rules/<name>.mdc` | Frontmatter rewritten (below). Body copied. |
+| `skills/<name>/*` | `skills/<name>/*` | `SKILL.md` frontmatter keeps `name` and `description` and adds `disable-model-invocation: true`. Other files copied. |
+| `agents/<name>.md` | `agents/<name>.md` | Frontmatter keeps `name` and `description` only. Body copied. |
+| `references/*.md` | `references/*.md` | Copied. |
+| `hooks/builder-quality-gate.sh` | `hooks/builder-quality-gate.sh` | Copied. The one hook Cursor shares. |
+
+Rule frontmatter:
+
+| Claude Code | Cursor |
+|---|---|
+| no frontmatter | `alwaysApply: true` |
+| `paths: ["a", "b"]` | `globs: "a,b"` and `alwaysApply: false` |
+| none | `description:` taken from a table in the script, else the first prose line |
+
+Body text: `.cursor/rules/x.mdc` becomes `.cursor/rules/x.mdc` and any other `.cursor/` becomes `.cursor/`. A path under `~/` or `$HOME/` is left alone. Claude-only skill fields (`model`, `context`, `agent`, `hooks`, `user-invocable`, `argument-hint`, `background`) and agent fields (`tools`, `disallowedTools`, `model`, `permissionMode`, `maxTurns`, `memory`, `isolation` and the rest) are dropped. Cursor `<Background>` tags come from the `SKILL_BACKGROUND` table in the script.
+
+## Never mirrored, and Cursor-native files
+
+The script holds an explicit skip table. It names the 21 Claude hooks, `settings.json`, `agent-memory/`, `references/.sync-accepted` and the hook logs, with a reason each. A new file under `claude-tree/` that is neither generated nor in the table makes `--check` fail.
+
+A few `.cursor/` files are Cursor-native adaptations (for example the 4-agent Cursor cap in `proactive-parallelism`, `Task()` spawn syntax, `ReadLints`). Each is listed in `SKIP_FILES` with a reason. The generator leaves them alone and does not check them. To adopt the Claude version, delete the entry and run `--write`.
+
+## Checklist
+
+1. Edit the file in `claude-tree/`.
+2. Run `tools/sync-cursor-tree.py --write`.
+3. Run `tools/sync-cursor-tree.py --check` and confirm it passes.
+4. If you add a Claude-only file that Cursor cannot use, add it to the skip table with a reason.
+5. Verify the workspace-root symlinks `GitHub/.claude` and `GitHub/.cursor` exist.
+
+## Provider differences
+
+Sync does not mean identical behaviour. Claude Code has Agent Teams, subagent frontmatter, worktree isolation, agent memory, lifecycle hooks and per-agent tool lists. Cursor has `<Background>` tags, agent-decided rules, Cloud Agents and `@` context refs. A Cursor-native adaptation goes in `SKILL_BACKGROUND` or `SKIP_FILES`, never into a hand edit of the mirror.

@@ -1,0 +1,54 @@
+version: "3"
+tasks:
+  list:
+    desc: List available eval configs with case counts
+    cmds:
+      - python3 evals/run_evals.py list
+
+  validate:
+    desc: |
+      Dry-run — validate all (or one) eval config YAML files (60% tier, CI hard gate).
+      Usage: task evals:validate -- [skill]
+    cmds:
+      - python3 evals/run_evals.py validate {{.CLI_ARGS}}
+
+  run:
+    desc: |
+      Run deterministic assertions (60% tier) against a captured skill output file.
+      Prints a PASS/FAIL table and exits 1 on any failure — this is the CI hard gate.
+      Usage: task evals:run -- <skill> <output.txt>
+      For the LLM-as-judge tier, use `task evals:export` then promptfoo directly.
+      See evals/README.md for the 60/30/10 approach.
+    cmds:
+      - python3 evals/run_evals.py run {{.CLI_ARGS}}
+
+  export:
+    desc: |
+      Export a config (or all configs) to promptfoo format for the LLM-judge tier (30%).
+      Usage: task evals:export -- [skill]
+      Writes evals/promptfoo/<skill>.yaml. Then run:
+        npx promptfoo@latest eval -c evals/promptfoo/<skill>.yaml -o results.json
+      Exit code 100 means test failures (overridable via PROMPTFOO_FAILED_TEST_EXIT_CODE).
+      Requires pre-captured outputs in evals/captured/ — see evals/README.md.
+    cmds:
+      - python3 evals/run_evals.py export {{.CLI_ARGS}}
+
+  retrieval:
+    desc: "Retrieval quality against the real corpus (LOCAL ONLY — needs decrypted knowledge/)"
+    cmds:
+      - python3 evals/retrieval/run_retrieval_evals.py {{.CLI_ARGS}}
+
+  retrieval:check:
+    desc: "Fail if retrieval regressed against the saved baseline"
+    cmds:
+      - python3 evals/retrieval/run_retrieval_evals.py --baseline check
+
+  retrieval:save:
+    desc: "Save a new retrieval baseline (only after a verified improvement)"
+    cmds:
+      - python3 evals/retrieval/run_retrieval_evals.py --baseline save
+
+  test:
+    desc: "Unit tests — chunker edge cases, harness fidelity, golden-set schema"
+    cmds:
+      - python3 -m pytest tests/ -q

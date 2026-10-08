@@ -1,0 +1,68 @@
+---
+description: Requires spinning up parallel agents only when subtasks are genuinely independent and the value justifies the token cost; single agent is the default for coding-shaped work. Includes agent selection, model choice, and worker prompt structure guidelines.
+alwaysApply: true
+---
+
+# Proactive Parallelism
+
+Single agent is the default: most coding-shaped work (build a feature, fix a bug, edit related files) is sequential and cheaper done directly. Fan out only when subtasks are genuinely independent AND the value justifies the cost — multi-agent runs 3-15x the tokens of a single agent, and coding tasks have fewer truly parallelizable pieces than research does ([Anthropic: multi-agent research system](https://www.anthropic.com/engineering/multi-agent-research-system); [when and how to use multi-agent systems](https://claude.com/blog/building-multi-agent-systems-when-and-how-to-use-them)). Breadth fan-out is endorsed for research, audit, and verification — independent lookups/checks across files, repos, or claims — where parallelism pays for itself.
+
+## Decision Heuristic
+
+Before starting any multi-step task, ask:
+
+1. **Are there 2+ subtasks?** (If only 1, just do it yourself.)
+2. **Are they independent?** (No subtask needs another's output to start.)
+3. **Is each subtask non-trivial?** (Reading one file doesn't warrant an agent.)
+4. **Does the value justify 3-15x tokens?** (A cross-repo audit or N-way verification does; a single-file edit or quick lookup doesn't.)
+
+If all four → spawn agents. If the task is coding-shaped and sequential, or you're unsure the value clears the cost bar → default to a single agent.
+
+## Concurrency Limits
+
+Max 4 agents per message in Cursor. Batch into waves if more work exists.
+
+## Agent Selection Guide
+
+| Task Nature | Agent Type | Why |
+|-------------|-----------|-----|
+| Search, scan, read code, verify | `explore` | Optimized for file search, read-only |
+| Multi-step research, web lookup, MCP queries | `generalPurpose` | Needs all tools, complex reasoning |
+| Code writing, file creation | `generalPurpose` | Needs write access |
+| Named gestalt agent (builder, verifier, etc.) | Use agent by name | Specialized persona |
+
+### Model Selection Within Agents
+
+| Workload | Model | Rationale |
+|----------|-------|-----------|
+| Read-only scanning, verification, staleness checks | `fast` | Fast, cheap, sufficient for pattern matching |
+| Code writing, design, research, complex analysis | `inherit` | Needs reasoning depth |
+
+## Common Parallelizable Patterns
+
+Research/audit-shaped: 1 agent per claim cluster (up to 4), file group, config domain, option, repo, or lookup source. Doc-vs-implementation validation splits by section (API, config, structure, pipeline, tests, deploy). SDD builds split 1 agent per workstream.
+
+For worker prompt structure (CONTEXT/YOUR TASK/RULES/RETURN) and shared orchestration patterns, follow `gestalt/.cursor/references/orchestration.md`.
+
+## Skill Suggestion
+
+When the request closely matches a gestalt skill, suggest it — don't auto-invoke:
+
+| Intent pattern | Skill |
+|---|---|
+| Deep investigation, "why does X", "trace how" | `/investigate` |
+| Architecture trade-off, "should we use X" | `/discuss` |
+| 3+ independent fixes, error lists, review comments | `/fix` |
+| Build from spec/description, "create X" | `/build` |
+
+Never auto-invoke skills costing >10K tokens without confirmation. For simple, scoped requests, just do the work directly.
+
+## When NOT to Parallelize
+
+- Subtasks have sequential dependencies (one's output feeds the next)
+- Total work is a single simple step, or coding-shaped with few genuinely independent pieces
+- You need interactive user input between steps, or the task is conversational
+
+## Synthesis
+
+After all agents return, you — the orchestrator — merge findings into a unified view, resolve conflicts between agent outputs, present a cohesive result, and act on findings (fix, write, update) yourself or via a second wave.

@@ -1,0 +1,7 @@
+# Hermetic tests the pre-push hook runs first (Tier 0), on every clone including a locked one.
+# One path per line. Add a file only if it needs no hub, no network and no decrypted corpus.
+# Timed at about 2.5 seconds on 2026-10-06 (research note RB section 2). Keep the total under 30 seconds.
+tests/test_hook_guards.py
+tests/test_hook_hygiene.py
+tests/test_shell_read_loops.py
+tests/test_dual_agent_parity.py

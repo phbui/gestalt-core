@@ -1,0 +1,20 @@
+# derived from .claude/skills/prompt/SKILL.md (Evals table + Step 5 output template, Key Rules, Step 4b Discipline Block)
+skill: prompt
+trigger_cases:
+  - prompt: "/prompt help me debug the snapshot reconnect issue and fix it across the PWA and gateway"
+    should_trigger: true
+  - prompt: "/prompt build a retry wrapper, then run audit, then commit"
+    should_trigger: true
+  - prompt: "Just commit my staged changes with a quick message"
+    should_trigger: false
+    routes_to: "commit"
+output_assertions:
+  - type: contains_section
+    value: "### Team Manifest"
+    description: "Step 5 Present to User template"
+  - type: contains_section
+    value: "### Enhanced Request"
+    description: "Step 5 template"
+  - type: regex
+    value: "Execute this\\? \\(y/n\\)"
+    description: "Key Rules: never auto-execute; Step 5 ends with this literal prompt"

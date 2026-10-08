@@ -1,0 +1,85 @@
+---
+description: Gestalt operational conventions — write philosophy, linking rules, agent teams, symlinks. Applies when working on gestalt files.
+globs: gestalt/**
+alwaysApply: false
+---
+
+# Gestalt Operations
+
+Conventions for writing to and maintaining the gestalt knowledge base.
+
+## Write Philosophy
+
+Entries read as authoritative reference — as if the correct answer was always known. Never frame entries as mistake logs. State the correct approach directly. Wrong approaches are brief "Avoid" footnotes only. When updating, rewrite the entire entry to integrate new knowledge seamlessly.
+
+**Scoped exception — incident-class content** (adopted 2026-08-30 from gbrain's incident discipline, knowledge/gbrain.md ^cost-explosion): when an entry or section records an operational incident — an outage, a destructive mistake, a cost overrun, a silent failure — the dated, root-caused record IS the reference knowledge, and it follows a fixed skeleton so it stays minable later: **What happened** (one paragraph, dated) → **Root causes** (numbered, each with file:line or command evidence) → **Fixes** (numbered, each carrying an explicit `shipped` / `deferred: <where it's tracked>` status) → **Standing rule** (the doctrine the incident produced, stated positively per the philosophy above) → **What did NOT ship** (mandatory even when empty — "nothing deferred" is a claim, absence is silence; this extends [[no-silent-deferral]] from sessions to documents). The surrounding entry still reads as authoritative reference; the skeleton governs the incident block itself, the way the-relevant-entry's fan-incident and hub-invariants narratives already almost do.
+
+Before creating a new entry, check MANIFEST.md — and when the trigger for the new entry was a search, read the search results' `create_safety` field first: `exists` means update that entry instead, `probable` means open it and check before creating (tools/gestalt-mcp-server.py stamps every result; adopted from gbrain's duplicate-stub incident, knowledge/gbrain.md ^maxpool-incident). Update existing entries rather than duplicate.
+
+## Linking Rules
+
+When writing or updating entries:
+- Use `wikilinks` inline to reference other entries
+- Add `^block-id` anchors to key facts, service boundaries, data connection points
+- Include `## Data Flow` sections for entries that describe pipelines or inter-service connections
+- Place links contextually — next to the sentence that explains *why* they're related
+- Block ID convention: `^overview`, `^architecture`, `^setup`, `^{service}-input`, `^{service}-output`, `^{concept}`
+
+## Index Regeneration
+
+Indices regenerate selectively, scoped to what a write actually touched:
+
+1. **MANIFEST.md** — regenerates after every write (all files, frontmatter, outgoing `links`, `^block-ids`).
+2. **GRAPH.md** — regenerates only when the write added, removed, or edited a `## Data Flow` section or a `wikilink`.
+3. **SOURCES.md** — regenerates only when the write added, removed, or edited an external-source reference (Notion, Linear, Slack).
+4. **BRANCHES.md** — git branch tracking state (created/updated by /review's branch-tracking step); unaffected by knowledge-entry writes.
+5. **SQLite semantic search index** — unaffected by individual writes; rebuild via `python tools/gestalt-mcp-server.py --rebuild-index` on its own cadence (also auto-triggered by the session-start hook when stale).
+
+## Knowledge Entry Frontmatter
+
+```yaml
+type: note | reference
+title: "<descriptive title>"
+repo: <repo-name>
+tags: [<relevant tags>]
+aliases: [<alternate names>]
+created: YYYY-MM-DD
+updated: YYYY-MM-DD
+last-verified: YYYY-MM-DD
+confidence: high | medium | low
+```
+
+## Agent Teams
+
+For write-heavy operations (`/learn`, `/review`, `/sync`, `/fix`), use parallel subagents. Shared orchestration patterns (concurrency, file partitioning, model selection, verification, error escalation) live in `gestalt/.cursor/references/orchestration.md` and `gestalt/.cursor/references/verification.md`. Skills reference these instead of repeating inline.
+
+- Agent definitions in `.cursor/agents/`; the body is the agent's system prompt
+- Custom agent names: `builder`, `designer`, `researcher`, `syncer`, `reviewer`, `learner`, `verifier`, `staleness-detector`
+
+## Command Execution Rules
+
+**Every step in a gestalt command/skill is mandatory.** Do not skip, abbreviate, or combine steps. Run every step for every entry, every file, every repo — no exceptions.
+
+**No spot checks.** Full verification means reading every entry, checking every file, running every step to completion.
+
+## Sync Rule
+
+When any file in `gestalt/.cursor/rules/`, `gestalt/.cursor/skills/`, `gestalt/.cursor/agents/`, or `gestalt/.cursor/references/` is created or edited, verify the corresponding symlink exists in the workspace root.
+
+## Help & Index Sync Rule
+
+When any command, skill, or rule is **added, removed, renamed, or has its purpose changed**:
+
+1. Update `gestalt/.cursor/references/skill-index.md` — both the Quick Reference table and the affected per-skill section
+2. Update `gestalt/.cursor/references/skill-index.md` — same changes, with `.cursor/` paths translated to `.cursor/`
+3. Update the **Commands & Skills** list below in this file
+4. Update the corresponding list in `gestalt/.cursor/rules/gestalt-operations.mdc`
+5. Only touch `gestalt/.cursor/skills/help-gestalt/SKILL.md` (and its `.cursor/` counterpart) if the pointer to `skill-index.md` itself changes — it no longer holds the Quick Reference table or per-skill detail directly.
+
+Do NOT skip this. `references/skill-index.md` is the single source of truth for what commands exist and how to use them.
+
+## Commands & Skills
+
+Canonical list: `references/skill-index.md` — update it, not this section.
+
+The full roster lives ONLY in `references/skill-index.md` — an embedded copy of the list drifted stale here (found 14 of 28 skills missing, 2026-08-30 review) and was removed rather than fixed.

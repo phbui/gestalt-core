@@ -1,0 +1,347 @@
+{
+  "permissions": {
+    "deny": [
+      "Bash(rm -rf /*)",
+      "Bash(mkfs.*)",
+      "Bash(terraform destroy*)",
+      "Bash(docker system prune -a*)"
+    ]
+  },
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/prompt-intelligence.sh",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/safety-guard-bash.sh",
+            "if": "Bash(git *)",
+            "timeout": 5,
+            "statusMessage": "Safety check..."
+          },
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/safety-guard-bash.sh",
+            "if": "Bash(rm *)",
+            "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/safety-guard-bash.sh",
+            "if": "Bash(task *)",
+            "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/safety-guard-bash.sh",
+            "if": "Bash(kubectl *)",
+            "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/safety-guard-bash.sh",
+            "if": "Bash(supabase *)",
+            "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/safety-guard-bash.sh",
+            "if": "Bash(terraform *)",
+            "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/safety-guard-bash.sh",
+            "if": "Bash(docker *)",
+            "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/safety-guard-bash.sh",
+            "if": "Bash(chmod *)",
+            "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/safety-guard-bash.sh",
+            "if": "Bash(dd *)",
+            "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/safety-guard-bash.sh",
+            "if": "Bash(mkfs*)",
+            "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/safety-guard-bash.sh",
+            "if": "Bash(bash *)",
+            "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/safety-guard-bash.sh",
+            "if": "Bash(sh *)",
+            "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/safety-guard-bash.sh",
+            "if": "Bash(curl *)",
+            "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/safety-guard-bash.sh",
+            "if": "Bash(wget *)",
+            "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/pre-push-quality-gate.sh",
+            "if": "Bash(git *)",
+            "timeout": 600,
+            "statusMessage": "Pre-push quality gate (task py:check / ts:check)..."
+          },
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/pre-push-quality-gate.sh",
+            "if": "Bash(* git push*)",
+            "timeout": 600,
+            "statusMessage": "Pre-push quality gate (task py:check / ts:check)..."
+          }
+        ]
+      },
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/safety-guard-self.sh",
+            "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/safety-guard-files.sh",
+            "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/safety-backup.sh",
+            "if": "Edit(**/gestalt/knowledge/*.md)",
+            "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/safety-backup.sh",
+            "if": "Edit(**/gestalt/MANIFEST.md)",
+            "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/safety-backup.sh",
+            "if": "Edit(**/gestalt/GRAPH.md)",
+            "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/safety-backup.sh",
+            "if": "Edit(**/gestalt/SOURCES.md)",
+            "timeout": 5
+          }
+        ]
+      },
+      {
+        "matcher": "mcp__.*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/safety-guard-mcp.sh",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/audit-log.sh",
+            "async": true
+          }
+        ]
+      },
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/safety-validate.sh",
+            "if": "Edit(**/knowledge/*.md)",
+            "timeout": 10
+          },
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/safety-validate.sh",
+            "if": "Edit(**/knowledge/*.mdc)",
+            "timeout": 10
+          },
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/safety-validate.sh",
+            "if": "Edit(**/rules/*.md)",
+            "timeout": 10
+          },
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/safety-validate.sh",
+            "if": "Edit(**/rules/*.mdc)",
+            "timeout": 10
+          },
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/safety-validate.sh",
+            "if": "Edit(**/MANIFEST.md)",
+            "timeout": 10
+          },
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/safety-sync-check.sh",
+            "if": "Edit(**/.claude/**)",
+            "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/safety-sync-check.sh",
+            "if": "Edit(**/claude-tree/**)",
+            "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/safety-sync-check.sh",
+            "if": "Edit(**/.cursor/**)",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "matcher": "builder",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/builder-quality-gate.sh",
+            "timeout": 30
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/gestalt-stop.sh",
+            "timeout": 30
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/subagent-output-check.sh",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PreCompact": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo '{\"additionalContext\":\"Context is about to be compacted. Run /save NOW to capture any knowledge from this session before it is lost. This is mandatory \\u2014 do not skip.\"}'",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "matcher": "compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/post-compact-reinject.sh",
+            "timeout": 5
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/gestalt-session-start.sh",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "ConfigChange": [
+      {
+        "matcher": "project_settings",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo 'BLOCKED: Settings file modification detected. Safety hooks are protected.' >&2 && exit 2",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "WorktreeCreate": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/worktree-create.sh",
+            "timeout": 120
+          }
+        ]
+      }
+    ],
+    "WorktreeRemove": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/worktree-remove.sh",
+            "timeout": 60
+          }
+        ]
+      }
+    ]
+  },
+  "statusLine": {
+    "type": "command",
+    "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/statusline.sh"
+  },
+  "askUserQuestionTimeout": "10m",
+  "promptCacheTtl": "1h"
+}

@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "gestalt": {
+      "type": "command",
+      "command": "python3",
+      "args": ["tools/gestalt-mcp-server.py", "--http", "8100"]
+    },
+    "graphiti-memory": {
+      "type": "http",
+      "url": "http://localhost:8200/mcp/"
+    }
+  }
+}

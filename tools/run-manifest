@@ -1,0 +1,325 @@
+#!/usr/bin/env python3
+"""run-manifest: tie a number in a paper to the run that made it.
+
+  run-manifest run [--config F]... [--data P]... [--seed N] [--tag k=v]... -- CMD ARGS
+  run-manifest list | show ID | cite ID
+
+`run` executes CMD, tees stdout and stderr to files, and writes
+runs/<id>/manifest.json in the current project (the git toplevel, else the
+current directory). The manifest is written at start with status "running" and
+replaced atomically at the end, so a killed job still leaves a record. The
+wrapper exits with the command's own exit code (128+N for a signal N).
+
+Stdlib only, no network. Works on Linux and macOS and inside an sbatch script.
+Skipped on purpose (2026-10-06): a runs/index.jsonl, metrics capture, DVC. Add
+an index when `list` gets slow. See knowledge/<kb-entry>.md.
+"""
+import argparse
+import hashlib
+import json
+import os
+import platform
+import secrets
+import shutil
+import signal
+import socket
+import subprocess
+import sys
+import threading
+import time
+from datetime import datetime, timezone
+from pathlib import Path
+
+MAX_UNTRACKED = 50
+
+
+def now_utc():
+    return datetime.now(timezone.utc)
+
+
+def iso(dt):
+    return dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def sh(args, cwd, timeout=10):
+    """Run a helper command and return stripped stdout, or None on any failure."""
+    try:
+        r = subprocess.run(args, cwd=cwd, capture_output=True, text=True, timeout=timeout)
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    return r.stdout.strip() if r.returncode == 0 else None
+
+
+def project_root(cwd):
+    top = sh(["git", "rev-parse", "--show-toplevel"], cwd)
+    return Path(top) if top else Path(cwd)
+
+
+def sha256_file(path):
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(1 << 20), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def hash_path(p):
+    """Hash a file by contents, a directory by its listing of names, sizes and mtimes."""
+    p = Path(p)
+    entry = {"path": str(p)}
+    try:
+        if p.is_file():
+            entry.update(method="contents", sha256=sha256_file(p), bytes=p.stat().st_size)
+        elif p.is_dir():
+            lines, total = [], 0
+            for dirpath, dirs, files in os.walk(p):
+                dirs.sort()
+                for name in sorted(files):
+                    fp = Path(dirpath) / name
+                    st = fp.stat()
+                    total += st.st_size
+                    lines.append(f"{fp.relative_to(p)}\t{st.st_size}\t{st.st_mtime_ns}")
+            entry.update(method="listing", sha256=hashlib.sha256("\n".join(lines).encode()).hexdigest(),
+                         files=len(lines), bytes=total)
+        else:
+            entry.update(method="missing", sha256=None)
+    except OSError as e:
+        entry.update(method="error", sha256=None, error=str(e))
+    return entry
+
+
+def git_info(root, runs_dir, run_dir):
+    if sh(["git", "rev-parse", "--git-dir"], root) is None:
+        return {"commit": None, "branch": None, "dirty": None, "diff_file": None, "untracked": []}
+    # The runs directory is excluded so that our own logs never make the tree dirty.
+    try:
+        rel = str(Path(runs_dir).resolve().relative_to(Path(root).resolve()))
+        spec = ["--", ".", f":(exclude){rel}"]
+    except ValueError:
+        spec = []
+    status = sh(["git", "status", "--porcelain", "--untracked-files=normal"] + spec, root) or ""
+    lines = [ln for ln in status.splitlines() if ln]
+    tracked_dirty = any(not ln.startswith("??") for ln in lines)
+    untracked = [ln[3:] for ln in lines if ln.startswith("??")][:MAX_UNTRACKED]
+    info = {
+        "commit": sh(["git", "rev-parse", "HEAD"], root),
+        "branch": sh(["git", "rev-parse", "--abbrev-ref", "HEAD"], root),
+        "dirty": tracked_dirty or bool(untracked),
+        "diff_file": None,
+        "untracked": untracked,
+    }
+    if tracked_dirty:
+        diff = sh(["git", "diff", "HEAD"] + spec, root, timeout=60)
+        if diff is not None:
+            (run_dir / "dirty.patch").write_text(diff + "\n")
+            info["diff_file"] = "dirty.patch"
+            info["diff_sha256"] = hashlib.sha256((diff + "\n").encode()).hexdigest()
+    return info
+
+
+def env_info():
+    env = {"python": platform.python_version(), "platform": platform.platform()}
+    for key in ("SLURM_JOB_ID", "SLURM_JOB_NODELIST", "SLURM_ARRAY_TASK_ID", "SLURM_CLUSTER_NAME"):
+        if os.environ.get(key):
+            env[key.lower()] = os.environ[key]
+    if shutil.which("nvidia-smi"):
+        names = sh(["nvidia-smi", "--query-gpu=name", "--format=csv,noheader"], None, timeout=5)
+        if names:
+            env["cuda_devices"] = names.splitlines()
+    return env
+
+
+def write_manifest(run_dir, manifest):
+    tmp = run_dir / "manifest.json.tmp"
+    tmp.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n")
+    os.replace(tmp, run_dir / "manifest.json")
+
+
+def tee(src, log, sink):
+    for chunk in iter(lambda: src.read1(65536), b""):
+        log.write(chunk)
+        log.flush()
+        try:
+            sink.write(chunk)
+            sink.flush()
+        except (OSError, ValueError):
+            pass
+
+
+def cmd_run(args):
+    if not args.cmd:
+        sys.exit("run-manifest run: no command given. Use: run-manifest run [options] -- CMD ARGS")
+    cwd = os.getcwd()
+    root = project_root(cwd)
+    runs_dir = Path(args.runs_dir) if args.runs_dir else root / "runs"
+    started = now_utc()
+    run_id = started.strftime("%Y%m%dT%H%M%SZ") + "-" + secrets.token_hex(3)
+    run_dir = runs_dir / run_id
+    run_dir.mkdir(parents=True)
+
+    tags = {}
+    for t in args.tag:
+        k, _, v = t.partition("=")
+        tags[k] = v
+    manifest = {
+        "run_id": run_id,
+        "status": "running",
+        "started_utc": iso(started),
+        "ended_utc": None,
+        "duration_s": None,
+        "exit_code": None,
+        "command": args.cmd,
+        "cwd": cwd,
+        "host": socket.gethostname(),
+        "user": os.environ.get("USER") or os.environ.get("LOGNAME"),
+        "git": git_info(root, runs_dir, run_dir),
+        "configs": [hash_path(c) for c in args.config],
+        "data": [hash_path(d) for d in args.data],
+        "seed": args.seed,
+        "env": env_info(),
+        "logs": {"stdout": "stdout.log", "stderr": "stderr.log"},
+        "tags": tags,
+    }
+    write_manifest(run_dir, manifest)
+
+    child_env = dict(os.environ, RUN_ID=run_id, RUN_DIR=str(run_dir), PYTHONUNBUFFERED="1")
+    if args.seed is not None:
+        child_env["RUN_SEED"] = str(args.seed)
+
+    interrupted = {"sig": None}
+    proc = None
+
+    def forward(signum, _frame):
+        interrupted["sig"] = signum
+        if proc is not None and proc.poll() is None:
+            try:
+                proc.send_signal(signum)
+            except OSError:
+                pass
+
+    for s in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP):
+        signal.signal(s, forward)
+
+    t0 = time.monotonic()
+    code, error = None, None
+    try:
+        with open(run_dir / "stdout.log", "wb") as out, open(run_dir / "stderr.log", "wb") as err:
+            proc = subprocess.Popen(args.cmd, cwd=cwd, env=child_env,
+                                    stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            threads = [threading.Thread(target=tee, args=(proc.stdout, out, sys.stdout.buffer)),
+                       threading.Thread(target=tee, args=(proc.stderr, err, sys.stderr.buffer))]
+            for t in threads:
+                t.start()
+            while True:
+                try:
+                    code = proc.wait()
+                    break
+                except KeyboardInterrupt:
+                    interrupted["sig"] = interrupted["sig"] or signal.SIGINT
+            for t in threads:
+                t.join()
+    except OSError as e:
+        code, error = 127, f"{type(e).__name__}: {e}"
+
+    if code is not None and code < 0:
+        interrupted["sig"] = interrupted["sig"] or -code
+        exit_code = 128 + (-code)
+    else:
+        exit_code = code
+    if interrupted["sig"] is not None:
+        status = "interrupted"
+    elif exit_code == 0:
+        status = "ok"
+    else:
+        status = "failed"
+    ended = now_utc()
+    manifest.update(status=status, exit_code=exit_code, ended_utc=iso(ended),
+                    duration_s=round(time.monotonic() - t0, 3))
+    if interrupted["sig"] is not None:
+        manifest["signal"] = int(interrupted["sig"])
+    if error:
+        manifest["error"] = error
+    write_manifest(run_dir, manifest)
+    print(f"run-manifest: {run_id} {status} exit={exit_code} -> {run_dir}", file=sys.stderr)
+    return exit_code
+
+
+def runs_dir_for(args):
+    return Path(args.runs_dir) if args.runs_dir else project_root(os.getcwd()) / "runs"
+
+
+def load_all(runs_dir):
+    out = []
+    for m in sorted(runs_dir.glob("*/manifest.json")):
+        try:
+            out.append(json.loads(m.read_text()))
+        except (OSError, ValueError):
+            pass
+    return out
+
+
+def find(runs_dir, prefix):
+    hits = [m for m in load_all(runs_dir) if m["run_id"].startswith(prefix)]
+    if len(hits) != 1:
+        sys.exit(f"run-manifest: {'no run' if not hits else 'ambiguous id'} matching '{prefix}' in {runs_dir}")
+    return hits[0]
+
+
+def cmd_list(args):
+    rows = load_all(runs_dir_for(args))
+    if not rows:
+        print("no runs")
+        return 0
+    print(f"{'ID':<23} {'STATUS':<11} {'EXIT':>4} {'SECS':>8} {'COMMIT':<10} COMMAND")
+    for m in rows:
+        g = m.get("git", {})
+        commit = (g.get("commit") or "-")[:7] + ("+" if g.get("dirty") else "")
+        dur = "-" if m.get("duration_s") is None else f"{m['duration_s']:.1f}"
+        ex = "-" if m.get("exit_code") is None else m["exit_code"]
+        print(f"{m['run_id']:<23} {m['status']:<11} {ex:>4} {dur:>8} {commit:<10} {' '.join(m['command'])[:60]}")
+    return 0
+
+
+def cmd_show(args):
+    print(json.dumps(find(runs_dir_for(args), args.id), indent=2, sort_keys=True))
+    return 0
+
+
+def cmd_cite(args):
+    m = find(runs_dir_for(args), args.id)
+    g = m.get("git", {})
+    parts = [f"run {m['run_id']}", "commit " + ((g.get("commit") or "none")[:7] + ("+dirty" if g.get("dirty") else ""))]
+    cfg = [c["sha256"][:8] for c in m.get("configs", []) if c.get("sha256")]
+    if cfg:
+        parts.append("config " + ",".join(cfg))
+    if m.get("seed") is not None:
+        parts.append(f"seed {m['seed']}")
+    print(" | ".join(parts))
+    return 0
+
+
+def main():
+    ap = argparse.ArgumentParser(prog="run-manifest", description=__doc__.split("\n")[0])
+    ap.add_argument("--runs-dir", help="override <project>/runs")
+    sub = ap.add_subparsers(dest="sub", required=True)
+    r = sub.add_parser("run", help="run a command and record a manifest")
+    r.add_argument("--config", action="append", default=[], metavar="FILE")
+    r.add_argument("--data", action="append", default=[], metavar="PATH")
+    r.add_argument("--seed", type=int)
+    r.add_argument("--tag", action="append", default=[], metavar="K=V")
+    r.add_argument("--runs-dir", dest="runs_dir")
+    r.add_argument("cmd", nargs=argparse.REMAINDER)
+    r.set_defaults(fn=cmd_run)
+    sub.add_parser("list").set_defaults(fn=cmd_list)
+    for name, fn in (("show", cmd_show), ("cite", cmd_cite)):
+        p = sub.add_parser(name)
+        p.add_argument("id")
+        p.set_defaults(fn=fn)
+    args = ap.parse_args()
+    if args.sub == "run" and args.cmd and args.cmd[0] == "--":
+        args.cmd = args.cmd[1:]
+    return args.fn(args)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

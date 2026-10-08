@@ -1,0 +1,20 @@
+# derived from .claude/skills/review/SKILL.md (Evals table + verifier RETURN format, wikilink/block-id validation, completeness marker)
+skill: review
+trigger_cases:
+  - prompt: "Review all gestalt entries against the actual code"
+    should_trigger: true
+  - prompt: "Verify the platform-deploy entry is still accurate — Argo CD config changed last week"
+    should_trigger: true
+  - prompt: "Audit my pitch implementation before merge"
+    should_trigger: false
+    routes_to: "audit"
+output_assertions:
+  - type: regex
+    value: "(CURRENT|STALE|PARTIAL)"
+    description: "verifier agents return per-entry verdicts"
+  - type: regex
+    value: "\\[\\[[^\\]]+\\]\\]"
+    description: "Link Checker validates ALL [[wikilinks]] resolve"
+  - type: regex
+    value: "Entries reviewed: \\d+/\\d+"
+    description: "mandatory completeness marker"

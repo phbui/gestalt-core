@@ -1,0 +1,20 @@
+# derived from .claude/skills/help/SKILL.md (Evals table + Response step 3 naming the index components)
+skill: help
+trigger_cases:
+  - prompt: "List all gestalt commands"
+    should_trigger: true
+  - prompt: "What does /audit do?"
+    should_trigger: true
+  - prompt: "Save what we discussed"
+    should_trigger: false
+    routes_to: "save"
+output_assertions:
+  - type: regex
+    value: "Quick Reference"
+    description: "full index includes Quick Reference table"
+  - type: regex
+    value: "Detailed Guide"
+    description: "required index component"
+  - type: regex
+    value: "Command Chains"
+    description: "required index component"

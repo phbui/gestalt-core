@@ -1,0 +1,20 @@
+# derived from .claude/skills/fix/SKILL.md (Evals table + Phase 5 Fix Team Report format)
+skill: fix
+trigger_cases:
+  - prompt: "Fix all 12 of these basedpyright errors"
+    should_trigger: true
+  - prompt: "Apply these 8 changes from the code review comments"
+    should_trigger: true
+  - prompt: "Audit my pitch implementation before merge"
+    should_trigger: false
+    routes_to: "audit"
+output_assertions:
+  - type: contains_section
+    value: "## Fix Team Report"
+    description: "Phase 5 mandates this heading"
+  - type: regex
+    value: "Fixes completed: \\d+/\\d+"
+    description: "Phase 5 report requires this literal field"
+  - type: contains_section
+    value: "### Verification"
+    description: "Phase 5 template includes this subsection with lint/type-check/test counts"

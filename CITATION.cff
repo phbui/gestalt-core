@@ -1,0 +1,19 @@
+cff-version: 1.2.0
+message: "If you use this software or its benchmark results, please cite it as below."
+type: software
+title: "gestalt-core: hybrid-retrieval memory and knowledge tooling for coding agents"
+abstract: "A markdown knowledge base for Claude Code and Cursor, searched by SQLite FTS5 BM25 and nomic-embed-text-v1.5 dense vectors fused with reciprocal rank fusion, plus session hooks, skills, rules and an evaluation harness. The repository reports nDCG@10 on BEIR SciFact and NFCorpus with seeded confidence intervals and paired permutation tests."
+authors:
+  - family-names: Bui
+    given-names: Philip
+    affiliation: "New York University"
+repository-code: "https://github.com/phbui/gestalt-core"
+license: Apache-2.0
+version: 0.1.0
+date-released: "2026-10-08"
+keywords:
+  - agent memory
+  - hybrid retrieval
+  - reciprocal rank fusion
+  - BEIR
+  - Claude Code

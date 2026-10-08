@@ -1,0 +1,20 @@
+# derived from .claude/skills/build/SKILL.md (Evals table + Step 5 report format, Step 3 RETURN spec)
+skill: build
+trigger_cases:
+  - prompt: "Build a retry wrapper with exponential backoff for our HTTP client in src/api/"
+    should_trigger: true
+  - prompt: "Build per this SDD: @docs/pitches/c7-comms/sdd.md — implement the NATS connection handler"
+    should_trigger: true
+  - prompt: "Investigate why our snapshot messages drop during reconnect"
+    should_trigger: false
+    routes_to: "investigate"
+output_assertions:
+  - type: contains_section
+    value: "## Build Summary"
+    description: "Step 5 report format mandates this heading"
+  - type: regex
+    value: "Requirements completed: \\d+/\\d+"
+    description: "Step 3 RETURN spec requires this literal field"
+  - type: not_contains
+    value: "TODO"
+    description: "Step 3 RULES: implement EVERY requirement, no TODOs/placeholders"

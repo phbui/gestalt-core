@@ -1,0 +1,6 @@
+ir_datasets>=0.5.6
+sentence-transformers
+sqlite-vec
+numpy
+torch
+einops

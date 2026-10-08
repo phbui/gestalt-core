@@ -1,0 +1,25 @@
+# derived from claude-tree/skills/weekly-review/SKILL.md (## Output: "Sections: Commitments table · Inbox dispositions · Stuck/undecided · Stale entries · Top 3 next actions")
+skill: weekly-review
+trigger_cases:
+  - prompt: "Run my weekly GTD review and triage the capture inbox"
+    should_trigger: true
+  - prompt: "What commitments are stuck or overdue and need to be rescheduled or dropped"
+    should_trigger: true
+  - prompt: "Surface any NEEDS APPROVAL lines from recent sessions that never got decided"
+    should_trigger: true
+  - prompt: "Give me my morning briefing with today's calendar and reading queue"
+    should_trigger: false
+    routes_to: "briefing"
+  - prompt: "Save this idea about the new pricing model so I don't forget it"
+    should_trigger: false
+    routes_to: "capture"
+output_assertions:
+  - type: regex
+    value: "Commitments"
+    description: "Output line requires the Commitments table section"
+  - type: regex
+    value: "Inbox dispositions"
+    description: "Output line requires this section"
+  - type: regex
+    value: "Top 3 next actions"
+    description: "Output line requires this final section"

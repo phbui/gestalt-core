@@ -1,0 +1,21 @@
+# derived from .claude/skills/compact-resume/EVALS.md (trigger table) and
+# SKILL.md (Step 3 anchor format, Step 6 report, Verification Gate step count)
+skill: compact-resume
+trigger_cases:
+  - prompt: "prepare for a compact and resume"
+    should_trigger: true
+  - prompt: "context is getting long, make sure nothing is lost"
+    should_trigger: true
+  - prompt: "commit my changes"
+    should_trigger: false
+    routes_to: "commit"
+output_assertions:
+  - type: regex
+    value: "\\^compact-resume-\\d{4}-\\d{2}-\\d{2}"
+    description: "Step 3 mandates this anchor naming format for the gestalt resume block"
+  - type: regex
+    value: "\\d+\\s*/\\s*6"
+    description: "Verification Gate requires a steps-completed count out of 6"
+  - type: regex
+    value: "(?i)git push"
+    description: "Step 6 mandates reminding the user the work is unpushed"

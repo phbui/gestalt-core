@@ -1,0 +1,20 @@
+# derived from .claude/skills/discuss/SKILL.md (Evals table + Step 5/6 citation and summary requirements)
+skill: discuss
+trigger_cases:
+  - prompt: "Should we use DuckDB or Polars for the transform layer? Talk me through the tradeoffs"
+    should_trigger: true
+  - prompt: "I'm thinking of moving the spatial pipeline to event-driven processing — challenge my assumptions"
+    should_trigger: true
+  - prompt: "Investigate why our snapshot reconnect drops messages"
+    should_trigger: false
+    routes_to: "investigate"
+output_assertions:
+  - type: regex
+    value: "\\[UNVERIFIED\\]"
+    description: "Evidence-agent rule: uncited claims MUST be marked [UNVERIFIED]"
+  - type: regex
+    value: "(file|\\.py|\\.ts|\\.md):[0-9]+"
+    description: "Cite specific files and line numbers for ALL findings"
+  - type: regex
+    value: "\\*\\*(Strengths|Risks|Recommended approach|Open questions)\\*\\*"
+    description: "Step 6 Summarize Position mandates these four labeled components"

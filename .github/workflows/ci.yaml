@@ -1,0 +1,72 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  unit:
+    name: Unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install test dependencies
+        run: python -m pip install --upgrade pip pytest pyyaml markdown
+      - name: Run tests
+        run: python -m pytest tests/ -q
+
+  skill-evals:
+    name: Skill eval configs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install --upgrade pip pyyaml
+      - name: Validate every skill eval config
+        run: python3 evals/run_evals.py validate
+
+  shell:
+    name: Shell syntax
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: bash -n every shell script
+        run: |
+          set -euo pipefail
+          fail=0
+          while IFS= read -r f; do
+            case "$(head -c 60 "$f")" in
+              *'/bin/sh'*|*'env sh'*) sh -n "$f" || { echo "::error file=$f::sh syntax error"; fail=1; } ;;
+              *) bash -n "$f" || { echo "::error file=$f::bash syntax error"; fail=1; } ;;
+            esac
+          done < <(bash tools/ci/shell-files.sh)
+          exit $fail
+
+  secrets:
+    name: Secret scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Scan tracked files for credential patterns
+        run: |
+          set -uo pipefail
+          hits=$(git ls-files | xargs -r grep -nIE \
+            'AKIA[0-9A-Z]{16}|gh[pousr]_[A-Za-z0-9]{20,}|xox[baprs]-[A-Za-z0-9-]{10,}|sk-ant-api[A-Za-z0-9_-]{20,}|sk-proj-[A-Za-z0-9_-]{20,}' \
+            2>/dev/null | grep -v '\.\.\.$' | grep -v -E '^(tools/capture-skill-run.py|\.github/workflows/ci.yaml|tests/test_skill_capture.py):' || true)
+          if [ -n "$hits" ]; then
+            echo "::error::credential pattern found in a tracked file"
+            echo "$hits"
+            exit 1
+          fi

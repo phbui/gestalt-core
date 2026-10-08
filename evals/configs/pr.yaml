@@ -1,0 +1,23 @@
+# derived from .claude/skills/pr/SKILL.md (Evals table + persona Output IDs, severity ordering, merge-readiness labels, anti-pattern phrase)
+skill: pr
+trigger_cases:
+  - prompt: "Review PR #1234"
+    should_trigger: true
+  - prompt: "Review the current branch — focus only on the auth module"
+    should_trigger: true
+  - prompt: "Audit the c8-grag pitch implementation"
+    should_trigger: false
+    routes_to: "audit"
+output_assertions:
+  - type: regex
+    value: "(SEC|ENG|QAL)-[0-9]+"
+    description: "3 personas emit finding IDs SEC-NNN/ENG-NNN/QAL-NNN"
+  - type: regex
+    value: "(CRITICAL|MAJOR|MINOR|INFO)"
+    description: "severity ordering CRITICAL->MAJOR->MINOR->INFO"
+  - type: regex
+    value: "(READY WITH CAVEATS|READY|NOT READY)"
+    description: "Phase 5 merge-readiness verdict"
+  - type: not_contains
+    value: "consider improving"
+    description: "Orchestration Rule 2 bans vague fixes"

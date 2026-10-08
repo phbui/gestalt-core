@@ -1,0 +1,30 @@
+{
+  "graph": "gestalt",
+  "seed": 20261006,
+  "n": 2,
+  "labels": ["correct", "wrong", "unsupported"],
+  "rows": [
+    {
+      "id": "00000000-0000-0000-0000-000000000001",
+      "subject": "ExampleService",
+      "relation": "DEPENDS_ON",
+      "object": "ExampleDatabase",
+      "fact": "ExampleService depends on ExampleDatabase for storage.",
+      "valid_at": "2026-01-01T00:00:00Z",
+      "invalid_at": null,
+      "episodes": [{"id": "00000000-0000-0000-0000-0000000000a1", "name": "example-episode", "text": "ExampleService stores its records in ExampleDatabase."}],
+      "label": "correct"
+    },
+    {
+      "id": "00000000-0000-0000-0000-000000000002",
+      "subject": "ExampleService",
+      "relation": "RUNS_ON",
+      "object": "ExampleHost",
+      "fact": "ExampleService runs on ExampleHost.",
+      "valid_at": null,
+      "invalid_at": null,
+      "episodes": [{"id": "00000000-0000-0000-0000-0000000000a1", "name": "example-episode", "text": "ExampleService stores its records in ExampleDatabase."}],
+      "label": "unsupported"
+    }
+  ]
+}
