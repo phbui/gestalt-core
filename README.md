@@ -17,16 +17,45 @@ flowchart LR
 
 ## Search quality
 
-The hybrid search was scored on two public BEIR datasets. The numbers are nDCG@10 with 95% bootstrap intervals.
+The search was scored on two public retrieval benchmarks from the BEIR collection. A benchmark hands the system a question and a fixed pile of documents, and checks whether the right documents come back near the top. Nothing in gestalt was tuned on these datasets.
+
+**The two datasets.** SciFact has 5,183 scientific abstracts and 300 test claims. For each claim the system must find the one or two abstracts that support or refute it. NFCorpus has 3,633 medical abstracts and 323 questions written in everyday language, such as a question about a food and a disease. Each question has many relevant abstracts, graded by how relevant they are. NFCorpus is the harder of the two for every system ever scored on it, because the questions and the abstracts use different words.
+
+**The score.** nDCG@10 looks at the first ten results. A relevant document in first place earns full credit. The same document in tenth place earns about a third of that. The score is divided by the best possible ordering, so 1.000 means every relevant document sits at the top in the right order and 0.000 means none of them appear in the first ten. A score of 0.737 means the ranking captures about 74 percent of the credit a perfect ranking would get, averaged over the 300 questions.
+
+**Gestalt's three systems.** The BM25 leg is the full-text search alone. The dense leg is the vector search alone. The hybrid is what `gestalt_search` returns, the two fused by reciprocal rank fusion with K=60. Each number is the mean over queries, with a 95% bootstrap interval in brackets. The interval says where the mean would land if the queries were drawn again.
 
 | Dataset | BM25 leg | Dense leg | Hybrid |
 |---|---|---|---|
 | SciFact, 300 queries | 0.682 [0.638, 0.725] | 0.694 [0.650, 0.736] | **0.737 [0.696, 0.777]** |
 | NFCorpus, 323 queries | 0.322 [0.287, 0.356] | 0.344 [0.308, 0.379] | **0.361 [0.325, 0.396]** |
 
-The hybrid beats each of its own legs on both datasets in paired permutation tests (hybrid minus BM25 on SciFact: +0.055, p < 0.0001). The BM25 leg matches published BM25 numbers. The hybrid comes within half a point of the published BGE-base score on SciFact (0.741) and sits one point under it on NFCorpus (0.373). Those published numbers come from other people's runs and were not rerun here.
+**Does fusing help?** Yes, on both datasets. A paired permutation test compares the hybrid with each single leg on the same questions and asks how often a random relabelling would produce a gap as large as the observed one.
 
-This is two datasets of scientific text. It checks the pipeline. It does not rank gestalt against other systems, and it says nothing about retrieval over your notes. The method, the limits and the one-command reproduction are in [evals/retrieval/BENCHMARKS.md](evals/retrieval/BENCHMARKS.md). Per-query scores and run files are in `evals/retrieval/results/`.
+| Comparison | SciFact | NFCorpus |
+|---|---|---|
+| Hybrid minus BM25 leg | +0.055, p < 0.0001 | +0.039, p < 0.0001 |
+| Hybrid minus dense leg | +0.044, p = 0.00035 | +0.017, p = 0.0066 |
+
+A p-value under 0.05 is the usual bar. All four comparisons clear it by a wide margin. The gain over the dense leg on NFCorpus is the smallest, under two points, and it is still unlikely to be chance.
+
+**How it compares with published systems.** These rows come from the BEIR paper and from the Pyserini reproductions. They were not rerun here, and small differences in tokenizers and title handling move BM25 by a point or two between implementations.
+
+| System | Type | SciFact | NFCorpus |
+|---|---|---|---|
+| BM25, BEIR paper | lexical | 0.665 | 0.325 |
+| BM25, Pyserini | lexical | 0.679 | 0.322 |
+| DPR | dense, 2020 | 0.318 | 0.189 |
+| TAS-B | dense | 0.643 | 0.319 |
+| Contriever | dense | 0.677 | 0.328 |
+| ColBERT | late interaction | 0.671 | 0.305 |
+| BM25 + cross-encoder reranker | two stage | 0.688 | 0.350 |
+| **gestalt hybrid** | lexical + dense, RRF | **0.737** | **0.361** |
+| BGE-base-en-v1.5 | dense | 0.741 | 0.373 |
+
+Read the table from the top. Classic BM25 sits in the 0.66 to 0.68 band on SciFact. The first generation of dense retrievers fell below it. Later dense models and a reranked BM25 pass it. Gestalt's hybrid lands above the reranked BM25 and within half a point of BGE-base, a strong modern embedding model, on SciFact. On NFCorpus it is above the reranker and about one point under BGE-base. Larger embedding models score higher than every row here. The MTEB leaderboard lists them.
+
+**What this does and does not show.** It shows that the pipeline is sound and that the fusion earns its place. It does not show that gestalt beats a strong retriever, and it says nothing about how well it finds things in your own notes, which have a different shape from scientific abstracts. The method, the limits and the one-command reproduction are in [evals/retrieval/BENCHMARKS.md](evals/retrieval/BENCHMARKS.md). Per-query scores and run files are in `evals/retrieval/results/`.
 
 ## How a search works
 

@@ -24,12 +24,21 @@ The smallest p-value this test can report is 1 in 20,001, which is 0.00005.
 
 These come from other people's runs. They were not rerun here.
 
-| Dataset | BM25, BEIR paper | BM25, Pyserini flat | BM25, Pyserini multifield | BGE-base-en-v1.5, Pyserini |
+| System | Type | SciFact | NFCorpus | Source |
 |---|---|---|---|---|
-| SciFact | 0.665 | 0.679 | 0.665 | 0.741 |
-| NFCorpus | 0.325 | 0.322 | 0.325 | 0.373 |
+| BM25 | lexical | 0.665 | 0.325 | BEIR paper, Table 2 |
+| BM25 flat | lexical | 0.679 | 0.322 | Pyserini |
+| BM25 multifield | lexical | 0.665 | 0.325 | Pyserini |
+| DPR | dense | 0.318 | 0.189 | BEIR paper, Table 2 |
+| ANCE | dense | 0.507 | 0.237 | BEIR paper, Table 2 |
+| TAS-B | dense | 0.643 | 0.319 | BEIR paper, Table 2 |
+| GenQ | dense | 0.644 | 0.319 | BEIR paper, Table 2 |
+| Contriever | dense | 0.677 | 0.328 | Pyserini |
+| ColBERT | late interaction | 0.671 | 0.305 | BEIR paper, Table 2 |
+| BM25 + cross-encoder | two stage | 0.688 | 0.350 | BEIR paper, Table 2 |
+| BGE-base-en-v1.5 | dense | 0.741 | 0.373 | Pyserini |
 
-Sources: Thakur et al., BEIR, Table 2, https://arxiv.org/abs/2104.08663, and the Pyserini BEIR reproductions, https://castorini.github.io/pyserini/2cr/beir.html. The BM25 numbers differ by implementation. Tokenizer, stemmer and title handling move them by a point or two.
+Sources: Thakur et al., BEIR, https://arxiv.org/abs/2104.08663, and the Pyserini BEIR reproductions, https://castorini.github.io/pyserini/2cr/beir.html. The BM25 numbers differ by implementation. Tokenizer, stemmer and title handling move them by a point or two.
 
 ## What the numbers say
 
