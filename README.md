@@ -112,9 +112,7 @@ The conventional threshold is p < 0.05, and all six comparisons clear it. The sm
 | OpenAI text-embedding-3-small | dense API | $0.02/M | 0.734 | 0.383 |
 | nomic-embed-text-v1.5, gestalt's dense leg alone | dense | 137M | 0.703 | 0.347 |
 
-![Score against size for released retrieval systems. Stars are gestalt, dots are published MTEB results, squares are closed APIs placed by price, the dashed line is the open-model Pareto frontier.](docs/score-vs-cost.png)
-
-![Retrieval quality against model size: gestalt among the released systems. Stars are gestalt, dots are published MTEB results, squares are closed APIs placed by price, and the faint line joins the open models that no smaller open model beats.](docs/score-vs-cost.png)
+![Retrieval quality against model size: gestalt among the released systems. Each system is two points at its parameter count, filled for SciFact and hollow for NFCorpus. Stars are gestalt, dots are published MTEB results, squares are closed APIs placed by price, and the dashed line marks one billion parameters.](docs/score-vs-cost.png)
 
 On SciFact the reranked pipeline is within 0.3 points of OpenAI's text-embedding-3-large and above most 7B open models, with a 137M embedder and a 0.6B reranker that fit one laptop GPU in half precision. On NFCorpus it is 4 points under that API and 3 to 7 under the 7B class, and two 335M embedders score higher than it. Without the reranker the hybrid runs on a CPU in about 25 milliseconds a query and sits 0.6 points under bge-base. The classic BEIR baselines all sit below both gestalt rows on both sets. On SciFact the hybrid interval lies above the published BM25 plus cross-encoder score of 0.688. On NFCorpus the hybrid point score is above 0.350, but the hybrid interval contains that number, so the two are not separated.
 
