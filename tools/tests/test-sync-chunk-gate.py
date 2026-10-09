@@ -11,8 +11,16 @@ Four cases, run end to end against a stub MCP server that counts add_memory call
   2. three further syncs of the UNCHANGED entry queue zero        <- the regression
   3. editing one chunk queues exactly that chunk, not the entry
   4. --force re-sends every chunk of the named slug
+  5. a real send touches the wave-watch marker; a dry run does not (2026-10-08: arms the stall rule)
 """
-import http.server, json, os, pathlib, re, subprocess, sys, tempfile, threading
+import http.server
+import json
+import os
+import pathlib
+import subprocess
+import sys
+import tempfile
+import threading
 
 REPO = pathlib.Path(__file__).resolve().parents[2]
 SYNC = pathlib.Path(os.environ.get("SYNC_SCRIPT") or (REPO / "tools" / "gestalt-graphiti-sync.sh"))
@@ -62,8 +70,9 @@ CHUNK_A = "## Alpha\n" + ("alpha body line\n" * 40)
 CHUNK_B = "## Beta\n" + ("beta body line\n" * 40)
 entry.write_text("---\ntitle: Fixture\n---\n\n" + CHUNK_A + CHUNK_B)
 
+marker = pathlib.Path(tmp, "wave-active")
 env = dict(os.environ, GESTALT_KNOWLEDGE_DIR=str(kd), GESTALT_GRAPHITI_SYNC_STATE=str(state),
-           GRAPHITI_URL=URL, GESTALT_SYNC_CHUNK_CHARS="700")
+           GRAPHITI_URL=URL, GESTALT_SYNC_CHUNK_CHARS="700", WAVE_WATCH_MARKER=str(marker))
 
 
 def run(*args):
@@ -88,6 +97,8 @@ def check(label, got, want):
 
 print("--- 1. first sync queues both chunks ---")
 check("first sync", run("fixture"), ["kb-fixture#1", "kb-fixture#2"])
+check("real send touches the wave marker", ["touched"] if marker.exists() else [], ["touched"])
+marker.unlink(missing_ok=True)
 
 print("--- 2. three more syncs of the UNCHANGED entry queue nothing ---")
 for n in (1, 2, 3):
@@ -99,6 +110,12 @@ check("one chunk edited", run("fixture"), ["kb-fixture#2"])
 
 print("--- 4. --force re-sends every chunk of the named slug ---")
 check("--force", run("--force", "fixture"), ["kb-fixture#1", "kb-fixture#2"])
+
+print("--- 5. a dry run never touches the wave marker ---")
+entry.write_text(entry.read_text().replace("alpha body line", "alpha body DRY", 1))
+marker.unlink(missing_ok=True)  # cases 3 and 4 were real sends and re-touched it
+run("--dry-run", "fixture")
+check("dry run leaves no marker", ["touched"] if marker.exists() else [], [])
 
 srv.shutdown()
 print("PASS" if fails == 0 else "FAIL")

@@ -11,7 +11,8 @@ on 2026-09-04 and is the most likely mechanism behind the earlier two-week FTS-o
 The test asserts the property that actually matters, in both directions, without needing to
 run a build: outside the venv the guard must re-exec, inside it must not, or it would loop.
 """
-import subprocess, sys
+import subprocess
+import sys
 from pathlib import Path
 
 VENV = Path("~/.claude/gestalt/venv/bin/python3").expanduser()

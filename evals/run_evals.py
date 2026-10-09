@@ -23,11 +23,12 @@ CI can gate on regression. See README.md §Trigger-routing tier and
 §Baseline discipline.
 """
 import json
-import sys
 import re
-import yaml
-from datetime import datetime, timezone
+import sys
+from datetime import UTC, datetime
 from pathlib import Path
+
+import yaml
 
 CONFIGS_DIR = Path(__file__).parent / "configs"
 PROMPTFOO_DIR = Path(__file__).parent / "promptfoo"
@@ -437,7 +438,7 @@ def baseline_save() -> None:
         }
 
     baseline = {
-        "generated_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "generated_at": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "skills": skills_out,
     }
     BASELINE_PATH.write_text(json.dumps(baseline, indent=2, sort_keys=True) + "\n")

@@ -6,8 +6,9 @@ sqlite-vec>=0.1.0
 # '"Settings" object has no field "host"'. Every working node runs 1.29.1.
 mcp[cli]>=1.0,<1.30
 httpx>=0.27
-# nomic-embed-text-v1.5 loads with trust_remote_code=True and its modeling file
-# imports einops; without it the index build dies at model load.
+# nomic-embed-text-v1.5 loads through transformers' own nomic_bert class on transformers 5.5 or later (see
+# tools/gestalt_embed_config.py). On an older library it falls back to pinned remote code, whose modeling file
+# imports einops; without it the index build dies at model load there.
 einops>=0.7
 # sentence-transformers pulls torch in transitively with no CUDA pin, so a bare
 # `uv/pip install -r` can resolve a torch cuXXX wheel newer than the node's

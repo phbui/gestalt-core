@@ -64,11 +64,11 @@ flowchart TD
   D --> I["write sections_meta<br/>slug, heading, block id, path"]
   F --> I
   H --> I
-  I --> J["index_meta: model name, revision, prefixes"]
+  I --> J["index_meta: model name, revision, prefixes, load_path"]
   J --> K["stamp the build with the repo head"]
 ```
 
-The builder takes a lock, so two sessions cannot build at once. The embedding cache is keyed by model, revision and text, so an unchanged section is never embedded twice. The server refuses an index whose `index_meta` names a different model or revision than `tools/gestalt_embed_config.py`.
+The builder takes a lock, so two sessions cannot build at once. The embedding cache is keyed by model, revision and text, so an unchanged section is never embedded twice. The server refuses an index whose `index_meta` names a different model or revision than `tools/gestalt_embed_config.py`. The `load_path` key records how the builder loaded the model, `native` for the library's own class or `remote-code` for the pinned code from the Hub. It is informational. A rebuild is never triggered by a difference in it.
 
 ## Serving a search
 
@@ -87,7 +87,9 @@ flowchart TD
   S --> O["results with snippet and anchors"]
 ```
 
-The server runs as a stdio process per Claude Code session, or as one HTTP process on `127.0.0.1:8300`. Each session that runs a hybrid search would otherwise hold a 750 MB model, so the default mode is lexical and the model unloads after ten idle minutes.
+The server runs as a stdio process per Claude Code session, or as one HTTP process on `127.0.0.1:8300`. The Cursor configuration in `.cursor/mcp.json` starts its own copy on port 8100, so a Cursor session and a shared process never collide. Each session that runs a hybrid search would otherwise hold a 750 MB model, so the default mode is lexical and the model unloads after ten idle minutes.
+
+The server does not rank anything itself. Every search the server answers itself, in either mode, calls `gestalt_rank.hybrid_search`. That one function runs the lexical leg, the dense leg, the fusion, the optional rerank and the dedup of repeated entries. The golden-set evaluation runner calls the same function. The BEIR benchmark engine does not. It builds the query with the same helpers, `gestalt_rank.fts_match` and `gestalt_rank.pool_size`, and fuses the legs with `fuse_pools` in `evals/retrieval/bench_engine.py`. That function calls `gestalt_rank.fuse`, the fusion step the server runs, whose arithmetic lives in `evals/retrieval/fusion.py`. A test checks its rankings against the in-memory path. Its FTS table is contentless, and it switches from sqlite-vec to exact dense search above 300,000 documents. Every knob that changes the ranking is an environment variable read by that module, and the README lists them with their defaults.
 
 ## Hooks in a session
 
@@ -141,12 +143,13 @@ flowchart LR
   DB[(".search/gestalt.db")] --> R
   R --> M["recall@1,3,5, MRR, block precision<br/>Wilson intervals"]
   R -->|"--baseline check"| C["paired bootstrap against the banked run"]
+  R -->|"--baseline bank --config-name default"| BK["bank the run as the baseline"]
   BE["BEIR SciFact, NFCorpus"] --> BB["beir_bench.py"]
   BB --> N["nDCG@10, bootstrap CI,<br/>paired permutation tests"]
   N --> RES["evals/retrieval/results/"]
 ```
 
-The golden set measures retrieval over your own notes. Write each question the way you would ask it, not in the entry's words, and mark the vocabulary-mismatch ones `hard`. The BEIR benchmark measures the same search function on public data, which is the number you can compare to other systems. `evals/retrieval/BENCHMARKS.md` reports it.
+The golden set measures retrieval over your own notes. Write each question the way you would ask it, not in the entry's words, and mark the vocabulary-mismatch ones `hard`. The banked baseline is the gate. `--baseline bank --config-name default` stores the current run as the baseline for the shipped defaults, and `--baseline check` exits 1 when a later run regresses or cannot be compared with it. The BEIR benchmark measures the same search function on public data, which is the number you can compare to other systems. It runs on a resumable engine that keeps its documents, FTS5 index, embeddings and finished queries in a work directory, so a killed run continues where it stopped. `evals/retrieval/BENCHMARKS.md` reports the numbers and the commands.
 
 ## The optional memory services
 

@@ -23,6 +23,17 @@
 #                                             # cannot be queried from this node it says so, exits 5
 #                                             # and leaves the ledger alone.
 #
+# GPU lease (2026-10-08). The hub GPU is shared with a rare long benchmark that holds `gpu-lease`. Right after the
+# health gate, a lease held by a label that does not start with "ingest" skips the run like an unhealthy graphiti
+# (same skip_exit, no state writes, entries stay pending), logs "reason=gpu-leased holder=<line>" and records
+# `gpu-lease want sync`. The lease lives on the hub, so a remote GRAPHITI_URL host is asked over ssh (BatchMode,
+# 5 s). A missing gpu-lease or a failed ssh counts as free and is logged ("gpu-lease unavailable"), because the drain
+# timer is the backstop. GESTALT_SYNC_IGNORE_LEASE=1 bypasses the check. A dry run never checks.
+#
+# --drain-wait: after queueing, wait until the Episodic count has risen by the episodes queued. Needs docker.
+# Polls every GESTALT_SYNC_DRAIN_POLL s (30), gives up after GESTALT_SYNC_DRAIN_STALL s with no change (600) or
+# GESTALT_SYNC_DRAIN_MAX s in all (21600), logs progress every GESTALT_SYNC_DRAIN_REPORT s (300). Exits 0 either way.
+#
 # Exit codes: 0 done or nothing to do; 1 a real fault; 2 bad flag; 4 the ledger is corrupt (nothing sent);
 # 5 --reconcile could not reach the graph; 75 graphiti was unhealthy and the run skipped its work, but ONLY when
 # GESTALT_SYNC_EXIT75=1 (timer units set it, with SuccessExitStatus=75). Unset, a skip still exits 0 so the
@@ -94,6 +105,7 @@ SLUG_ARG=""
 MARK_SYNCED=""
 RECONCILE=0
 RESEND=0
+DRAIN_WAIT=0
 RECON_SLUGS=()
 for arg in "$@"; do
     case "$arg" in
@@ -104,6 +116,7 @@ for arg in "$@"; do
         --force) FORCE_CHUNKS=1 ;;
         --dry-run) DRY_RUN=1 ;;
         --summaries) SUMMARIES=1 ;;
+        --drain-wait) DRAIN_WAIT=1 ;;
         -*) echo "ERROR: unknown flag $arg" >&2; exit 2 ;;
         *) SLUG_ARG="$arg"; RECON_SLUGS+=("$arg") ;;
     esac
@@ -232,6 +245,15 @@ if [ -z "$TO_SYNC" ]; then
 fi
 
 TOTAL=$(printf '%s\n' "$TO_SYNC" | grep -c . || true)
+# GESTALT_SYNC_MAX_ENTRIES (0 = all): a drain window under the GPU lease queues a bounded batch, because Graphiti's
+# in-memory queue outlives the run and the lease must be held until the batch lands. The rest waits for the next window.
+# Unset means 40, so no caller can queue a backlog that keeps the GPU busy for hours. An explicit 0 means all.
+GESTALT_SYNC_MAX_ENTRIES="${GESTALT_SYNC_MAX_ENTRIES-40}"
+if [ "${GESTALT_SYNC_MAX_ENTRIES:-0}" -gt 0 ] 2>/dev/null && [ "$TOTAL" -gt "${GESTALT_SYNC_MAX_ENTRIES}" ]; then
+    TO_SYNC=$(printf '%s\n' "$TO_SYNC" | head -n "${GESTALT_SYNC_MAX_ENTRIES}")
+    echo "$(date -Iseconds) CAP: ${GESTALT_SYNC_MAX_ENTRIES} of $TOTAL pending entries this run (GESTALT_SYNC_MAX_ENTRIES)" >> "$LOG"
+    TOTAL=${GESTALT_SYNC_MAX_ENTRIES}
+fi
 
 if [ "$DRY_RUN" = "1" ]; then
     # A dry run used to stop here and print whole-file candidates, which proved nothing about the chunks a fire
@@ -245,6 +267,31 @@ else
 if ! curl -sf --max-time 3 "$GRAPHITI_URL/health" >/dev/null; then
     echo "$(date -Iseconds) WARN: graphiti unhealthy at $GRAPHITI_URL/health, skipping ($TOTAL pending) reason=graphiti-unhealthy" | tee -a "$LOG" >&2
     skip_exit
+fi
+
+# --- GPU lease admission (see header). Fail open: an absent tool or a dead ssh must not stop ingest. ---
+_lease_host="${GRAPHITI_URL#*://}"; _lease_host="${_lease_host%%[/:]*}"
+_lease_cmd() {
+    case "$_lease_host" in
+        localhost|127.0.0.1|"$(hostname 2>/dev/null)"|"$(hostname -s 2>/dev/null)") command -v gpu-lease >/dev/null 2>&1 || return 127; gpu-lease "$@" ;;
+        *) ssh -o BatchMode=yes -o ConnectTimeout=5 "$_lease_host" gpu-lease "$@" ;;
+    esac
+}
+if [ "${GESTALT_SYNC_IGNORE_LEASE:-0}" != "1" ]; then
+    HOLDER=$(_lease_cmd held 2>/dev/null); lease_rc=$?
+    case "$lease_rc" in
+        0)
+            lease_label=$(printf '%s' "$HOLDER" | sed -n 's/.*label=\([^ ]*\).*/\1/p')
+            case "$lease_label" in
+                ingest*) ;;
+                *)
+                    echo "$(date -Iseconds) SKIP: gpu lease held, skipping ($TOTAL pending) reason=gpu-leased holder=$HOLDER" | tee -a "$LOG" >&2
+                    _lease_cmd want sync >/dev/null 2>&1 || true
+                    skip_exit ;;
+            esac ;;
+        1) ;;
+        *) echo "$(date -Iseconds) WARN: gpu-lease unavailable (rc=$lease_rc, host=$_lease_host), treating the lease as free" >> "$LOG" ;;
+    esac
 fi
 
 MCP_HEADERS=(-H "Content-Type: application/json" -H "Accept: application/json, text/event-stream")
@@ -343,8 +390,16 @@ SPYEOF
     fi
 fi
 
-echo "$(date -Iseconds) START: $TOTAL knowledge entries -> graphiti group=$GROUP" >> "$LOG"
+[ "$DRY_RUN" = "1" ] || echo "$(date -Iseconds) START: $TOTAL knowledge entries -> graphiti group=$GROUP" >> "$LOG"
+# Arm wave-watch. Its stall rule ("LLM calls seen, episode count frozen") only counts while a wave is in flight,
+# because other proxy users produced four false FAIL mails on 2026-10-08 with no ingest running. The marker's
+# mtime is the proof of a live wave; wave-watch trusts it for 12 h. Never in a dry run: that writes no state.
+if [ "$DRY_RUN" != "1" ]; then
+    WAVE_MARKER="${WAVE_WATCH_MARKER:-$HOME/.fleet/wave-watch/wave-active}"
+    { mkdir -p "$(dirname "$WAVE_MARKER")" && touch "$WAVE_MARKER"; } 2>/dev/null || true
+fi
 
+QUEUED=0
 SYNCED_TMP="$STATE_DIR/graphiti-sync.$$.synced"
 : > "$SYNCED_TMP"
 # Chunk hashes are only committed to state for slugs whose send fully succeeded, mirroring
@@ -545,6 +600,7 @@ for line in sys.stdin:
         if ! echo "$result" | grep -q '"isError":false\|Episode .* queued'; then
             ok=0; echo "  FAIL part of $name -> $(echo "$result" | head -c 200)" >> "$LOG"
         else
+            QUEUED=$((QUEUED + 1))
             # B-04: record this chunk the moment it is acknowledged, so a failure further on never re-sends it.
             printf '%s' "$payload" | "${LEDGER_PY[@]}" record "$STATE_FILE" "$CHUNKS_TMP" >>"$LOG" 2>&1 \
                 || echo "  WARN: could not record an acknowledged chunk of $name" >> "$LOG"
@@ -578,3 +634,35 @@ echo "$(date -Iseconds) DONE: queued $i episodes" >> "$LOG"
 # --- Persist successful syncs to the state file ---
 "${LEDGER_PY[@]}" commit "$STATE_FILE" "$SYNCED_TMP" "$CHUNKS_ACCEPTED" || { echo "$(date -Iseconds) ERROR: final ledger commit failed" >> "$LOG"; exit 1; }
 rm -f "$SYNCED_TMP" "$CHUNKS_ACCEPTED"
+
+# --- --drain-wait: hold the caller until the queued episodes land, so a drain window knows when the GPU is idle. ---
+if [ "$DRAIN_WAIT" = "1" ]; then
+    release_lock
+    _count() { docker exec gestalt-falkordb redis-cli GRAPH.QUERY gestalt 'MATCH (e:Episodic) RETURN count(e)' 2>/dev/null | tr -d '\r' | grep -E '^[0-9]+$' | head -1; }
+    base=""; command -v docker >/dev/null 2>&1 && base=$(_count)
+    if [ -z "$base" ]; then
+        echo "$(date -Iseconds) DRAIN: skipped, no docker or no Episodic count on this node" >> "$LOG"
+    elif [ "$QUEUED" -eq 0 ]; then
+        echo "$(date -Iseconds) DRAIN: nothing queued, nothing to wait for" >> "$LOG"
+    else
+        poll="${GESTALT_SYNC_DRAIN_POLL:-30}"; stall="${GESTALT_SYNC_DRAIN_STALL:-600}"
+        maxs="${GESTALT_SYNC_DRAIN_MAX:-21600}"; report="${GESTALT_SYNC_DRAIN_REPORT:-300}"
+        target=$((base + QUEUED)); last="$base"; t0=$SECONDS; t_change=$SECONDS; t_report=$SECONDS
+        echo "$(date -Iseconds) DRAIN: waiting for $QUEUED episodes (count $base -> $target)" >> "$LOG"
+        while :; do
+            sleep "$poll"
+            now=$(_count); [ -z "$now" ] && now="$last"
+            if [ "$now" != "$last" ]; then last="$now"; t_change=$SECONDS; fi
+            [ "$now" -ge "$target" ] && break
+            [ $((SECONDS - t_change)) -ge "$stall" ] && { echo "$(date -Iseconds) DRAIN: no change for ${stall}s, giving up" >> "$LOG"; break; }
+            [ $((SECONDS - t0)) -ge "$maxs" ] && { echo "$(date -Iseconds) DRAIN: reached the ${maxs}s cap, giving up" >> "$LOG"; break; }
+            if [ $((SECONDS - t_report)) -ge "$report" ]; then
+                t_report=$SECONDS
+                echo "$(date -Iseconds) DRAIN: landed $((last - base)) of $QUEUED so far" >> "$LOG"
+            fi
+        done
+        landed=$((last - base)); [ "$landed" -gt "$QUEUED" ] && landed="$QUEUED"
+        echo "$(date -Iseconds) DRAIN: landed $landed of $QUEUED" >> "$LOG"
+    fi
+fi
+exit 0

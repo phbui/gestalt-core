@@ -30,19 +30,19 @@ GENERIC_EMAIL_LOCALS = {"noreply", "no-reply", "user", "you", "name", "someone"}
 
 # (label, regex). Order matters: specific token shapes first.
 REDACTIONS = [
-    ("private-key", re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----.*?(?:-----END [A-Z ]*PRIVATE KEY-----|\Z)", re.S)),
+    ("private-key", re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----.*?(?:-----END [A-Z ]*PRIVATE KEY-----|\Z)", re.DOTALL)),
     ("token", re.compile(r"\b(?:sk-ant-[A-Za-z0-9_-]{10,}|sk-[A-Za-z0-9_-]{20,}|gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}"
                          r"|xox[abprs]-[A-Za-z0-9-]{10,}|AKIA[0-9A-Z]{16}|AIza[0-9A-Za-z_-]{30,}|hf_[A-Za-z0-9]{20,}|glpat-[A-Za-z0-9_-]{15,}"
                          r"|eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,})")),
     ("bearer", re.compile(r"(?i)\b(Bearer|Basic)\s+[A-Za-z0-9._~+/=-]{16,}")),
     ("ntfy-topic", re.compile(r"(?i)(ntfy\.sh/|NTFY_TOPIC\s*[=:]\s*[\"']?)[A-Za-z0-9_-]{6,}")),
     ("tailnet-host", re.compile(r"\b[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.ts\.net\b")),
-    ("tailnet-ip", re.compile(r"\b100\.(?:6[4-9]|[7-9]\d|1[01]\d|12[0-7])\.\d{1,3}\.\d{1,3}\b|\bfd7a:115c:a1e0:[0-9a-f:]+", re.I)),
+    ("tailnet-ip", re.compile(r"\b100\.(?:6[4-9]|[7-9]\d|1[01]\d|12[0-7])\.\d{1,3}\.\d{1,3}\b|\bfd7a:115c:a1e0:[0-9a-f:]+", re.IGNORECASE)),
     ("secret-assignment", re.compile(r"(?i)\b([A-Z0-9_]*(?:TOKEN|SECRET|PASSWORD|PASSWD|API_?KEY|PRIVATE_?KEY|CREDENTIAL)[A-Z0-9_]*)\s*([=:])\s*[\"']?[^\s\"'`,;]{6,}")),
     ("email", re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+\b")),
     ("long-secret", re.compile(r"\b(?=[A-Za-z0-9_-]*\d)(?=[A-Za-z0-9_-]*[A-Za-z])[A-Za-z0-9_-]{40,}\b")),
 ]
-_SYSTEM_TAG = re.compile(r"<(system-reminder|local-command-stdout|local-command-caveat|command-name|command-message|command-args)>.*?</\1>", re.S)
+_SYSTEM_TAG = re.compile(r"<(system-reminder|local-command-stdout|local-command-caveat|command-name|command-message|command-args)>.*?</\1>", re.DOTALL)
 
 
 def redact(text: str) -> tuple[str, int]:

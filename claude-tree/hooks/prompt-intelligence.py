@@ -6,6 +6,7 @@ Uses RRF to merge results, applies token budget, and outputs additionalContext J
 """
 from __future__ import annotations  # the laptop2 runs Python 3.9: `float | None` in a signature fails at import without this
 
+import os
 import sys
 import json
 import argparse
@@ -13,6 +14,7 @@ import asyncio
 import re
 import time
 import hashlib
+import struct
 from difflib import SequenceMatcher
 from pathlib import Path
 
@@ -228,7 +230,101 @@ async def retrieve_graphiti(
         return []
 
 
-def retrieve_gestalt_sync(prompt: str, gestalt_dir: str, limit: int) -> list[dict]:
+def hook_query(prompt: str, db=None) -> str:
+    """The text the hook sends to the FTS leg. GESTALT_HOOK_QUERY picks the shape (default full, so the measured numbers do not move).
+
+    full: the whole prompt. last: its last sentence, since a long prompt dilutes an OR query with every word it holds. idf: its six rarest tokens by document frequency in the index, stopwords dropped. A shape that finds nothing falls back to the whole prompt."""
+    shape = os.environ.get("GESTALT_HOOK_QUERY", "full").strip().lower()
+    if shape == "last":
+        sentences = [x.strip() for x in re.split(r"(?<=[.!?])\s+|\n+", prompt) if re.search(r"\w", x)]
+        return sentences[-1] if sentences else prompt
+    if shape == "idf" and db is not None:
+        try:
+            from gestalt_rank import idf_top_tokens  # type: ignore
+            return idf_top_tokens(db, prompt) or prompt
+        except Exception:
+            return prompt
+    return prompt
+
+
+SEMANTIC_DEFAULT_MS = 150
+_DAEMON_MOD = None
+
+
+def semantic_settings() -> tuple[bool, int]:
+    """(on, budget in ms) from GESTALT_HOOK_SEMANTIC (off or on, default off) and GESTALT_HOOK_SEMANTIC_MS (default 150). Anything else is the default."""
+    on = os.environ.get("GESTALT_HOOK_SEMANTIC", "off").strip().lower() == "on"
+    try:
+        ms = int(os.environ.get("GESTALT_HOOK_SEMANTIC_MS", "").strip() or SEMANTIC_DEFAULT_MS)
+    except ValueError:
+        ms = SEMANTIC_DEFAULT_MS
+    return on, (ms if ms > 0 else SEMANTIC_DEFAULT_MS)
+
+
+def _daemon_module(tools_dir: str):
+    """tools/gestalt-embed-daemon.py by path, since a hyphen cannot be imported by name. It holds the client and the framing."""
+    global _DAEMON_MOD
+    if _DAEMON_MOD is None:
+        import importlib.util
+
+        spec = importlib.util.spec_from_file_location("gestalt_embed_daemon", Path(tools_dir) / "gestalt-embed-daemon.py")
+        _DAEMON_MOD = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(_DAEMON_MOD)
+    return _DAEMON_MOD
+
+
+def _vec_extension_path() -> str:
+    """The sqlite-vec loadable extension. The hook runs under the system python3, which has no sqlite_vec package.
+
+    The gestalt venv's vec0 library is found by glob, so the 50 ms package import stays out of the budget. The package import is the fallback when the glob finds nothing."""
+    import glob
+
+    home = Path.home() / ".claude" / "gestalt" / "venv" / "lib"
+    for so in sorted(glob.glob(str(home / "python*" / "site-packages" / "sqlite_vec" / "vec0*.so"))):
+        return so
+    import sqlite_vec  # type: ignore
+    return sqlite_vec.loadable_path()
+
+
+def semantic_rows(prompt: str, impl, limit: int, state_dir: str, tools_dir: str, budget_ms: int):
+    """Hybrid rows for the prompt, or None when the dense leg cannot answer inside the budget.
+
+    The query vector comes from the resident embed daemon. A missing socket means a cold daemon: this prompt falls back and a start is requested for the next one. The dense leg and the fusion are gestalt_rank.hybrid_search, with the rerank off. Rows have the shape gestalt_search_fts returns."""
+    deadline = time.monotonic() + budget_ms / 1000.0
+    try:
+        daemon = _daemon_module(tools_dir)
+        query = hook_query(prompt)
+        try:
+            vec = daemon.encode([query], state_dir, deadline - time.monotonic())[0]
+        except (FileNotFoundError, ConnectionRefusedError):
+            daemon.spawn(state_dir)
+            return None
+        import sqlite3
+
+        import gestalt_rank  # type: ignore
+
+        vec_ext = _vec_extension_path()
+        db = sqlite3.connect(f"file:{impl.DB_PATH}?mode=ro", uri=True)
+        try:
+            db.row_factory = sqlite3.Row
+            db.enable_load_extension(True)
+            db.load_extension(vec_ext)
+            db.enable_load_extension(False)
+            if not db.execute("SELECT 1 FROM sqlite_master WHERE name = 'sections_vec'").fetchone() or not impl._vector_leg_ok(db):
+                return None
+            db.set_progress_handler(lambda: 1 if time.monotonic() > deadline else 0, 1000)  # an overrun query is cancelled
+            found = gestalt_rank.hybrid_search(db, query, limit, embed_query=lambda q: struct.pack(f"{len(vec)}f", *vec), mode="hybrid", rerank=False, full=True)
+            keys = found.rows[0].keys() if found.rows else ()
+            rows = [{"slug": m["slug"], "heading": m["heading"], "block_id": m["block_id"], "file_path": m["file_path"],
+                     "sensitivity": m["sensitivity"] if "sensitivity" in keys else None} for m in found.rows]
+        finally:
+            db.close()
+        return impl._filter_restricted(rows, False)
+    except Exception:
+        return None
+
+
+def retrieve_gestalt_sync(prompt: str, gestalt_dir: str, limit: int, state_dir: str | None = None) -> list[dict]:
     """Query the lexical (FTS5/BM25) index. Synchronous, and must stay that way.
 
     Uses gestalt_search_fts, not gestalt_search: the hybrid path loads an embedding
@@ -241,10 +337,27 @@ def retrieve_gestalt_sync(prompt: str, gestalt_dir: str, limit: int) -> list[dic
     tools_dir = str(Path(gestalt_dir) / "tools")
     if tools_dir not in sys.path:
         sys.path.insert(0, tools_dir)
+    os.environ["GESTALT_HIT_SRC"] = "hook"  # the server stamps src on every hit row, so replay can tell a hook search from a model search
     try:
         from gestalt_mcp_server import gestalt_search_fts  # type: ignore
 
-        results = gestalt_search_fts(prompt, limit=limit)
+        results = None
+        semantic_on, budget_ms = semantic_settings()
+        if semantic_on and state_dir:
+            results = semantic_rows(prompt, sys.modules["_gestalt_mcp_server_impl"], limit, str(state_dir), tools_dir, budget_ms)
+        if results is None:  # knob off, or the dense leg could not answer in time: the lexical path, unchanged
+            query, db = prompt, None
+            if os.environ.get("GESTALT_HOOK_QUERY", "full").strip().lower() == "idf":
+                try:
+                    db = sys.modules["_gestalt_mcp_server_impl"].get_fts_db()
+                except Exception:
+                    db = None
+            try:
+                query = hook_query(prompt, db)
+            finally:
+                if db is not None:
+                    db.close()
+            results = gestalt_search_fts(query, limit=limit)
     except Exception:
         return []
 
@@ -555,7 +668,7 @@ def main():
 
     # Synchronous, outside the event loop, so its cost is bounded by its own speed.
     results["gestalt"] = retrieve_gestalt_sync(
-        prompt_text, args.gestalt_dir, args.search_limit
+        prompt_text, args.gestalt_dir, args.search_limit, args.state_dir
     )
     _SOURCE_STATUS["gestalt"] = True
 

@@ -76,7 +76,7 @@ def fixture_repo(tmp_path):
 
 
 def _rebuild(root: Path) -> subprocess.CompletedProcess:
-    env = {"GESTALT_DIR": str(root), "HOME": str(Path.home()), "PATH": __import__("os").environ.get("PATH", "")}
+    env = {"GESTALT_DIR": str(root), "HOME": str(root / ".home"), "PATH": __import__("os").environ.get("PATH", "")}
     return subprocess.run(
         ["bash", str(GESTALT_BIN), "rebuild"],
         capture_output=True,

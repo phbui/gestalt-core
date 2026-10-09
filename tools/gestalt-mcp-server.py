@@ -17,29 +17,42 @@ Usage:
   python3 gestalt-mcp-server.py --http 8100  # HTTP (Cursor)
 """
 
+import collections
+import contextvars
 import json
-import re
 import os
+import re
 import sqlite3
+import sys
 import threading
 import time
-import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))  # sibling import works under any cwd or loader
 try:
     import gestalt_embed_config as _ec
 except ImportError:  # a lone copy of this file (a test fixture, a stale install): behave as before X14, unpinned
-    class _ec:  # noqa: N801
+    class _ec:
         MODEL_NAME = "nomic-ai/nomic-embed-text-v1.5"
         MODEL_REVISION = None
         EMBED_DIM = 768
         DOC_PREFIX = "search_document: "
         QUERY_PREFIX = "search_query: "
 
+import gestalt_rank
+
+gestalt_rank.LOG_PREFIX = "gestalt-mcp"  # the shared module's stderr lines carry this server's name
+
+# Names that gestalt_embed_config.py grows for the embedding profiles. A config without them gives today's values.
+EMBED_DEVICE = getattr(_ec, "EMBED_DEVICE", "cpu")
+TRUST_REMOTE_CODE = getattr(_ec, "TRUST_REMOTE_CODE", True)
+MODEL_KWARGS = getattr(_ec, "MODEL_KWARGS", None) or {}
+TOKENIZER_KWARGS = getattr(_ec, "TOKENIZER_KWARGS", None) or {}
+
 GESTALT_DIR = Path(__file__).resolve().parent.parent
 KNOWLEDGE_DIR = GESTALT_DIR / "knowledge"
-DB_PATH = GESTALT_DIR / ".search" / "gestalt.db"
+# GESTALT_SEARCH_DIR points the server at a side index. resolve_db_path is the config module's rule for it.
+DB_PATH = getattr(_ec, "resolve_db_path", lambda default: default)(GESTALT_DIR / ".search" / "gestalt.db")
 MODEL_NAME = _ec.MODEL_NAME
 
 # Lazy imports
@@ -60,37 +73,17 @@ _sqlite_vec = None
 #       reloads it (~2.5 s warm on this box). 0 disables unloading.
 # The shared per-node HTTP mode (`--http PORT [--host 127.0.0.1]`, unit tools/fleet/units/
 # gestalt-mcp.service) is the structural fix: one process, one model, every seat.
-_model_lock = None
+_model_lock = threading.Lock()
 _model_last_used = 0.0
 _model_timer = None
 
 
-# RRF constant; evals/retrieval/run_retrieval_evals.py pins the same value as K_RRF
-K = 60
+# RRF constant, defined once in gestalt_rank
+K = gestalt_rank.RRF_K
 # legs gestalt_search fuses (body lexical, dense vector); tests derive the score ceiling N_LEGS/(K+1) from this
 N_LEGS = 2
 
-
-def _rrf_fuse(legs: list[list], k: int = K) -> dict:
-    # Reciprocal Rank Fusion over the given ranked legs. K is hardcoded, never a
-    # threshold compared against a stale ceiling — that is exactly how four
-    # unreachable relevance gates shipped (see ^rrf-thresholds). The achievable
-    # ceiling is len(legs)/(K+1), derived from the legs, never stored.
-    scores: dict = {}
-    for leg in legs:
-        for rank, key in enumerate(leg):
-            scores[key] = scores.get(key, 0.0) + 1.0 / (k + rank + 1)
-    return scores
-
-
-def _hub_name() -> str:
-    hub = os.environ.get("FLEET_HUB_NAME") or (os.environ.get("FLEET_HUB", "").split(".")[0]) or "hub"
-    return hub.lower()
-
-
-def _is_hub() -> bool:
-    import socket
-    return socket.gethostname().split(".")[0].lower() == _hub_name()
+_is_hub = gestalt_rank.is_hub
 
 
 def search_mode() -> str:
@@ -193,18 +186,21 @@ def _release_model_memory() -> None:
 
 
 def unload_model(force: bool = False) -> bool:
-    """Drop the embedding model if idle (or forced). Returns True when something was released."""
+    """Drop the embedding model and the reranker if idle (or forced). Returns True when something was released."""
     global _model, _model_timer
     idle = _model_idle_s()
-    if _model is None:
-        return False
-    if not force and (idle <= 0 or time.monotonic() - _model_last_used < idle):
-        return False
-    _model = None
-    _model_timer = None
-    _release_model_memory()
-    print("gestalt-mcp: embedding model unloaded after idle", file=sys.stderr)
-    return True
+    released = False
+    with _model_lock:
+        if _model is not None and (force or (idle > 0 and time.monotonic() - _model_last_used >= idle)):
+            _model = None
+            _model_timer = None
+            print("gestalt-mcp: embedding model unloaded after idle", file=sys.stderr)
+            released = True
+    if gestalt_rank.unload_reranker(idle_s=idle, force=force):
+        released = True
+    if released:
+        _release_model_memory()
+    return released
 
 
 def _arm_unload_timer() -> None:
@@ -221,16 +217,31 @@ def _arm_unload_timer() -> None:
 
 
 def get_model():
-    global _model, _model_lock, _model_last_used
-    if _model_lock is None:
-        _model_lock = threading.Lock()
+    global _model, _model_last_used
     with _model_lock:
         if _model is None:
             from sentence_transformers import SentenceTransformer
-            _model = SentenceTransformer(MODEL_NAME, revision=_ec.MODEL_REVISION, trust_remote_code=True, device="cpu")
+            kw = {}
+            if MODEL_KWARGS:
+                kw["model_kwargs"] = MODEL_KWARGS
+            if TOKENIZER_KWARGS:
+                kw["tokenizer_kwargs"] = TOKENIZER_KWARGS
+            print(f"gestalt-mcp: Loading model: {MODEL_NAME} (profile={getattr(_ec, 'PROFILE', 'nomic')} dim={_ec.EMBED_DIM} device={EMBED_DEVICE})", file=sys.stderr)
+            watchdog = gestalt_rank.load_watchdog("embedding model")  # logs once if the load holds the lock past 120 s
+            try:
+                _model = SentenceTransformer(MODEL_NAME, revision=_ec.MODEL_REVISION, trust_remote_code=TRUST_REMOTE_CODE, device=EMBED_DEVICE, **kw)
+            finally:
+                watchdog.cancel()
         _model_last_used = time.monotonic()
         _arm_unload_timer()
-    return _model
+        return _model  # the local read happens under the lock, so a concurrent unload cannot hand back None
+
+
+def _embed_query(model, text: str):
+    """Query vector: the profile's prefix, then the profile's post-processing (truncate and renormalise for a Matryoshka dim)."""
+    vec = model.encode(_ec.QUERY_PREFIX + text)
+    post = getattr(_ec, "postprocess", None)
+    return post(vec) if post else vec
 
 
 def get_sqlite_vec():
@@ -263,7 +274,11 @@ def _vector_leg_ok(db) -> bool:
         "doc_prefix": _ec.DOC_PREFIX,
         "query_prefix": _ec.QUERY_PREFIX,
     }
-    if not meta:  # an FTS-only build writes the table empty
+    # Keys the builder writes once the profile and title work lands. The check below skips a key the stored meta lacks.
+    for key, attr in (("text_format", "TEXT_FORMAT"), ("embed_profile", "PROFILE")):
+        if getattr(_ec, attr, None) is not None:
+            want[key] = str(getattr(_ec, attr))
+    if not meta:  # an index with no index_meta rows carries no claim
         return True
     bad = {k: (meta.get(k), v) for k, v in want.items() if k in meta and meta[k] != v}
     if not bad:
@@ -366,19 +381,6 @@ def get_db():
     return db
 
 
-def fts_tokens(query: str) -> str | None:
-    """Build a safe FTS5 MATCH expression: per-token OR, never a phrase query.
-
-    Quoting the whole string makes it a *phrase* query, so a multi-word
-    natural-language search would require that exact contiguous run of words and
-    match nothing. Per-token quoting still escapes FTS5 operators (AND/OR/NEAR/*/^).
-    Returns None when the query holds no word characters, since an empty MATCH is
-    a syntax error.
-    """
-    tokens = [t for t in re.split(r"\W+", query) if t]
-    return " OR ".join('"' + t + '"' for t in tokens) if tokens else None
-
-
 def get_fts_db():
     """Read-only connection for the FTS5-only path.
 
@@ -418,7 +420,90 @@ def _norm_terms(text: str) -> list[str]:
     return [t for t in re.split(r"\W+", (text or "").lower()) if t]
 
 
-def _annotate_results(results: list[dict], query: str) -> list[dict]:
+# --- Retrieval-hit sidecar and click feedback (spec 6, 2026-10-08) -------------------------------
+# One JSONL file per node holds two row kinds. A search row says what came back for a query. A read row says which entry
+# was opened next, and which recent search that open followed. Replay uses the pair to compute a read rate.
+_RECENT_SEARCHES: collections.deque = collections.deque(maxlen=20)  # (ts, query, slugs, sid), newest last
+READ_WINDOW_S = 600
+
+
+def _sid() -> str:
+    """Session id for the hit log. Claude Code exports CLAUDE_CODE_SESSION_ID to the processes it starts. A shared hub server falls back to its pid."""
+    return os.environ.get("CLAUDE_CODE_SESSION_ID") or f"p{os.getpid()}"
+
+
+def _hits_path() -> Path | None:
+    hits_path = os.environ.get("GESTALT_HITS_LOG")
+    if hits_path is not None and hits_path.strip().lower() in ("", "0", "off", "disabled"):
+        return None  # set to off or to empty: no hit-log write of any kind
+    hits_path = hits_path or ""
+    return Path(hits_path) if hits_path else Path.home() / ".claude" / "gestalt" / "retrieval-hits.jsonl"
+
+
+HITS_MAX_BYTES = 5 * 1024 * 1024  # the hit log rotates to <name>.1 at this size
+
+
+def _log_dedup(decay, st: dict) -> None:
+    """The one dedup stderr line, shared by the FTS-only path and the hybrid path."""
+    print(f"gestalt-mcp: dedup decay={decay} pool={st['pool']} slugs_distinct={st['slugs_distinct']} demoted={st['demoted']}", file=sys.stderr)
+
+
+def _write_hit_row(row: dict) -> None:
+    try:
+        path = _hits_path()
+        if path is None:
+            return
+        path.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            if path.stat().st_size >= HITS_MAX_BYTES:
+                os.replace(path, path.with_name(path.name + ".1"))  # one old generation, the oldest rows are dropped
+        except FileNotFoundError:
+            pass
+        fd = os.open(path, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o600)  # raw query text, so owner-only
+        with os.fdopen(fd, "a") as f:
+            f.write(json.dumps(row) + "\n")
+    except Exception:
+        pass  # fail-open: a hit log must never break search or read
+
+
+_INCLUDE_RESTRICTED = contextvars.ContextVar("gestalt_include_restricted", default=False)  # set by the public search tools for the call in flight
+
+
+def _loggable_slugs(rows: list) -> list[str]:
+    """Distinct slugs of rows that may reach the hit log. A restricted row and a withheld notice are left out unless the caller asked for restricted entries."""
+    allow = _INCLUDE_RESTRICTED.get()
+    out = []
+    for r in rows:
+        if not isinstance(r, dict) or not r.get("slug") or r.get("error"):
+            continue
+        if not allow and (r.get("withheld") or (r.get("sensitivity") or _file_sensitivity(r.get("file_path") or "")) == "restricted"):
+            continue
+        out.append(r["slug"])
+    return list(dict.fromkeys(out))
+
+
+def _remember_search(query: str, slugs: list) -> None:
+    if slugs:
+        _RECENT_SEARCHES.append((time.time(), query[:200], list(slugs), _sid()))
+
+
+def _preceding_query(slug: str) -> str | None:
+    """The query of the most recent search by this session whose results held the slug, if it ran within READ_WINDOW_S.
+
+    The deque is process-wide, so a search from another session is skipped when both sides carry a session id. On the shared hub every caller has the same pid id, so the filter cannot tell them apart there. The slug test is the second guard. A failure here returns None, because a read must never fail on the log."""
+    try:
+        now, sid = time.time(), _sid()
+        for ts, q, slugs, row_sid in reversed(list(_RECENT_SEARCHES)):  # a copy: another thread may append while this runs
+            if row_sid and sid and row_sid != sid:
+                continue
+            if slug in slugs and 0 <= now - ts <= READ_WINDOW_S:
+                return q
+    except Exception:
+        pass
+    return None
+
+
+def _annotate_results(results: list[dict], query: str, rr: str | None = None) -> list[dict]:
     """Stamp each result with `evidence` (why it matched) and `create_safety`
     (exists|probable|unknown) so a caller deciding "does an entry for this already
     exist?" has a labeled reason instead of a raw score. Match-TYPE only — never a
@@ -427,7 +512,8 @@ def _annotate_results(results: list[dict], query: str) -> list[dict]:
     gbrain's duplicate-stub incident, knowledge/gbrain.md ^maxpool-incident).
     Also appends slugs to the local retrieval-hit sidecar (knowledge/gbrain.md
     ^transfer-list item 10, scoped: per-node JSONL, no fleet aggregation yet —
-    NEVER written into .search/, which is a published fleet artifact)."""
+    NEVER written into .search/, which is a published fleet artifact).
+    `rr` is the reranker alias that ordered these results, or None."""
     q_terms = _norm_terms(query)
     q_join = "-".join(q_terms)
     for r in results:
@@ -446,14 +532,11 @@ def _annotate_results(results: list[dict], query: str) -> list[dict]:
         else:
             r["evidence"], r["create_safety"] = "body-fts", "unknown"
     try:
-        hits_path = os.environ.get("GESTALT_HITS_LOG", "")
-        if hits_path.lower() not in ("0", "off", "disabled"):
-            path = Path(hits_path) if hits_path else Path.home() / ".claude" / "gestalt" / "retrieval-hits.jsonl"
-            path.parent.mkdir(parents=True, exist_ok=True)
-            slugs = list(dict.fromkeys(r["slug"] for r in results if r.get("slug")))
-            if slugs:
-                with path.open("a") as f:
-                    f.write(json.dumps({"ts": int(time.time()), "q": query[:200], "slugs": slugs}) + "\n")
+        slugs = _loggable_slugs(results)
+        _remember_search(query, slugs)
+        if slugs:
+            _write_hit_row({"ts": int(time.time()), "q": query[:200], "slugs": slugs, "sid": _sid(), "kind": "search",
+                            "src": os.environ.get("GESTALT_HIT_SRC", "mcp"), "rr": rr})
     except Exception:
         pass  # fail-open: a hit log must never break search
     return results
@@ -536,10 +619,11 @@ def _gestalt_search_fts_raw(query: str, limit: int = 10) -> list[dict]:
     if not DB_PATH.exists():
         return []
 
-    fts_query = fts_tokens(query)
+    fts_query = gestalt_rank.fts_match(query)
     if fts_query is None:
         return []
 
+    decay = gestalt_rank.slug_decay()
     db = get_fts_db()
     try:
         sens_col = "m.sensitivity" if _has_sensitivity_col(db) else "NULL"
@@ -548,12 +632,18 @@ def _gestalt_search_fts_raw(query: str, limit: int = 10) -> list[dict]:
             "bm25(sections_fts) AS bm25 "
             "FROM sections_fts f JOIN sections_meta m ON m.id = f.rowid "
             "WHERE sections_fts MATCH ? ORDER BY rank LIMIT ?",
-            (fts_query, limit),
+            (fts_query, limit * 3 if decay < 1.0 else limit),
         ).fetchall()
     except Exception:
         return []
     finally:
         db.close()
+
+    if decay < 1.0:  # fetched limit * 3 so a repeated slug has distinct neighbours to give way to
+        picked = gestalt_rank.slug_decay_select(rows, limit, decay)
+        st = gestalt_rank.decay_stats(rows, picked, limit)
+        _log_dedup(decay, st)
+        rows = picked
 
     return _annotate_results([
         {
@@ -594,7 +684,7 @@ def _route_dense_leg(request: str) -> list[int]:
         db.close()
         return []
     try:
-        emb = model.encode(_ec.QUERY_PREFIX + request)
+        emb = _embed_query(model, request)
         return [
             r["id"]
             for r in db.execute(
@@ -609,6 +699,46 @@ def _route_dense_leg(request: str) -> list[int]:
         return []
     finally:
         db.close()
+
+
+def _route_lexical_legs(db, fts_query: str):
+    """Run the two lexical routing legs and load the skill metadata.
+
+    Returns `(desc_leg, body_leg, meta, id_to_name)`. Raises when the skills tables are absent.
+    """
+    # Two legs, each its own ranking: the curated one-line description, and the
+    # full body. No name leg (it hurt, see the docstring) and no cross-column
+    # weights (incommensurable scales).
+    def _leg(weights: str) -> list[str]:
+        return [
+            r["name"]
+            for r in db.execute(
+                "SELECT s.name FROM skills_fts f JOIN skills_meta s ON s.id = f.rowid "
+                f"WHERE skills_fts MATCH ? ORDER BY bm25(skills_fts, {weights})",
+                (fts_query,),
+            ).fetchall()
+        ]
+
+    desc_leg = _leg("0.0, 1.0, 0.0")
+    body_leg = _leg("0.0, 0.0, 1.0")
+    rows = db.execute("SELECT id, name, description, lines FROM skills_meta").fetchall()
+    meta = {r["name"]: r for r in rows}
+    id_to_name = {r["id"]: r["name"] for r in rows}
+    return desc_leg, body_leg, meta, id_to_name
+
+
+def _route_format(scores: dict, meta: dict, limit: int) -> list[dict]:
+    """Order fused skill scores and shape the result rows."""
+    ordered = sorted(scores, key=lambda n: -scores[n])[:limit]
+    return [
+        {
+            "skill": n,
+            "description": meta[n]["description"] if n in meta else "",
+            "lines": meta[n]["lines"] if n in meta else 0,
+            "rrf": round(scores[n], 4),
+        }
+        for n in ordered
+    ]
 
 
 def gestalt_route(request: str, limit: int = 5, semantic: bool | None = None) -> list[dict]:
@@ -673,7 +803,7 @@ def gestalt_route(request: str, limit: int = 5, semantic: bool | None = None) ->
     """
     if not DB_PATH.exists():
         return []
-    fts_query = fts_tokens(request)
+    fts_query = gestalt_rank.fts_match(request, stopwords=False)  # routing keeps its measured query: the stopword knob is for gestalt_search
     if fts_query is None:
         return []
 
@@ -683,24 +813,7 @@ def gestalt_route(request: str, limit: int = 5, semantic: bool | None = None) ->
 
     db = get_fts_db()
     try:
-        # Two legs, each its own ranking: the curated one-line description, and the
-        # full body. No name leg (it hurt, see the docstring) and no cross-column
-        # weights (incommensurable scales).
-        def _leg(weights: str) -> list[str]:
-            return [
-                r["name"]
-                for r in db.execute(
-                    "SELECT s.name FROM skills_fts f JOIN skills_meta s ON s.id = f.rowid "
-                    f"WHERE skills_fts MATCH ? ORDER BY bm25(skills_fts, {weights})",
-                    (fts_query,),
-                ).fetchall()
-            ]
-
-        desc_leg = _leg("0.0, 1.0, 0.0")
-        body_leg = _leg("0.0, 0.0, 1.0")
-        rows = db.execute("SELECT id, name, description, lines FROM skills_meta").fetchall()
-        meta = {r["name"]: r for r in rows}
-        id_to_name = {r["id"]: r["name"] for r in rows}
+        desc_leg, body_leg, meta, id_to_name = _route_lexical_legs(db, fts_query)
     except Exception:
         # No skills_fts table yet (index predates skill routing). Silence is correct
         # here only because the caller has a documented fallback.
@@ -711,18 +824,8 @@ def gestalt_route(request: str, limit: int = 5, semantic: bool | None = None) ->
     legs: list[list[str]] = [desc_leg, body_leg]
     if dense_leg:
         legs.append([id_to_name[i] for i in dense_leg if i in id_to_name])
-    scores = _rrf_fuse(legs)
-
-    ordered = sorted(scores, key=lambda n: -scores[n])[:limit]
-    return [
-        {
-            "skill": n,
-            "description": meta[n]["description"] if n in meta else "",
-            "lines": meta[n]["lines"] if n in meta else 0,
-            "rrf": round(scores[n], 4),
-        }
-        for n in ordered
-    ]
+    scores = gestalt_rank.rrf_fuse(legs)
+    return _route_format(scores, meta, limit)
 
 
 def gestalt_search_fts(query: str, limit: int = 10, include_restricted: bool = False) -> list[dict]:
@@ -731,7 +834,118 @@ def gestalt_search_fts(query: str, limit: int = 10, include_restricted: bool = F
     For latency-bound callers such as per-prompt hooks. `bm25` is FTS5's relevance score (negative;
     more negative = better). Do not gate on it with a fixed threshold: see _gestalt_search_fts_raw.
     A restricted entry is withheld and reported as a notice row unless include_restricted=true."""
-    return _filter_restricted(_gestalt_search_fts_raw(query, limit), include_restricted)
+    tok = _INCLUDE_RESTRICTED.set(bool(include_restricted))
+    try:
+        rows = _gestalt_search_fts_raw(query, limit)
+    finally:
+        _INCLUDE_RESTRICTED.reset(tok)
+    return _filter_restricted(rows, include_restricted)
+
+
+def _rerank_alias_for_search() -> str | None:
+    """The reranker alias for this search, or None when the rerank is off.
+
+    The rule lives in gestalt_rank.rerank_for, and the eval runner calls the same one. A leaf resolves auto to off without importing torch, and a leaf's semantic search reaches the hub's reranked results through the relay."""
+    return gestalt_rank.rerank_for(_is_hub())
+
+
+def _try_hub_relay(query: str, limit: int):
+    """Relay the semantic leg to the hub. Returns its rows, or `None` to fall through to the local path."""
+    # Leaf nodes relay the semantic leg to the hub's server (<kb-entry>): the hub
+    # holds the fleet's only vector index and only resident model, so a laptop never loads 750 MB of
+    # weights to embed one query. Falls through to the local path, then FTS, when the hub is unreachable.
+    if _hub_mcp_url() and not _hub_looks_down():
+        try:
+            rows = _hub_search(query, limit)
+            _remember_search(query, _loggable_slugs(rows))  # the hub logged the search, this process still needs it to link a later read
+            return rows
+        except Exception as e:
+            print(f"gestalt-mcp: hub relay failed ({type(e).__name__}: {str(e)[:120]}) — trying local hybrid, then FTS", file=sys.stderr)
+    return None
+
+
+def _open_local_hybrid(query: str, limit: int):
+    """Open the index and load the model for a local hybrid search.
+
+    Returns `(db, model, None)` on success. Returns `(None, None, rows)` with FTS rows when the hybrid leg is unavailable.
+    """
+    try:
+        db = get_db()      # cheap import check first — never load the model if sqlite-vec is missing
+        has_vec = db.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='sections_vec'"
+        ).fetchone() is not None
+        if not has_vec:
+            # FTS-only index on this node (built without the embedding leg, or fetched from a
+            # node that built it that way): loading the model would cost ~750 MB and then fail on
+            # the missing vec table — measured on the laptop 2026-08-18. Fall back before loading.
+            print("gestalt-mcp: index has no sections_vec (FTS-only build) — hybrid search unavailable, using FTS", file=sys.stderr)
+            db.close()
+            return None, None, gestalt_search_fts(query, limit)
+        if not _vector_leg_ok(db):
+            db.close()
+            return None, None, gestalt_search_fts(query, limit)
+        model = get_model()
+    except ImportError as e:
+        print(
+            f"Missing dependency: {e.name or e} — install: pip install sqlite-vec "
+            "sentence-transformers — continuing FTS-only (vector search disabled).",
+            file=sys.stderr,
+        )
+        # get_db() itself can be what raised, leaving db unbound — hence the guard.
+        try:
+            db.close()
+        except Exception:
+            pass
+        return None, None, gestalt_search_fts(query, limit)
+    return db, model, None
+
+
+def _search_row(meta, found, query: str) -> dict:
+    """Shape one ranked section into a result row."""
+    row = {
+        "slug": meta["slug"],
+        "heading": meta["heading"],
+        "block_id": meta["block_id"],
+        "content": gestalt_rank.freshness_prefix(found, meta["id"]) + _match_snippet(meta["content"], query),
+        "file_path": meta["file_path"],
+        "sensitivity": meta["sensitivity"] if "sensitivity" in meta.keys() else None,
+        "score": round(found.fused_scores[meta["id"]], 4),
+    }
+    if meta["id"] in found.rerank_scores:
+        row["rerank_score"] = round(found.rerank_scores[meta["id"]], 4)
+    if "expanded_from" in meta.keys():
+        row["expanded_from"] = meta["expanded_from"]
+    if found.confidence is not None:
+        row["confidence"] = round(found.confidence, 4)
+        row["abstain"] = found.abstain
+    return row
+
+
+def _rank_local(db, model, query: str, limit: int) -> list[dict]:
+    """Rank with the local model and format the rows. The caller closes `db`."""
+    # The ranking path (FTS leg, dense leg, fusion, rerank, dedup) is gestalt_rank.hybrid_search, which the eval runner calls too.
+    # Notes on choices inside it. The FTS query quotes each token and ORs them, because quoting the whole string makes a phrase
+    # query that matched nothing for natural-language searches. Appending the full query as an extra phrase clause changed no
+    # metric on evals/retrieval/golden.yaml (2026-08-10), so it is not there. Two legs fuse, body-lexical and dense. There is no
+    # heading leg, because a bm25 column weight on fields of incommensurable length means nothing predictable (^bm25-thresholds, ^skill-routing).
+    # The query prefix required by the embedding profile is added in _embed_query and must match DOC_PREFIX at index time.
+    rr_alias = _rerank_alias_for_search()
+    found = gestalt_rank.hybrid_search(db, query, limit, embed_query=lambda q: _embed_query(model, q),
+                                       rerank=rr_alias is not None, rerank_alias=rr_alias, full=True)
+    if found.fusion == "convex":
+        print(f"gestalt-mcp: fusion=convex alpha={found.alpha} pool={found.pool}", file=sys.stderr)
+    rr_used = None
+    if found.rerank is not None:
+        print(f"gestalt-mcp: {gestalt_rank.rerank_log_line(found.rerank)}", file=sys.stderr)
+        _arm_unload_timer()
+        if found.rerank_scores:
+            rr_used = found.rerank["model"]
+    if found.decay is not None:
+        st = found.decay
+        _log_dedup(gestalt_rank.slug_decay(), st)
+
+    results = [_search_row(meta, found, query) for meta in found.rows]
+    return _annotate_results(results, query, rr=rr_used)
 
 
 def _gestalt_search_raw(query: str, limit: int = 10, semantic: bool | None = None) -> list[dict]:
@@ -763,125 +977,21 @@ def _gestalt_search_raw(query: str, limit: int = 10, semantic: bool | None = Non
     mode_fts = (search_mode() == "fts") if semantic is None else (not semantic)
     if mode_fts:
         return gestalt_search_fts(query, limit)  # public name: the FTS leg already withholds restricted rows
-    # Leaf nodes relay the semantic leg to the hub's server (<kb-entry>): the hub
-    # holds the fleet's only vector index and only resident model, so a laptop never loads 750 MB of
-    # weights to embed one query. Falls through to the local path, then FTS, when the hub is unreachable.
-    if _hub_mcp_url() and not _hub_looks_down():
-        try:
-            return _hub_search(query, limit)
-        except Exception as e:
-            print(f"gestalt-mcp: hub relay failed ({type(e).__name__}: {str(e)[:120]}) — trying local hybrid, then FTS", file=sys.stderr)
+    relayed = _try_hub_relay(query, limit)
+    if relayed is not None:
+        return relayed
     if not _leaf_may_load_model():
         print("gestalt-mcp: leaf node keeps the embedding model unloaded (GESTALT_LEAF_LOCAL_MODEL=1 overrides) — using FTS", file=sys.stderr)
         return gestalt_search_fts(query, limit)
-    try:
-        db = get_db()      # cheap import check first — never load the model if sqlite-vec is missing
-        has_vec = db.execute(
-            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='sections_vec'"
-        ).fetchone() is not None
-        if not has_vec:
-            # FTS-only index on this node (built without the embedding leg, or fetched from a
-            # node that built it that way): loading the model would cost ~750 MB and then fail on
-            # the missing vec table — measured on the laptop 2026-08-18. Fall back before loading.
-            print("gestalt-mcp: index has no sections_vec (FTS-only build) — hybrid search unavailable, using FTS", file=sys.stderr)
-            db.close()
-            return gestalt_search_fts(query, limit)
-        if not _vector_leg_ok(db):
-            db.close()
-            return gestalt_search_fts(query, limit)
-        model = get_model()
-    except ImportError as e:
-        print(
-            f"Missing dependency: {e.name or e} — install: pip install sqlite-vec "
-            "sentence-transformers — continuing FTS-only (vector search disabled).",
-            file=sys.stderr,
-        )
-        # get_db() itself can be what raised, leaving db unbound — hence the guard.
-        try:
-            db.close()
-        except Exception:
-            pass
-        return gestalt_search_fts(query, limit)
+    db, model, fallback = _open_local_hybrid(query, limit)
+    if fallback is not None:
+        return fallback
 
     try:
-        # Sanitize FTS5 query. Quote each token separately and OR them,
-        # rather than quoting the whole string: wrapping the entire query in
-        # one pair of quotes makes it a PHRASE query, so any multi-word
-        # natural-language search required that exact contiguous phrase and
-        # therefore returned no BM25 rows at all. Losing the BM25 leg left
-        # RRF ranking on dense vectors alone. Per-token quoting still escapes
-        # FTS5 operators (AND/OR/NEAR/*/^) safely.
-        tokens = [t for t in re.split(r"\W+", query) if t]
-        # A query of only punctuation leaves no tokens; an empty MATCH is a
-        # syntax error, so skip the BM25 leg and let the vector leg answer.
-        # Tried and rejected 2026-08-10: appending the full query as an extra
-        # OR'd phrase clause ('"a" OR "b" OR "a b"') to add a phrase-adjacency
-        # precision signal. Measured on evals/retrieval/golden.yaml it changed
-        # nothing at all — recall@1/3/5, MRR and block precision were byte-identical
-        # — because natural-language queries never appear contiguously in a chunk,
-        # so the extra clause never fires. Do not re-add without a query mix where
-        # exact phrases are actually expected.
-        fts_query = " OR ".join('"' + t + '"' for t in tokens) if tokens else None
-
-        # BM25 (FTS5)
-        fts_results = []
-        if fts_query:
-            try:
-                fts_results = db.execute(
-                    "SELECT rowid, slug, heading, block_id, content, rank AS score "
-                    "FROM sections_fts WHERE sections_fts MATCH ? ORDER BY rank LIMIT ?",
-                    (fts_query, limit * 2),
-                ).fetchall()
-            except Exception:
-                fts_results = []
-
-        # Dense vector (sqlite-vec) — k=? for SQLite <3.41 compat
-        # Asymmetric-retrieval prefix required by nomic-embed-text-v1.5;
-        # must match DOC_PREFIX used at index time in gestalt-index-builder.py.
-        query_emb = model.encode(_ec.QUERY_PREFIX + query)
-        vec_results = db.execute(
-            "SELECT id, distance FROM sections_vec "
-            "WHERE embedding MATCH ? AND k = ? ORDER BY distance",
-            (query_emb.tobytes(), limit * 2),
-        ).fetchall()
-
-        # Heading/anchor leg — section identity, separate from body content.
-        #
-        # Without it, "right document, wrong section" was the dominant failure:
-        # block precision measured 64.6% once the golden set covered sections that
-        # nothing had probed before. The heading IS already inside the embedded text,
-        # but as ~5 tokens in a ~2,000-char chunk it is diluted to nothing, and the
-        # FTS leg searches every column unweighted.
-        #
-        # A third RANKED leg rather than a column weight, for the reason established
-        # in ^bm25-thresholds and again in ^skill-routing: `heading` and `content`
-        # have incommensurable lengths, so a bm25 column weight on them means nothing
-        # predictable. RRF fuses by order and is indifferent to scale.
-        # Reciprocal Rank Fusion over two legs: body-lexical and dense-vector.
-        scores = _rrf_fuse([
-            [row["rowid"] for row in fts_results],
-            [row["id"] for row in vec_results],
-        ])
-
-        top_ids = sorted(scores, key=scores.get, reverse=True)[:limit]
-
-        results = []
-        for rid in top_ids:
-            meta = db.execute("SELECT * FROM sections_meta WHERE id = ?", (rid,)).fetchone()
-            if meta:
-                results.append({
-                    "slug": meta["slug"],
-                    "heading": meta["heading"],
-                    "block_id": meta["block_id"],
-                    "content": _match_snippet(meta["content"], query),
-                    "file_path": meta["file_path"],
-                    "sensitivity": meta["sensitivity"] if "sensitivity" in meta.keys() else None,
-                    "score": round(scores[rid], 4),
-                })
-
-        return _annotate_results(results, query)
+        return _rank_local(db, model, query, limit)
     finally:
         db.close()
+
 
 def gestalt_search(query: str, limit: int = 10, semantic: bool | None = None, include_restricted: bool = False) -> list[dict]:
     """Hybrid BM25 + semantic search over gestalt knowledge entries.
@@ -890,10 +1000,34 @@ def gestalt_search(query: str, limit: int = 10, semantic: bool | None = None, in
     `semantic`: True asks for the hybrid leg (a leaf relays it to the hub), False forces FTS, None keeps the node default.
     A restricted entry is withheld and reported as a notice row unless include_restricted=true.
     A hub relay never carries include_restricted: the hub answers with restricted entries withheld."""
-    rows = _gestalt_search_raw(query, limit, semantic)
-    if include_restricted and any(r.get("withheld") for r in rows):
-        rows = _gestalt_search_fts_raw(query, limit)  # the FTS fallback leg had withheld rows: redo it unfiltered
+    tok = _INCLUDE_RESTRICTED.set(bool(include_restricted))
+    try:
+        rows = _gestalt_search_raw(query, limit, semantic)
+        if include_restricted and any(r.get("withheld") for r in rows):
+            rows = _gestalt_search_fts_raw(query, limit)  # the FTS fallback leg had withheld rows: redo it unfiltered
+    finally:
+        _INCLUDE_RESTRICTED.reset(tok)
     return _filter_restricted(rows, include_restricted)
+
+
+def read_entry(slug: str, include_restricted: bool = False) -> str:
+    """The body of gestalt_read. A successful read of an entry also writes a read row to the hit sidecar.
+
+    The read row names the entry and the query of the most recent search that returned it, within READ_WINDOW_S. A withheld restricted read, a missing entry and an invalid slug write nothing."""
+    path = _knowledge_path(slug)
+    if path is None:
+        return f"Invalid slug {str(slug)[:80]!r}: use a bare entry name, for example '<kb-entry>'. Use gestalt_manifest() to list available entries."
+    if not path.exists():
+        # Try fuzzy match
+        matches = [p.stem for p in KNOWLEDGE_DIR.glob("*.md") if slug.lower() in p.stem.lower()]
+        if matches:
+            return f"Entry '{slug}' not found. Did you mean: {', '.join(matches[:5])}?"
+        return f"Entry '{slug}' not found. Use gestalt_manifest() to list available entries."
+    text = path.read_text(encoding="utf-8")
+    if not include_restricted and _frontmatter_sensitivity(text) == "restricted":
+        return _withheld_note(slug)
+    _write_hit_row({"ts": int(time.time()), "kind": "read", "slug": slug, "preceding_q": _preceding_query(slug), "sid": _sid()})
+    return text
 
 
 def _transport_security(host: str):
@@ -939,19 +1073,7 @@ def build_mcp(host: str = "127.0.0.1"):
         """Read a gestalt knowledge entry by slug. Returns full markdown content.
 
         A restricted entry (frontmatter sensitivity: restricted) is withheld unless include_restricted=true."""
-        path = _knowledge_path(slug)
-        if path is None:
-            return f"Invalid slug {str(slug)[:80]!r}: use a bare entry name, for example '<kb-entry>'. Use gestalt_manifest() to list available entries."
-        if not path.exists():
-            # Try fuzzy match
-            matches = [p.stem for p in KNOWLEDGE_DIR.glob("*.md") if slug.lower() in p.stem.lower()]
-            if matches:
-                return f"Entry '{slug}' not found. Did you mean: {', '.join(matches[:5])}?"
-            return f"Entry '{slug}' not found. Use gestalt_manifest() to list available entries."
-        text = path.read_text(encoding="utf-8")
-        if not include_restricted and _frontmatter_sensitivity(text) == "restricted":
-            return _withheld_note(slug)
-        return text
+        return read_entry(slug, include_restricted)
 
     @mcp.tool()
     def gestalt_manifest(query: str = "") -> str:
@@ -998,6 +1120,16 @@ if __name__ == "__main__":
         mcp.settings.host = host
         mcp.settings.port = port
         print(f"gestalt-mcp: streamable-http on {host}:{port}/mcp mode={search_mode()} idle={_model_idle_s()}s", file=sys.stderr)
+        if _rerank_alias_for_search():
+            # Load the embedding model and the reranker now, so the first search after a restart does not pay for both.
+            def _warm() -> None:
+                try:
+                    get_model()
+                    gestalt_rank.get_reranker(gestalt_rank.resolve_alias(gestalt_rank.rerank_alias()))
+                    print("gestalt-mcp: warm-up done (embedding model and reranker resident)", file=sys.stderr)
+                except Exception as e:
+                    print(f"gestalt-mcp: warm-up skipped ({type(e).__name__}: {str(e)[:120]})", file=sys.stderr)
+            threading.Thread(target=_warm, name="gestalt-warmup", daemon=True).start()
         mcp.run(transport="streamable-http")
     else:
         build_mcp().run()

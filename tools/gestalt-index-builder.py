@@ -12,14 +12,22 @@ Usage:
     python3 gestalt-index-builder.py --fts-only   # force lexical-only build (no embeddings)
     python3 gestalt-index-builder.py --stamp-only # stamp the existing db for HEAD, no rebuild
 
+Environment knobs (all optional, all read through tools/gestalt_embed_config.py unless noted):
+    GESTALT_EMBED_PROFILE=nomic|qwen3-4b   which embedding model to build with
+    GESTALT_EMBED_DIM=768|512|256|128|64   Matryoshka width for the nomic profile
+    GESTALT_EMBED_DEVICE=cuda              device for the model. Unset means auto: sentence-transformers picks the GPU when there is one.
+                                           A set value is used as given and also skips the check for a GPU that torch cannot see
+    GESTALT_SEARCH_DIR=/path               build into this directory instead of <repo>/.search
+    GESTALT_LATE_CHUNKING=1                embed whole documents and pool token vectors per chunk (this file only)
+
 Every successful build writes .search/gestalt.db.stamp = "<repo HEAD sha> <builder schema
 hash> <epoch>" next to the db, consumed by `fleet-sync index-publish`/`index-fetch`
 (gestalt/knowledge/<kb-entry>.md ^fleet-sync-decision) and index_stamp_matches().
 """
 
 import hashlib
-import re
 import os
+import re
 import sqlite3
 import sys
 import time
@@ -27,14 +35,34 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))  # sibling import works under any cwd or loader
 try:
+    import gestalt_freshness as _fresh
+except ImportError:  # a lone copy of this file: the freshness columns are created and left empty
+    _fresh = None
+try:
     import gestalt_embed_config as _ec
 except ImportError:  # a lone copy of this file (a test fixture, a stale install): behave as before X14, unpinned
-    class _ec:  # noqa: N801
+    class _ec:
+        PROFILE = "nomic"
         MODEL_NAME = "nomic-ai/nomic-embed-text-v1.5"
         MODEL_REVISION = None
-        EMBED_DIM = 768
+        EMBED_DIM = FULL_DIM = 768
         DOC_PREFIX = "search_document: "
         QUERY_PREFIX = "search_query: "
+        TRUST_REMOTE_CODE = True
+        MODEL_KWARGS: dict = {}
+        TOKENIZER_KWARGS: dict = {}
+        TEXT_FORMAT = "v2-title"
+        SEARCH_DIR = None
+
+        @staticmethod
+        def postprocess(vec):
+            return vec
+
+        @staticmethod
+        def chunk_text(slug, title, heading, content, prefix=None):
+            head = slug.replace("-", " ")
+            head = f"{title} ({head})" if title else head
+            return (_ec.DOC_PREFIX if prefix is None else prefix) + f"{head} — {heading}\n\n{content}"
 
 # Advisory build lock. fcntl is POSIX-only; on Windows msvcrt.locking provides
 # the same mutual exclusion over a byte range of the lock file.
@@ -87,7 +115,8 @@ KNOWLEDGE_DIR = GESTALT_DIR / "knowledge"
 # every chunk already carries file_path and every reader (CLI, MCP) already
 # selects it.
 RULES_DIR = GESTALT_DIR / ".claude" / "rules"
-SEARCH_DIR = GESTALT_DIR / ".search"
+# GESTALT_SEARCH_DIR builds a side index (for an A/B run) without touching the live one.
+SEARCH_DIR = _ec.SEARCH_DIR or GESTALT_DIR / ".search"
 DB_PATH = SEARCH_DIR / "gestalt.db"
 # Scratch target for a rebuild; swapped onto DB_PATH atomically when complete.
 BUILD_PATH = SEARCH_DIR / "gestalt.db.building"
@@ -193,6 +222,43 @@ def _vector_leg_missing() -> bool:
     return "sections_meta" in names and "sections_vec" not in names
 
 
+def _late_chunking_on() -> bool:
+    return os.environ.get("GESTALT_LATE_CHUNKING", "0").strip().lower() in ("1", "true", "on", "yes")
+
+
+def _index_meta_stale(expect_vectors: bool) -> bool:
+    """True when the stored index_meta says this index was built with another text format, profile, width or pooling.
+
+    A change to the embed text layout or the model changes every vector, and no file mtime moves when it happens.
+    An index whose sections_meta or sections_fts lacks the title column is stale, even with an empty index_meta.
+    An index with no index_meta table, or an empty one, carries no other claim, so it is left to the mtime rules.
+    The vector keys are compared only when vectors are expected, because an FTS-only build stores them too."""
+    try:
+        db = sqlite3.connect(str(DB_PATH))
+        try:
+            for table in ("sections_meta", "sections_fts"):
+                cols = [r[1] for r in db.execute(f"PRAGMA table_info({table})")]
+                if cols and "title" not in cols:
+                    return True
+            meta = dict(db.execute("SELECT key, value FROM index_meta").fetchall())
+        finally:
+            db.close()
+    except sqlite3.Error:
+        return False
+    if not meta:
+        return False
+    if meta.get("text_format") != _ec.TEXT_FORMAT:
+        return True
+    if not expect_vectors:
+        return False
+    if meta.get("embed_profile", _ec.PROFILE) != _ec.PROFILE or meta.get("embed_dim", str(_ec.EMBED_DIM)) != str(_ec.EMBED_DIM):
+        return True
+    pooling = "late" if _late_chunking_on() else "standard"
+    if "pooling" in meta and meta["pooling"] != pooling:
+        return True
+    return pooling == "late" and meta.get("pooling") == "late" and meta.get("normalized") != "1"
+
+
 def needs_rebuild(expect_vectors: bool = False) -> tuple[bool, float | None]:
     """Check whether the index needs rebuilding.
 
@@ -201,7 +267,8 @@ def needs_rebuild(expect_vectors: bool = False) -> tuple[bool, float | None]:
       - The DB does not exist, or
       - The DB exists but holds no rows (a previous build died partway), or
       - Any knowledge/*.md file is newer than the DB, or
-      - expect_vectors and the DB carries no sections_vec table.
+      - expect_vectors and the DB carries no sections_vec table, or
+      - index_meta records another text_format, embed profile, width or pooling than this run would build.
 
     The vector case is the same failure as the empty-DB case one level up. A build that ran
     under a python without sqlite_vec produces a complete, current, FTS-only index: every
@@ -228,6 +295,8 @@ def needs_rebuild(expect_vectors: bool = False) -> tuple[bool, float | None]:
     if row_count == 0:
         return True, db_mtime
     if expect_vectors and _vector_leg_missing():
+        return True, db_mtime
+    if _index_meta_stale(expect_vectors):
         return True, db_mtime
     modified = get_modified_entries(db_mtime)
     return len(modified) > 0, db_mtime
@@ -267,7 +336,7 @@ def write_stamp(sha: str | None = None) -> str | None:
     sha = sha or _repo_head()
     if not sha:
         return None
-    SEARCH_DIR.mkdir(exist_ok=True)
+    SEARCH_DIR.mkdir(parents=True, exist_ok=True)
     STAMP_PATH.write_text(f"{sha} {_builder_schema_hash()} {int(time.time())}\n")
     return sha
 
@@ -332,18 +401,143 @@ def entry_sensitivity(path: Path) -> str:
     return DEFAULT_SENSITIVITY
 
 
+# --- supersession and freshness (gestalt_freshness.py holds the ranking side) ------------------------------
+GIT_DATE_BUDGET_S = 20.0  # total seconds for all `git log` date lookups in one build, then the rest fall back to mtime
+GIT_DATE_CALL_TIMEOUT_S = 3
+
+
+def _git_commit_date(path: Path) -> str | None:
+    """The last-commit date of a file (`git log -1 --format=%cI`), or None when git has no answer."""
+    import subprocess
+
+    try:
+        out = subprocess.run(
+            ["git", "log", "-1", "--format=%cI", "--", str(path)],
+            cwd=str(GESTALT_DIR), capture_output=True, text=True, timeout=GIT_DATE_CALL_TIMEOUT_S,
+        )
+    except Exception:
+        return None
+    return out.stdout.strip() or None if out.returncode == 0 else None
+
+
+def entry_freshness(entries) -> dict[str, dict]:
+    """{relative path: freshness fields} for each entry, ready for the sections_meta columns.
+
+    note_modified is frontmatter `modified` (else `updated`), else the git last-commit date while the time budget lasts, else the file mtime.
+    A note that lists `supersedes: [x]` marks every entry with slug x as superseded_by it, unless x names its own superseded_by.
+    """
+    if _fresh is None:
+        return {}
+    out: dict[str, dict] = {}
+    parsed: dict[str, dict] = {}
+    spent = 0.0
+    for path in entries:
+        rel = str(path.relative_to(GESTALT_DIR))
+        try:
+            front = _fresh.parse_front(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            front = _fresh.parse_front("")
+        parsed[rel] = front
+        mod, src = front["modified"], "frontmatter"
+        if not mod:
+            if spent < GIT_DATE_BUDGET_S:
+                t0 = time.monotonic()
+                mod = _git_commit_date(path)
+                spent += time.monotonic() - t0
+                src = "git"
+            if not mod:
+                try:
+                    mod = time.strftime("%Y-%m-%d", time.localtime(path.stat().st_mtime))
+                except OSError:
+                    mod = None
+                src = "mtime"
+        out[rel] = {
+            "superseded_by": front["superseded_by"],
+            "valid_until": front["valid_until"],
+            "note_modified": mod,
+            "note_modified_source": src if mod else None,
+            "supersedes": ",".join(front["supersedes"]) or None,
+        }
+    by_slug: dict[str, list[str]] = {}
+    for rel in out:
+        by_slug.setdefault(Path(rel).stem, []).append(rel)
+    for rel in sorted(out):
+        new_slug = Path(rel).stem
+        for old in parsed[rel]["supersedes"]:
+            for old_rel in by_slug.get(old, []):
+                if old != new_slug and not parsed[old_rel]["superseded_by"] and not out[old_rel]["superseded_by"]:
+                    out[old_rel]["superseded_by"] = new_slug
+    return out
+
+
+def _freshness_values(f: dict | None) -> tuple:
+    f = f or {}
+    return tuple(f.get(k) for k in ("superseded_by", "valid_until", "note_modified", "note_modified_source", "supersedes"))
+
+
+def upgrade_freshness(db_path: Path | None = None) -> list[str]:
+    """Upgrade an existing index in place: add the freshness columns and fill them from the sources.
+
+    Returns the columns it added. Nothing happens to an index that already has them. The text and vectors are untouched."""
+    if _fresh is None:
+        return []
+    db = sqlite3.connect(str(db_path or DB_PATH))
+    try:
+        added = _fresh.ensure_columns(db)
+        if added:
+            by_path = entry_freshness(all_source_entries())
+            for rel, f in by_path.items():
+                db.execute(
+                    "UPDATE sections_meta SET superseded_by=?, valid_until=?, note_modified=?, note_modified_source=?, supersedes=? WHERE file_path=?",
+                    (*_freshness_values(f), rel),
+                )
+            db.commit()
+        return added
+    finally:
+        db.close()
+
+
+def _frontmatter_title(front: str) -> str:
+    """The flat `title:` value from a frontmatter block, or empty. Only a column-0 line counts, so a nested `title:` is ignored. One matching pair of surrounding quotes is removed and no other quote. A folded or block scalar counts as empty."""
+    for line in front.splitlines():
+        if line.startswith("title:"):
+            val = line[len("title:"):].strip()
+            if len(val) >= 2 and val[0] == val[-1] and val[0] in "\"'":
+                val = val[1:-1]
+            return "" if val in (">", "|", ">-", "|-") else val
+    return ""
+
+
+def _first_h1(text: str) -> str:
+    """The first `# ` heading outside a code fence, or empty."""
+    in_fence = False
+    for line in text.split("\n"):
+        if line.lstrip().startswith("```"):
+            in_fence = not in_fence
+        elif not in_fence and line.startswith("# "):
+            return line[2:].strip()
+    return ""
+
+
 def parse_entry(path: Path) -> list[dict]:
-    """Parse a knowledge entry into section chunks."""
+    """Parse a knowledge entry into section chunks.
+
+    Every chunk carries the entry's `title`. It comes from the frontmatter, else from the first H1 of a knowledge
+    entry. A rules file with no frontmatter title keeps an empty title, so its embed text stays as it was."""
     # encoding is explicit: Python defaults to the locale codec, which is
     # cp1252 on Windows and dies on the em-dashes these entries are full of.
     text = path.read_text(encoding="utf-8")
+    title = ""
     # Strip YAML frontmatter
     if text.startswith("---"):
         try:
             end = text.index("---", 3)
+            title = _frontmatter_title(text[3:end])
             text = text[end + 3 :].strip()
         except ValueError:
             pass
+    if not title and path.parent.name != "rules":
+        title = _first_h1(text)
 
     slug = path.stem
     chunks = []
@@ -365,6 +559,7 @@ def parse_entry(path: Path) -> list[dict]:
                     chunks.append(
                         {
                             "slug": slug,
+                            "title": title,
                             "heading": current_heading,
                             "block_id": current_block_id,
                             "content": content,
@@ -395,6 +590,7 @@ def parse_entry(path: Path) -> list[dict]:
             chunks.append(
                 {
                     "slug": slug,
+                    "title": title,
                     "heading": current_heading,
                     "block_id": current_block_id,
                     "content": content,
@@ -652,7 +848,7 @@ def build_index(force_fts_only: bool = False):
                 "sentence-transformers — continuing FTS-only (vector search disabled)."
             )
 
-    SEARCH_DIR.mkdir(exist_ok=True)
+    SEARCH_DIR.mkdir(parents=True, exist_ok=True)
     lock_file = open(LOCK_PATH, "w")
     try:
         lock_exclusive(lock_file, blocking=False)
@@ -739,8 +935,10 @@ def index_skills(db, model=None) -> int:
             # vector that matches nothing well. Description-only keeps the
             # vector focused on what the skill is FOR. Asymmetric-retrieval
             # prefix must match gestalt_route's query-side "search_query: ".
-            doc = f"search_document: {name.replace('-', ' ')} — {description}"
-            emb = model.encode(doc)
+            doc = f"{DOC_PREFIX}{name.replace('-', ' ')} — {description}"
+            emb = _ec.postprocess(model.encode(doc))
+            if _late_chunking_on():
+                emb = _l2_rows(emb)
             db.execute(
                 "INSERT INTO skills_vec (id, embedding) VALUES (?, ?)",
                 (n, emb.tobytes()),
@@ -792,6 +990,153 @@ def load_embedding_cache(sqlite_vec) -> dict[str, bytes]:
     return {h: emb for h, emb in rows if h and emb}
 
 
+def chunk_hash(t: str, salt: str = "") -> str:
+    """The embedding cache key and the stored content_hash of one chunk.
+
+    With no salt it is sha256(model name, NUL, text), the key this builder has always used. A salt is added only
+    when the vector depends on something the text does not carry: a Matryoshka width or late-chunking pooling
+    plus the sha of the whole document. Default builds therefore keep every cached vector."""
+    if salt:
+        return hashlib.sha256(f"{MODEL_NAME}\x00{salt}\x00{t}".encode("utf-8")).hexdigest()  # noqa: UP012  the explicit encoding is part of the cache-key contract a test pins
+    return hashlib.sha256(f"{MODEL_NAME}\x00{t}".encode("utf-8")).hexdigest()  # noqa: UP012
+
+
+def cache_salt(late: bool, doc_sha: str | None, fallback: bool = False) -> str:
+    """The salt for chunk_hash. Empty for a plain full-width build.
+
+    A chunk that a late build had to embed the ordinary way gets the `late-fallback` salt. Its vector is not pooled, so it must never sit under the late key, and it is normalised, so it must never sit under the plain key."""
+    parts = []
+    if _ec.EMBED_DIM != getattr(_ec, "FULL_DIM", _ec.EMBED_DIM):
+        parts.append(f"dim={_ec.EMBED_DIM}")
+    if late and fallback:
+        parts.append("pooling=late-fallback")
+    elif late:
+        parts.append("pooling=late")
+        parts.append(f"doc={doc_sha}")
+    return ",".join(parts)
+
+
+def model_init_kwargs() -> dict:
+    """Keyword arguments for SentenceTransformer(MODEL_NAME, ...), taken from the active embed profile.
+
+    The device is passed only when GESTALT_EMBED_DEVICE is set. Unset, sentence-transformers picks the GPU
+    when there is one, which is how the hub has always built."""
+    kw = {"revision": MODEL_REVISION, "trust_remote_code": _ec.TRUST_REMOTE_CODE}
+    device = os.environ.get("GESTALT_EMBED_DEVICE", "").strip()
+    if device:
+        kw["device"] = device
+    if _ec.MODEL_KWARGS:
+        kw["model_kwargs"] = dict(_ec.MODEL_KWARGS)
+    if _ec.TOKENIZER_KWARGS:
+        kw["tokenizer_kwargs"] = dict(_ec.TOKENIZER_KWARGS)
+    return kw
+
+
+def _as_numpy(x):
+    """A token-embedding tensor (or array) as float32 numpy."""
+    import numpy as np
+
+    if hasattr(x, "detach"):
+        x = x.detach().cpu().float().numpy()
+    return np.asarray(x, dtype=np.float32)
+
+
+def _l2_rows(arr):
+    """L2-normalise one vector or a batch of rows, as float32. A zero row stays zero."""
+    import numpy as np
+
+    a = np.asarray(arr, dtype=np.float32)
+    n = np.linalg.norm(a, axis=-1, keepdims=True)
+    return np.ascontiguousarray((a / np.maximum(n, 1e-12)).astype(np.float32))
+
+
+def late_windows(n_tokens: int, cap: int) -> list[tuple[int, int]]:
+    """Token ranges (start, end) that cover a document. One range when it fits, else windows of `cap` tokens with 50% overlap."""
+    if n_tokens <= cap:
+        return [(0, n_tokens)]
+    stride = max(1, cap // 2)
+    wins, start = [], 0
+    while True:
+        end = min(start + cap, n_tokens)
+        wins.append((start, end))
+        if end == n_tokens:
+            return wins
+        start += stride
+
+
+def embed_late(model, doc_text: str, spans: list[tuple[int, int]], prefix: str = "", batch_size: int | None = None):
+    """Late chunking: encode the whole document once, then mean-pool the token vectors inside each chunk span.
+
+    `spans` are character ranges of `doc_text`. A document longer than the encoder window is cut into windows with
+    50% overlap. Each chunk is pooled in the window where it sits most central, meaning the one that leaves the
+    most text on its shorter side. A chunk wider than any window comes back as None, and so does a chunk with no tokens. The
+    caller encodes those the ordinary way. Pooled vectors are L2-normalised. Returns (vectors, n_windows).
+    `prefix` is the document prefix that `doc_text` starts with. Every window after the first gets it prepended, and the window cap leaves room for its tokens.
+    All windows go to the encoder in one call, in window order, with `batch_size` as its batch size. Each window's token vectors are the same as when it is encoded alone.
+    Raises on a tokenizer or model that cannot give offsets or aligned token vectors, and the caller falls back for the whole document. It also raises when a window, once cut and prefixed, holds more than `max_seq_length` tokens."""
+    import numpy as np
+
+    tok = model.tokenizer
+    max_len = int(model.max_seq_length)
+    cap = max_len - 2
+    if cap < 8:
+        raise ValueError(f"max_seq_length {max_len} is too small for late chunking")
+    offs = tok(doc_text, add_special_tokens=False, return_offsets_mapping=True, truncation=False)["offset_mapping"]
+    n = len(offs)
+    vectors: list = [None] * len(spans)
+    if n == 0:
+        return vectors, 0
+    if n <= cap:
+        wins = [(0, n)]
+    else:
+        n_prefix = len(tok(prefix, add_special_tokens=False, return_offsets_mapping=True, truncation=False)["offset_mapping"]) if prefix else 0
+        if cap - n_prefix < 8:
+            raise ValueError(f"max_seq_length {max_len} leaves no room for the document prefix")
+        wins = late_windows(n, cap - n_prefix)
+    # Cut and validate every window first, then encode them in one call so the encoder batches them.
+    cut: list[tuple[int, int, int, str, list]] = []  # char_lo, char_hi, prefix shift, window text, token char ranges
+    for ts, te in wins:
+        lo = 0 if ts == 0 else offs[ts][0]
+        hi = len(doc_text) if te == n else offs[te - 1][1]
+        shift = len(prefix) if ts > 0 else 0
+        win_text = (prefix if ts > 0 else "") + doc_text[lo:hi]
+        enc = tok(win_text, add_special_tokens=True, return_offsets_mapping=True, return_special_tokens_mask=True,
+                  truncation=False)
+        if len(enc["offset_mapping"]) > max_len:
+            raise ValueError(f"window of {len(enc['offset_mapping'])} tokens exceeds max_seq_length {max_len}")
+        ranges = [None if sp else tuple(o) for o, sp in zip(enc["offset_mapping"], enc["special_tokens_mask"])]
+        cut.append((lo, hi, shift, win_text, ranges))
+    encode_kw = {"batch_size": batch_size} if batch_size else {}
+    token_vecs = model.encode([c[3] for c in cut], output_value="token_embeddings", **encode_kw)
+    if len(token_vecs) != len(cut):
+        raise ValueError(f"{len(token_vecs)} token-vector blocks for {len(cut)} windows")
+    pooled: list[tuple[int, int, np.ndarray, list, int]] = []  # char_lo, char_hi, token vectors, token char ranges, prefix shift
+    for (lo, hi, shift, _, ranges), raw in zip(cut, token_vecs):
+        vecs = _as_numpy(raw)
+        if vecs.ndim != 2 or vecs.shape[0] != len(ranges):
+            raise ValueError(f"token vectors {vecs.shape} do not line up with {len(ranges)} tokens")
+        pooled.append((lo, hi, vecs, ranges, shift))
+    for k, (cs, ce) in enumerate(spans):
+        best, best_margin = None, -1.0
+        for w, (lo, hi, _, _, _) in enumerate(pooled):
+            if cs < lo or ce > hi:
+                continue
+            margin = min(cs - lo, hi - ce)
+            if margin > best_margin:
+                best, best_margin = w, margin
+        if best is None:
+            continue
+        lo, _, vecs, ranges, shift = pooled[best]
+        idx = [i for i, r in enumerate(ranges) if r is not None and r[0] < ce - lo + shift and r[1] > cs - lo + shift]
+        if not idx:
+            continue
+        v = vecs[idx].mean(axis=0)
+        norm = float(np.linalg.norm(v))
+        if norm > 0:
+            vectors[k] = (v / norm).astype(np.float32)
+    return vectors, len(wins)
+
+
 def _wait_for_gpu_quiet(n_chunks: int) -> None:
     """GPU mutex against ingestion (2026-08-29 lesson, <kb-entry>):
     a sentence-transformers embed build sharing the card with qwen3 generation
@@ -802,7 +1147,10 @@ def _wait_for_gpu_quiet(n_chunks: int) -> None:
     rather than fail — a busy-forever GPU should not permanently block index
     builds, it should make noise. GESTALT_GPU_FORCE=1 skips the wait entirely.
     """
-    import os, shutil, subprocess, time
+    import os
+    import shutil
+    import subprocess
+    import time
 
     if os.environ.get("GESTALT_GPU_FORCE") == "1" or n_chunks < 500:
         return
@@ -844,12 +1192,17 @@ def _warn_if_gpu_wasted(n_chunks: int) -> None:
     silently resolving and falling back to CPU), so a full embed run pins every
     CPU thread for tens of minutes on a corpus this GPU would clear in seconds.
     Refuses on a corpus large enough to matter unless GESTALT_ALLOW_CPU_EMBED=1
-    is set, or torch/nvidia-smi are unavailable (nothing to compare against).
+    is set, GESTALT_EMBED_DEVICE names a device, or torch/nvidia-smi are unavailable
+    (nothing to compare against).
     """
-    import os, shutil, subprocess
+    import os
+    import shutil
+    import subprocess
 
     if os.environ.get("GESTALT_ALLOW_CPU_EMBED") == "1":
         return
+    if os.environ.get("GESTALT_EMBED_DEVICE", "").strip():
+        return  # an explicit device is a choice, so a CPU run is not a surprise
     if n_chunks < 500:
         return  # small corpus: CPU finishes in seconds regardless, not worth the friction
     if not shutil.which("nvidia-smi"):
@@ -880,62 +1233,142 @@ def _warn_if_gpu_wasted(n_chunks: int) -> None:
     sys.exit(1)
 
 
-def write_index_meta(db, vec_available: bool) -> None:
+def write_index_meta(db, vec_available: bool, pooling: str = "standard") -> None:
     """Record which model made the vectors, so the server can refuse a mismatched index (X14, 2026-10-06).
 
-    An FTS-only build has no vectors, so it stores no model identity and the server treats it as an
-    FTS-only index anyway."""
+    An FTS-only build has no vectors, so it stores no model identity. It does store text_format, embed_profile and
+    embed_dim, so needs_rebuild() can tell that the text layout changed. The server checks only the keys it finds."""
     db.execute("CREATE TABLE index_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)")
-    if not vec_available:
-        return
     rows = {
-        "model_name": MODEL_NAME,
-        "model_revision": MODEL_REVISION or "",
+        "text_format": _ec.TEXT_FORMAT,
+        "embed_profile": _ec.PROFILE,
         "embed_dim": str(_ec.EMBED_DIM),
-        "doc_prefix": DOC_PREFIX,
-        "query_prefix": QUERY_PREFIX,
-        "built_at": str(int(time.time())),
     }
+    if vec_available:
+        rows.update({
+            "model_name": MODEL_NAME,
+            "model_revision": MODEL_REVISION or "",
+            "doc_prefix": DOC_PREFIX,
+            "query_prefix": QUERY_PREFIX,
+            "pooling": pooling,
+            **({"normalized": "1"} if pooling == "late" else {}),
+            "built_at": str(int(time.time())),
+        })
+    # How the model was loaded: "native" or "remote-code". Informational only. needs_rebuild() does not compare it, so an index built without it stays current. The column is NOT NULL, so a config that does not expose LOAD_PATH leaves the key out.
+    load_path = getattr(_ec, "LOAD_PATH", None)
+    if vec_available and load_path:
+        rows["load_path"] = str(load_path)
     db.executemany("INSERT INTO index_meta(key, value) VALUES (?, ?)", rows.items())
 
 
-def _build_index_locked(sqlite_vec, SentenceTransformer):
-    """Body of the rebuild. Caller must hold the build lock.
+def _embed_chunks(model, texts: list[str], hashes: list[str], docs: dict[str, dict], late: bool,
+                  cache: dict[str, bytes], note: str = "") -> list[bytes]:
+    """One embedding (raw float32 bytes) per chunk text. `hashes` is updated in place for chunks that fall back.
 
-    F13: `sqlite_vec`/`SentenceTransformer` are `None` when those deps are
-    missing (the caller already logged the one clear line). FTS5 ships inside
-    sqlite3 itself, so the lexical leg needs neither — every vec0-table,
-    embedding, and vector-insert step below is gated on `vec_available`.
+    Reuse embeddings for chunks whose text is byte-identical to the previous build. Embedding is ~98% of build
+    cost (measured: import + encode dominate, the SQLite writes are under 10 ms total), and a typical edit
+    touches one entry. The hash covers the FULL prefixed text plus the model name, so changing DOC_PREFIX, the
+    contextual prefix format or MODEL_NAME invalidates every cached vector instead of mixing embedding spaces.
+    A Matryoshka width or late pooling adds a salt (see chunk_hash).
+
+    In a late build each document is tried late first. A chunk that comes back as an ordinary embedding gets the
+    `late-fallback` hash. When the previous build already stored that hash, its vector is reused. The document is
+    still tried late on every build, so a fixed tokenizer takes effect without a manual cache clear."""
+    embeddings: list = [None] * len(texts)
+    todo = [i for i, h in enumerate(hashes) if h not in cache]
+    print(f"Generating embeddings: {len(todo)} new, {len(hashes) - len(todo)} reused from cache ({note})...")
+    for i, h in enumerate(hashes):
+        if h in cache:
+            embeddings[i] = cache[h]
+    ordinary = list(todo)
+
+    def settle_ordinary(i: int) -> bool:
+        """Switch chunk i to its late-fallback hash. True when the cache already holds that vector."""
+        hashes[i] = chunk_hash(texts[i], cache_salt(True, None, fallback=True))
+        if hashes[i] in cache:
+            embeddings[i] = cache[hashes[i]]
+            return True
+        return False
+
+    if late and todo:
+        ordinary = []
+        todo_set = set(todo)
+        n_docs = n_windows = n_fallback = n_fallback_chunks = n_chunk_ordinary = 0
+        for path, d in docs.items():
+            want = [k for k, i in enumerate(d["idx"]) if i in todo_set]
+            if not want:
+                continue
+            n_docs += 1
+            try:
+                vecs, nw = embed_late(model, d["text"], d["spans"], DOC_PREFIX, batch_size=EMBED_BATCH_SIZE)
+            except Exception as exc:  # any tokenizer or alignment failure: this document is embedded the ordinary way
+                n_fallback += 1
+                n_fallback_chunks += len(want)
+                print(f"late-chunking: fallback doc={path} reason={type(exc).__name__}: {exc}", file=sys.stderr)
+                ordinary.extend(d["idx"][k] for k in want if not settle_ordinary(d["idx"][k]))
+                continue
+            n_windows += nw
+            for k in want:
+                i = d["idx"][k]
+                if vecs[k] is None:
+                    n_chunk_ordinary += 1
+                    if not settle_ordinary(i):
+                        ordinary.append(i)
+                else:
+                    embeddings[i] = _ec.postprocess(vecs[k]).astype("float32").tobytes()
+        print(f"late-chunking: docs={n_docs} windows={n_windows} fallback={n_fallback} fallback_chunks={n_fallback_chunks} chunks_ordinary={n_chunk_ordinary}", file=sys.stderr)
+    if ordinary:
+        fresh = _encode_paced(model, [texts[i] for i in ordinary])
+        if late:
+            fresh = _l2_rows(fresh)
+        for slot, emb in zip(ordinary, fresh):
+            embeddings[slot] = emb.tobytes()
+    assert all(e is not None for e in embeddings), "an embedding slot was left unfilled"
+    return embeddings
+
+
+def _encode_paced(model, texts: list[str]):
+    """Encode `texts` in one call, or in slices of GESTALT_EMBED_CALL_DOCS (256) when a GPU duty cycle is on.
+
+    The duty cycle (gestalt_rank.throttle_calls) sleeps after each encode call, so one call over a whole corpus would run at
+    the card's ceiling for the length of the build and sleep once at the end, which is no pacing at all. Slicing puts the
+    sleep between slices. At the default duty of 1.0 the single call stays, so the vectors are the ones the old path wrote."""
+    import numpy as np
+
+    try:
+        import gestalt_rank
+        duty = gestalt_rank.gpu_duty()
+    except ImportError:
+        duty = 1.0
+    if duty >= 1.0 or len(texts) <= 1:
+        return _ec.postprocess(model.encode(texts, batch_size=EMBED_BATCH_SIZE, show_progress_bar=True))
+    step = max(EMBED_BATCH_SIZE, int(os.environ.get("GESTALT_EMBED_CALL_DOCS", "256") or 256))
+    parts = [_ec.postprocess(model.encode(texts[i:i + step], batch_size=EMBED_BATCH_SIZE, show_progress_bar=False)) for i in range(0, len(texts), step)]
+    return np.concatenate(parts, axis=0)
+
+
+def _require_extension_loading():
+    """Exit with a clear error when sqlite3 cannot load extensions.
+
+    Only the vec0 extension needs this. FTS5-only builds never call it.
     """
-    vec_available = sqlite_vec is not None and SentenceTransformer is not None
+    test_db = sqlite3.connect(":memory:")
+    if not hasattr(test_db, "enable_load_extension"):
+        print("ERROR: Python sqlite3 lacks extension loading. Use pyenv or conda.")
+        sys.exit(1)
+    test_db.close()
 
-    if vec_available:
-        # Verify sqlite3 supports extension loading — only needed to load the
-        # vec0 extension; FTS5-only builds never call enable_load_extension.
-        test_db = sqlite3.connect(":memory:")
-        if not hasattr(test_db, "enable_load_extension"):
-            print("ERROR: Python sqlite3 lacks extension loading. Use pyenv or conda.")
-            sys.exit(1)
-        test_db.close()
 
-    SEARCH_DIR.mkdir(exist_ok=True)
+def _collect_chunks():
+    """Parse every source entry into chunks.
 
-    # Build into a scratch file and swap it in atomically at the end, rather
-    # than unlinking the live DB up front. Rebuilding in place left search
-    # returning nothing for the entire ~15 minute build, and the session-start
-    # hook fires a --force rebuild whenever knowledge/*.md changed, so the
-    # window reliably landed exactly when someone opened a session and searched.
-    # os.replace() is atomic within a filesystem, so readers keep querying the
-    # previous index until the new one is complete and never observe a partial
-    # one. A leftover scratch file from a killed build is discarded here.
-    if BUILD_PATH.exists():
-        BUILD_PATH.unlink()
-
+    Returns `(all_chunks, sens_by_path)`, or `None` when there are no entries.
+    """
     # Parse all entries: knowledge/*.md + .claude/rules/*.md (F6 ^rules-unindexed)
     entries = all_source_entries()
     if not entries:
         print("No knowledge entries found. Nothing to index.")
-        return
+        return None
 
     all_chunks = []
     sens_by_path: dict[str, str] = {}
@@ -944,25 +1377,34 @@ def _build_index_locked(sqlite_vec, SentenceTransformer):
         sens_by_path[str(entry.relative_to(GESTALT_DIR))] = entry_sensitivity(entry)
 
     print(f"Parsed {len(entries)} entries into {len(all_chunks)} chunks")
+    return all_chunks, sens_by_path
 
-    # Load embedding model (FTS-only build skips this entirely)
-    model = None
-    if vec_available:
-        _warn_if_gpu_wasted(len(all_chunks))
-        _wait_for_gpu_quiet(len(all_chunks))
-        print(f"Loading model: {MODEL_NAME}...")
-        model = SentenceTransformer(MODEL_NAME, revision=MODEL_REVISION, trust_remote_code=True)
 
-    # Connect and create schema
-    db = sqlite3.connect(str(BUILD_PATH))
-    if vec_available:
-        db.enable_load_extension(True)
-        sqlite_vec.load(db)
+def _load_embedding_model(SentenceTransformer, n_chunks):
+    """Load the embedding model after the GPU checks."""
+    _warn_if_gpu_wasted(n_chunks)
+    _wait_for_gpu_quiet(n_chunks)
+    device = os.environ.get("GESTALT_EMBED_DEVICE", "").strip() or "auto"
+    print(f"Loading model: {MODEL_NAME} (profile={_ec.PROFILE} dim={_ec.EMBED_DIM} device={device})")
+    model = SentenceTransformer(MODEL_NAME, **model_init_kwargs())
+    # The GPU duty cycle (GESTALT_GPU_DUTY, gestalt_rank.throttle_calls) paces sustained embedding the same way it paces the
+    # reranker. A build is minutes of draw at the card's ceiling, which is what trips the firmware clamp (2026-10-08: the
+    # seventh clamp of the day hit seven minutes into the late-chunking build). A no-op at the default duty of 1.0.
+    try:
+        import gestalt_rank
+    except ImportError:
+        sys.path.insert(0, str(Path(__file__).resolve().parent))
+        import gestalt_rank
+    gestalt_rank.throttle_calls(model, "encode")
+    return model
 
+
+def _create_schema(db, vec_available):
+    """Create the FTS, meta and (when vectors are on) vec0 tables."""
     db.executescript(
         """
         CREATE VIRTUAL TABLE sections_fts USING fts5(
-            slug, heading, block_id, content,
+            slug, title, heading, block_id, content,
             tokenize='porter unicode61'
         );
         CREATE TABLE sections_meta (
@@ -974,7 +1416,13 @@ def _build_index_locked(sqlite_vec, SentenceTransformer):
             file_path TEXT NOT NULL,
             content_hash TEXT,
             anchors TEXT,
-            sensitivity TEXT NOT NULL DEFAULT 'unpublished'
+            sensitivity TEXT NOT NULL DEFAULT 'unpublished',
+            title TEXT NOT NULL DEFAULT '',
+            superseded_by TEXT,
+            valid_until TEXT,
+            note_modified TEXT,
+            note_modified_source TEXT,
+            supersedes TEXT
         );
         CREATE INDEX idx_sections_meta_hash ON sections_meta(content_hash);
         -- Skill routing corpus. Separate table from sections_fts so skill text can
@@ -1010,9 +1458,19 @@ def _build_index_locked(sqlite_vec, SentenceTransformer):
             );
         """
         )
-    index_skills(db, model=model)
+        # The script above is the 768-wide default. tests/test_harness_fidelity.py lifts it out of this file as the
+        # fixture schema, so it stays a plain literal. Another profile or Matryoshka width recreates both tables here.
+        if _ec.EMBED_DIM != 768:
+            for table in ("sections_vec", "skills_vec"):
+                db.execute(f"DROP TABLE {table}")
+                db.execute(f"CREATE VIRTUAL TABLE {table} USING vec0(id INTEGER PRIMARY KEY, embedding FLOAT[{_ec.EMBED_DIM}])")
 
-    # Generate embeddings
+
+def _chunk_texts(all_chunks, model, vec_available):
+    """Build the embedding input for every chunk.
+
+    Returns `(bodies, texts, max_chars, truncated)`.
+    """
     # Pre-truncate before encoding. The model truncates at max_seq_length anyway,
     # so cutting here is lossless — but without it the tokenizer materializes the
     # full sequence first, and a few very large blocks (research-project has had two at
@@ -1036,53 +1494,64 @@ def _build_index_locked(sqlite_vec, SentenceTransformer):
     # and section so a mid-document fragment keeps topical identity. This is the
     # cheap variant of Anthropic's contextual retrieval (which generates the
     # context with an LLM per chunk); no API calls, same intent.
-    texts = [
-        DOC_PREFIX
-        + f"{c['slug'].replace('-', ' ')} — {c['heading']}\n\n"
-        + (c["content"][:max_chars] if max_chars else c["content"])
+    # The chunk layout lives in gestalt_embed_config.chunk_text (TEXT_FORMAT v2-title): a titled chunk reads
+    # "<title> (<slug words>) — <heading>", an untitled one keeps the older "<slug words> — <heading>".
+    bodies = [
+        _ec.chunk_text(c["slug"], c.get("title", ""), c["heading"], c["content"][:max_chars] if max_chars else c["content"], prefix="")
         for c in all_chunks
     ]
+    texts = [DOC_PREFIX + b for b in bodies]
     truncated = sum(1 for c in all_chunks if max_chars and len(c["content"]) > max_chars)
+    return bodies, texts, max_chars, truncated
 
-    hashes = [
-        hashlib.sha256(f"{MODEL_NAME}\x00{t}".encode("utf-8")).hexdigest() for t in texts
-    ]
 
-    embeddings: list = [None] * len(texts)
+def _late_documents(all_chunks, bodies):
+    """Group chunk bodies per file for late chunking.
+
+    The document text is the chunk bodies joined by blank lines, so every chunk's span in it is known by construction.
+    """
+    docs: dict[str, dict] = {}
+    for i, c in enumerate(all_chunks):
+        d = docs.setdefault(c["file_path"], {"idx": [], "parts": [], "spans": []})
+        d["idx"].append(i)
+        d["parts"].append(bodies[i])
+    for d in docs.values():
+        doc_text, spans, pos = DOC_PREFIX + "\n\n".join(d["parts"]), [], len(DOC_PREFIX)
+        for body in d["parts"]:
+            spans.append((pos, pos + len(body)))
+            pos += len(body) + 2
+        d["text"], d["spans"] = doc_text, spans
+        d["sha"] = hashlib.sha256(doc_text.encode("utf-8")).hexdigest()[:16]
+    return docs
+
+
+def _embed_stage(sqlite_vec, model, all_chunks, vec_available):
+    """Chunk texts, hash them and embed them.
+
+    Returns `(embeddings, hashes, late)`. Embeddings are all `None` in an FTS-only build.
+    """
+    bodies, texts, max_chars, truncated = _chunk_texts(all_chunks, model, vec_available)
+
+    # Late chunking (GESTALT_LATE_CHUNKING=1) embeds each document once and pools token vectors per chunk.
+    late = vec_available and _late_chunking_on()
+    docs = _late_documents(all_chunks, bodies) if late else {}
+    doc_sha_of = {i: d["sha"] for d in docs.values() for i in d["idx"]}
+    hashes = [chunk_hash(t, cache_salt(late, doc_sha_of.get(i))) for i, t in enumerate(texts)]
+
     if vec_available:
-        # Reuse embeddings for chunks whose text is byte-identical to the previous
-        # build. Embedding is ~98% of build cost (measured: import + encode dominate;
-        # the SQLite writes are under 10 ms total), and a typical edit touches one
-        # entry, so a full re-encode of every chunk was paying ~10.5 min to recompute
-        # vectors that cannot have changed. The hash covers the FULL prefixed text
-        # plus the model name, so changing DOC_PREFIX, the contextual prefix format,
-        # or MODEL_NAME correctly invalidates every cached vector instead of silently
-        # mixing embedding spaces.
-        cache = load_embedding_cache(sqlite_vec)
-        todo = [i for i, h in enumerate(hashes) if h not in cache]
-
-        print(
-            f"Generating embeddings: {len(todo)} new, {len(hashes) - len(todo)} reused "
-            f"from cache ({truncated} truncated to {max_chars} chars)..."
-        )
-
-        for i, h in enumerate(hashes):
-            if h in cache:
-                embeddings[i] = cache[h]
-        if todo:
-            fresh = model.encode(
-                [texts[i] for i in todo],
-                batch_size=EMBED_BATCH_SIZE,
-                show_progress_bar=True,
-            )
-            for slot, emb in zip(todo, fresh):
-                embeddings[slot] = emb.tobytes()
-
-        assert all(e is not None for e in embeddings), "an embedding slot was left unfilled"
+        embeddings = _embed_chunks(model, texts, hashes, docs, late, load_embedding_cache(sqlite_vec),
+                                   f"text_format {_ec.TEXT_FORMAT}, {truncated} truncated to {max_chars} chars")
     else:
+        embeddings = [None] * len(texts)
         print(f"Skipping embeddings for {len(all_chunks)} chunks (FTS-only build).")
+    return embeddings, hashes, late
 
-    # Insert chunks
+
+def _insert_chunks(db, all_chunks, embeddings, hashes, sens_by_path, vec_available, fresh_by_path=None):
+    """Write every chunk to sections_meta, sections_fts and (when vectors are on) sections_vec.
+
+    fresh_by_path is entry_freshness() output. Without it the freshness columns stay NULL."""
+    fresh_by_path = fresh_by_path or {}
     for i, (chunk, emb) in enumerate(zip(all_chunks, embeddings)):
         # Every ^anchor inside this chunk, not just the one that named it.
         # Entries mark sub-facts with a trailing inline `^anchor` mid-section, and the
@@ -1093,7 +1562,7 @@ def _build_index_locked(sqlite_vec, SentenceTransformer):
         # requiring a LIKE scan over content.
         anchors = ",".join(sorted(set(ANCHOR_RE.findall(chunk["content"]))))
         db.execute(
-            "INSERT INTO sections_meta VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO sections_meta VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 i,
                 chunk["slug"],
@@ -1104,6 +1573,8 @@ def _build_index_locked(sqlite_vec, SentenceTransformer):
                 hashes[i],
                 anchors,
                 sens_by_path.get(chunk["file_path"], DEFAULT_SENSITIVITY),
+                chunk.get("title", ""),
+                *_freshness_values(fresh_by_path.get(chunk["file_path"])),
             ),
         )
         # Pin the FTS rowid to sections_meta.id. Without an explicit rowid, FTS5
@@ -1114,8 +1585,8 @@ def _build_index_locked(sqlite_vec, SentenceTransformer):
         # chunk. Verified 2026-07-31: MATCH 'normalize_advantage' hit rowid 594
         # ("Build complete") and the tool displayed id 594 ("Build discipline").
         db.execute(
-            "INSERT INTO sections_fts(rowid, slug, heading, block_id, content) VALUES (?, ?, ?, ?, ?)",
-            (i, chunk["slug"], chunk["heading"], chunk["block_id"], chunk["content"]),
+            "INSERT INTO sections_fts(rowid, slug, title, heading, block_id, content) VALUES (?, ?, ?, ?, ?, ?)",
+            (i, chunk["slug"], chunk.get("title", ""), chunk["heading"], chunk["block_id"], chunk["content"]),
         )
         # emb is already raw bytes here: cache hits come back as stored BLOBs and
         # freshly-encoded vectors were converted with .tobytes() above, so the two
@@ -1127,7 +1598,10 @@ def _build_index_locked(sqlite_vec, SentenceTransformer):
                 (i, emb),
             )
 
-    write_index_meta(db, vec_available)
+
+def _publish_index(db, all_chunks, vec_available, late):
+    """Write the meta table, close the scratch DB and swap it in atomically."""
+    write_index_meta(db, vec_available, "late" if late else "standard")
     db.commit()
     db.close()
     # Swap the finished index in. Readers querying DB_PATH up to this instant
@@ -1137,6 +1611,56 @@ def _build_index_locked(sqlite_vec, SentenceTransformer):
     os.replace(BUILD_PATH, DB_PATH)
     mode = "" if vec_available else " (FTS-only, vector search disabled)"
     print(f"Index built: {DB_PATH} ({size_kb}KB, {len(all_chunks)} sections){mode}")
+
+
+def _build_index_locked(sqlite_vec, SentenceTransformer):
+    """Body of the rebuild. Caller must hold the build lock.
+
+    F13: `sqlite_vec`/`SentenceTransformer` are `None` when those deps are
+    missing (the caller already logged the one clear line). FTS5 ships inside
+    sqlite3 itself, so the lexical leg needs neither — every vec0-table,
+    embedding, and vector-insert step below is gated on `vec_available`.
+    """
+    vec_available = sqlite_vec is not None and SentenceTransformer is not None
+
+    if vec_available:
+        # Verify sqlite3 supports extension loading — only needed to load the
+        # vec0 extension; FTS5-only builds never call enable_load_extension.
+        _require_extension_loading()
+
+    SEARCH_DIR.mkdir(parents=True, exist_ok=True)
+
+    # Build into a scratch file and swap it in atomically at the end, rather
+    # than unlinking the live DB up front. Rebuilding in place left search
+    # returning nothing for the entire ~15 minute build, and the session-start
+    # hook fires a --force rebuild whenever knowledge/*.md changed, so the
+    # window reliably landed exactly when someone opened a session and searched.
+    # os.replace() is atomic within a filesystem, so readers keep querying the
+    # previous index until the new one is complete and never observe a partial
+    # one. A leftover scratch file from a killed build is discarded here.
+    if BUILD_PATH.exists():
+        BUILD_PATH.unlink()
+
+    collected = _collect_chunks()
+    if collected is None:
+        return
+    all_chunks, sens_by_path = collected
+
+    # Load embedding model (FTS-only build skips this entirely)
+    model = _load_embedding_model(SentenceTransformer, len(all_chunks)) if vec_available else None
+
+    # Connect and create schema
+    db = sqlite3.connect(str(BUILD_PATH))
+    if vec_available:
+        db.enable_load_extension(True)
+        sqlite_vec.load(db)
+
+    _create_schema(db, vec_available)
+    index_skills(db, model=model)
+
+    embeddings, hashes, late = _embed_stage(sqlite_vec, model, all_chunks, vec_available)
+    _insert_chunks(db, all_chunks, embeddings, hashes, sens_by_path, vec_available, entry_freshness(all_source_entries()))
+    _publish_index(db, all_chunks, vec_available, late)
 
 
 def report_graphiti_entries(db_mtime_before: float | None):
@@ -1213,6 +1737,9 @@ def _reexec_in_venv_if_needed(argv: list[str]) -> None:
 
 
 if __name__ == "__main__":
+    if {"-h", "--help"} & set(sys.argv[1:]):
+        print(__doc__.strip())
+        sys.exit(0)
     args = set(sys.argv[1:])
     if "--fts-only" not in args and _role_forces_fts_only():
         print("GESTALT_INDEX_BUILD_ROLE=hub on a non-hub node: FTS-only build (only the hub embeds; fleet-sync index-fetch brings its vectors).")
@@ -1251,6 +1778,13 @@ if __name__ == "__main__":
 
     if not rebuild_needed and not force:
         print("Index is up to date — skipping rebuild. Use --force to override.")
+        try:
+            added = upgrade_freshness()
+        except sqlite3.Error as e:
+            added = []
+            print(f"Freshness column upgrade skipped ({e}).")
+        if added:
+            print(f"Added freshness columns in place: {', '.join(added)}.")
         restamped = restamp_if_only_head_moved()
         if restamped:
             print(f"Stamp refreshed for HEAD {restamped[:8]} (no indexed input changed).")

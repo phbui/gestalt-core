@@ -13,7 +13,6 @@ import sys
 import time
 from pathlib import Path
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -281,8 +280,8 @@ def restart_services() -> None:
 
 
 def wait_for_health(timeout: int = 120, interval: int = 3) -> None:
-    import urllib.request
     import urllib.error
+    import urllib.request
 
     print()
     print(f"Waiting for services to be healthy (up to {timeout}s)...")

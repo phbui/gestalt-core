@@ -37,5 +37,5 @@ if echo "$RETR_OUT" | grep -q Traceback; then
 fi
 rlog FAIL
 echo "$RETR_OUT" | tail -20
-echo "gestalt: Tier 1 RED -- retrieval golden set regressed vs evals/retrieval/baseline.json (re-bless with --baseline save ONLY for an understood, justified change)" >&2
+echo "gestalt: Tier 1 RED -- retrieval golden set regressed vs evals/retrieval/baseline.json (re-bless with --baseline bank --config-name default ONLY for an understood, justified change)" >&2
 exit 1

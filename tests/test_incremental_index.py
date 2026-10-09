@@ -15,6 +15,7 @@ finish in milliseconds.
 from __future__ import annotations
 
 import sqlite3
+import zlib
 
 import pytest
 
@@ -47,7 +48,7 @@ def stub_model(encoder_calls):
             encoder_calls.append(len(items))
             vecs = np.stack(
                 [
-                    np.full(768, (abs(hash(t)) % 10_000) / 10_000.0, dtype=np.float32)
+                    np.full(768, (zlib.crc32(t.encode()) % 10_000) / 10_000.0, dtype=np.float32)
                     for t in items
                 ]
             )

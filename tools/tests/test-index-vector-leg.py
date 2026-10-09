@@ -11,11 +11,16 @@ problem. That is how the hub served FTS-only artifacts for two weeks.
 Second case matters as much as the first: with expect_vectors False, a deliberate --fts-only
 index must still read as up to date, or non-hub nodes would rebuild on every single run.
 """
-import os, sqlite3, sys, tempfile, time
+import os
+import sqlite3
+import sys
+import tempfile
+import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import importlib.util
+
 spec = importlib.util.spec_from_file_location(
     "gib", Path(__file__).resolve().parents[1] / "gestalt-index-builder.py")
 gib = importlib.util.module_from_spec(spec)
@@ -38,7 +43,8 @@ def rebuild_needed(expect_vectors: bool) -> bool:
 
 def make_db(path: Path, with_vec: bool) -> None:
     db = sqlite3.connect(str(path))
-    db.execute("CREATE TABLE sections_meta (id INTEGER PRIMARY KEY, content_hash TEXT)")
+    # The title column is part of the current schema. An index without it is stale by design since 2026-10-08.
+    db.execute("CREATE TABLE sections_meta (id INTEGER PRIMARY KEY, content_hash TEXT, title TEXT)")
     db.execute("INSERT INTO sections_meta (content_hash) VALUES ('deadbeef')")
     if with_vec:
         # A plain table standing in for the vec0 virtual table. needs_rebuild reads

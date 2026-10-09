@@ -46,9 +46,39 @@ tasks:
   retrieval:save:
     desc: "Save a new retrieval baseline (only after a verified improvement)"
     cmds:
-      - python3 evals/retrieval/run_retrieval_evals.py --baseline save
+      - python3 evals/retrieval/run_retrieval_evals.py --baseline bank --config-name default
 
   test:
     desc: "Unit tests — chunker edge cases, harness fidelity, golden-set schema"
     cmds:
       - python3 -m pytest tests/ -q
+
+  e2e:contexts:
+    desc: "Graphiti A0-A3: build and cache the context for every case and arm (needs the live search stack and Graphiti)"
+    cmds:
+      - python3 evals/graphiti/run_e2e.py contexts {{.CLI_ARGS}}
+
+  e2e:answer:
+    desc: "Graphiti A0-A3: ask the answering model. Usage: task evals:e2e:answer -- --answerer claude:sonnet --reps 3"
+    cmds:
+      - python3 evals/graphiti/run_e2e.py answer {{.CLI_ARGS}}
+
+  e2e:judge:
+    desc: "Graphiti A0-A3: grade every answer with a judge from a different model family"
+    cmds:
+      - python3 evals/graphiti/run_e2e.py judge {{.CLI_ARGS}}
+
+  e2e:calibrate:
+    desc: "Graphiti A0-A3: --sample writes the 30-row sheet, no flag scores the judge against human-labels.jsonl"
+    cmds:
+      - python3 evals/graphiti/run_e2e.py calibrate {{.CLI_ARGS}}
+
+  e2e:report:
+    desc: "Graphiti A0-A3: per-category accuracy, paired bootstrap and the keep-or-cut verdict (refuses until the judge is calibrated)"
+    cmds:
+      - python3 evals/graphiti/run_e2e.py report {{.CLI_ARGS}}
+
+  promote:inbox:
+    desc: "Auto-promote into knowledge/capture-inbox.md. Usage: task evals:promote:inbox -- --gestalt-dir . --state-dir <dir> [--dry-run]"
+    cmds:
+      - python3 tools/auto-promote.py --sink inbox {{.CLI_ARGS}}

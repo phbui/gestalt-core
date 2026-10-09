@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Run a <kb-entry> commitment's verification command and print timestamped output to paste back.
+"""Run a capture-inbox commitment's verification command and print timestamped output to paste back.
 
-Phi copy-pastes a bash command already written inside a knowledge/<kb-entry>.md commitment
+Phi copy-pastes a bash command already written inside a knowledge/capture-inbox.md commitment
 and pastes the output back into the file by hand. This tool runs that command for him and formats
 the result for a clean paste. It NEVER decides an item is closed and NEVER touches
-<kb-entry>.md (or any other file) — closure is a human/agent judgment call made after reading
+capture-inbox.md (or any other file) — closure is a human/agent judgment call made after reading
 the output this prints, not something this script performs.
 
 Usage:
@@ -44,7 +44,7 @@ def main():
     ap.add_argument("--timeout", type=float, default=120, help="seconds before the command is killed (default 120)")
     a = ap.parse_args()
 
-    ts = datetime.datetime.now(datetime.timezone.utc).astimezone().isoformat(timespec="seconds")
+    ts = datetime.datetime.now(datetime.UTC).astimezone().isoformat(timespec="seconds")
     header = f"[{ts}]" + (f" {a.label}" if a.label else "")
     print(header)
     print(f"$ {a.command}")

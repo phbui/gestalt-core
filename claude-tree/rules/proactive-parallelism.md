@@ -17,28 +17,9 @@ If all four → spawn agents. If the task is coding-shaped and sequential, or yo
 
 Up to 6 subagents per message (3-5 for Agent Teams builder+verifier work). Work exceeding 6 subtasks batches into sequential waves, passing context forward.
 
-## Agent Selection Guide
+## Agent Selection and Patterns
 
-| Task Nature | Agent Type | Model | Why |
-|-------------|-----------|-------|-----|
-| Search, scan, read code, verify | `subagent_type="Explore"` | (fast by default) | Optimized for file search, read-only |
-| Multi-step research, web lookup, MCP queries | `subagent_type="general-purpose"` | sonnet | Needs all tools, complex reasoning |
-| Code writing, file creation | `subagent_type="general-purpose"` | sonnet | Needs Write/Edit tools |
-| Named gestalt agent (builder, verifier, etc.) | Use agent by name | Per agent def | Specialized persona + memory |
-
-### Model Selection Within Agents
-
-| Workload | Model | Rationale |
-|----------|-------|-----------|
-| Read-only scanning, verification, staleness checks | `haiku` or `model="fast"` | Fast, cheap, sufficient for pattern matching |
-| Code writing, design, research, complex analysis | `sonnet` | Needs reasoning depth |
-| Orchestration of sub-teams (rare) | `inherit` (default) | Uses caller's model |
-
-## Common Parallelizable Patterns
-
-Research/audit-shaped: 1 agent per claim cluster, file group, config domain, option, repo, or lookup source. Doc-vs-implementation validation splits by section (API, config, structure, pipeline, tests, deploy). SDD builds split 1 agent per workstream, worktree-isolated.
-
-For worker prompt structure (CONTEXT/YOUR TASK/RULES/RETURN) and shared orchestration patterns, follow `gestalt/.claude/references/orchestration.md`.
+`Explore` only for narrow lookups, `general-purpose` for anything that interprets, named gestalt agents by name. `sonnet` for judgment, writing and research, `haiku` only for deterministic lookups, `inherit` for orchestration. The strict type and model matrix is the `/prompt` skill, Step 4. Partition research and audit work by file group, repo or source, one agent each. Worker prompts follow `gestalt/.claude/references/orchestration.md`.
 
 ## Skill Suggestion
 

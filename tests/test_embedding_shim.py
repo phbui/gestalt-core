@@ -158,3 +158,19 @@ def test_do_post_returns_500_on_unexpected_exception(shim, monkeypatch):
     inst.do_POST()
     assert _sent_status(inst) == 500
     assert "model load failed" in _sent_json(inst)["error"]
+
+
+def test_the_shim_refuses_a_profile_it_cannot_serve(shim, monkeypatch):
+    monkeypatch.setattr(shim.ec, "PROFILE", "qwen3-4b")
+    with pytest.raises(SystemExit) as e:
+        shim.require_nomic()
+    assert "nomic" in str(e.value)
+
+
+def test_the_shim_accepts_the_nomic_profile(shim, monkeypatch):
+    monkeypatch.setattr(shim.ec, "PROFILE", "nomic")
+    shim.require_nomic()
+
+
+def test_the_shim_reports_the_configured_model(shim):
+    assert shim.MODEL_NAME == shim.ec.MODEL_NAME

@@ -65,9 +65,11 @@ def cli_env(tmp_path_factory, indexer):
     # querying the actual corpus instead of this fixture's throwaway one.
     tools_dir = root / "tools"
     tools_dir.mkdir()
-    for name in ("gestalt", "gestalt-mcp-server.py", "gestalt_mcp_server.py"):
+    for name in ("gestalt", "gestalt-mcp-server.py", "gestalt_mcp_server.py", "gestalt_rank.py"):
         shutil.copy2(REPO / "tools" / name, tools_dir / name)
         (tools_dir / name).chmod(0o755)
+    (root / "evals" / "retrieval").mkdir(parents=True)  # gestalt_rank loads its fusion arithmetic from here
+    shutil.copy2(REPO / "evals" / "retrieval" / "fusion.py", root / "evals" / "retrieval" / "fusion.py")
 
     mp = pytest.MonkeyPatch()
     mp.setattr(indexer, "GESTALT_DIR", root, raising=False)

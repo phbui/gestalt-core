@@ -1,0 +1,111 @@
+# The systems of the retrieval zoo. Each entry names a system, its adapter and the adapter's arguments.
+# Revisions and licences were read from huggingface.co/api/models/<id> on 2026-10-08. Prefixes come from each model card.
+# Adapters: bm25 | dense_hf | colbert | fused | rerank. In fused and rerank, `a`, `b`, `c` and `inner` name other systems in this file.
+# Convex fusion puts weight `alpha` on the lexical leg. A bm25 part is always the lexical leg, whichever side of A+B it stands on.
+systems:
+  bm25:
+    adapter: bm25
+
+  nomic:
+    adapter: dense_hf
+    args:
+      model: nomic-ai/nomic-embed-text-v1.5
+      revision: e9b6763023c676ca8431644204f50c2b100d9aab
+      doc_prefix: "search_document: "
+      query_prefix: "search_query: "
+      licence: apache-2.0
+      # transformers 5.5 and later ships the nomic_bert class, so no remote code runs. Set trust_remote_code: true on an older library.
+
+  bge-base:
+    adapter: dense_hf
+    args:
+      model: BAAI/bge-base-en-v1.5
+      revision: a5beb1e3e68b9ab74eb54cfd186867f64f240e1a
+      query_prefix: "Represent this sentence for searching relevant passages: "
+      licence: mit
+
+  qwen3-0.6b:
+    adapter: dense_hf
+    args:
+      model: Qwen/Qwen3-Embedding-0.6B
+      revision: 97b0c614be4d77ee51c0cef4e5f07c00f9eb65b3
+      dtype: bfloat16
+      query_prefix: "Instruct: Given a web search query, retrieve relevant passages that answer the query\nQuery:"
+      batch_size: 32
+      licence: apache-2.0
+
+  qwen3-4b:
+    adapter: dense_hf
+    args:
+      model: Qwen/Qwen3-Embedding-4B
+      revision: 5cf2132abc99cad020ac570b19d031efec650f2b
+      dtype: bfloat16
+      query_prefix: "Instruct: Given a web search query, retrieve relevant passages that answer the query\nQuery:"
+      batch_size: 16
+      licence: apache-2.0
+
+  gte-modernbert:
+    adapter: dense_hf
+    args:
+      model: Alibaba-NLP/gte-modernbert-base
+      normalize: true  # the card scores by cosine and the checkpoint has no Normalize module
+      revision: e7f32e3c00f91d699e8c43b53106206bcc72bb22
+      licence: apache-2.0
+
+  granite-r2:
+    adapter: dense_hf
+    args:
+      model: ibm-granite/granite-embedding-english-r2
+      normalize: true  # the card scores by cosine and the checkpoint has no Normalize module
+      revision: 47ea694b257b703fee9253d75c2b1f2985180498
+      licence: apache-2.0
+
+  # Multi-vector. The Sentence Transformers 6 MultiVectorEncoder reads the PyLate files, so pylate is not installed.
+  # max_doc_tokens 300 is the model's own document_length. Licence and revision read from huggingface.co/api/models/lightonai/GTE-ModernColBERT-v1 on 2026-10-09.
+  gte-moderncolbert:
+    adapter: colbert
+    args:
+      model: lightonai/GTE-ModernColBERT-v1
+      revision: 25f6f7bb8237b7ae25ae1d9b805ce17c0d1cc639
+      max_doc_tokens: 300
+      licence: apache-2.0
+
+  # Fused variants. rrf is reciprocal rank fusion at K=60.
+  nomic-bm25-rrf:
+    adapter: fused
+    args: {a: bm25, b: nomic, fusion: rrf}
+
+  nomic-bm25-convex:
+    adapter: fused
+    args: {a: bm25, b: nomic, fusion: convex, alpha: 0.4}
+
+  bge-bm25-rrf:
+    adapter: fused
+    args: {a: bm25, b: bge-base, fusion: rrf}
+
+  qwen3-4b-bm25-rrf:
+    adapter: fused
+    args: {a: bm25, b: qwen3-4b, fusion: rrf}
+
+  # Three-leg rrf with the multi-vector leg. Declared by name, so the ad hoc A+B:rrf parser does not read them.
+  "nomic+gte-moderncolbert:rrf":
+    adapter: fused
+    args: {a: nomic, b: gte-moderncolbert, fusion: rrf}
+
+  "nomic+bm25+gte-moderncolbert:rrf":
+    adapter: fused
+    args: {a: bm25, b: nomic, c: gte-moderncolbert, fusion: rrf}
+
+  # Reranked variants. `model` is a gestalt_rank alias (bge, qwen3-4b, qwen3-0.6b) and `depth` the hits re-scored.
+  # The Qwen rerankers read GESTALT_RERANK_INSTRUCTION. Set it per dataset before a run.
+  nomic-bm25-rrf-rerank-qwen3-0.6b:
+    adapter: rerank
+    args: {inner: nomic-bm25-rrf, model: qwen3-0.6b, depth: 40}
+
+  nomic-bm25-rrf-rerank-bge:
+    adapter: rerank
+    args: {inner: nomic-bm25-rrf, model: bge, depth: 40}
+
+  qwen3-4b-bm25-rrf-rerank-qwen3-4b:
+    adapter: rerank
+    args: {inner: qwen3-4b-bm25-rrf, model: qwen3-4b, depth: 40}

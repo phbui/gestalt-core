@@ -14,8 +14,17 @@ Usage: tools/cite-check.py paper.tex [refs.bib | dir ...] [--online] [--strict] 
 Polite pool: set GESTALT_MAILTO, else the address in tools/zotero-import.py's User-Agent is used.
 State dir: $GESTALT_STATE_DIR or ~/.fleet/cite-check.
 """
-import argparse, difflib, hashlib, json, os, re, sys, time
-import urllib.error, urllib.parse, urllib.request
+import argparse
+import difflib
+import hashlib
+import json
+import os
+import re
+import sys
+import time
+import urllib.error
+import urllib.parse
+import urllib.request
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -25,7 +34,7 @@ RETRACT_TYPES = {"retraction", "withdrawal", "removal"}
 _last = [0.0]
 
 TEX_CITE = re.compile(r"\\[A-Za-z]*cite[A-Za-z]*\*?(?:\s*\[[^\]]*\]){0,2}\s*\{([^}]*)\}")
-BIB_KEY = re.compile(r"^\s*@(?!comment|string|preamble)\w+\s*\{\s*([^,\s]+)\s*,", re.I | re.M)
+BIB_KEY = re.compile(r"^\s*@(?!comment|string|preamble)\w+\s*\{\s*([^,\s]+)\s*,", re.IGNORECASE | re.MULTILINE)
 
 
 def state_dir() -> Path:
@@ -65,7 +74,7 @@ def collect(paths: list[Path]) -> list[str]:
 
 
 def frontmatter(text: str) -> dict[str, str]:
-    m = re.match(r"---\n(.*?)\n---\n", text, re.S)
+    m = re.match(r"---\n(.*?)\n---\n", text, re.DOTALL)
     out = {}
     for line in (m.group(1) if m else "").split("\n"):
         mm = re.match(r"^([A-Za-z_][\w-]*):[ \t]*(.*?)\s*$", line)
@@ -98,7 +107,7 @@ def note_info(key: str, kdir: Path, pdfdir: Path) -> dict:
         doi = m.group(1) if m else ""
     slug = note.stem.removeprefix("paper-")
     has_pdf = (pdfdir / f"{slug}.pdf").is_file() or (pdfdir / f"{key}.pdf").is_file()
-    ab = re.search(r"## Abstract\s*\n+(.*?)(?=\n## |\Z)", text, re.S)
+    ab = re.search(r"## Abstract\s*\n+(.*?)(?=\n## |\Z)", text, re.DOTALL)
     ab = ab.group(1).strip() if ab else ""
     real_abs = bool(ab) and "(no abstract" not in ab.lower() and len(ab) > 40
     tier = "READ" if has_pdf else "ABSTRACT-ONLY" if real_abs else "UNREAD"
@@ -152,7 +161,7 @@ def crossref(doi: str, cache: Path | None = None, sleep=time.sleep) -> dict:
 
 def _norm(s: str) -> str:
     s = re.sub(r"<[^>]+>", "", s or "")
-    s = re.sub(r"^\s*retracted\s*:?\s*", "", s, flags=re.I)
+    s = re.sub(r"^\s*retracted\s*:?\s*", "", s, flags=re.IGNORECASE)
     return re.sub(r"[^a-z0-9 ]", "", re.sub(r"\s+", " ", s).casefold()).strip()
 
 
@@ -169,7 +178,7 @@ def judge(res: dict, note_title: str = "", note_year: str = "") -> dict:
         if t in RETRACT_TYPES:
             out["retracted"] = True
         out["notices"].append({"type": t, "doi": u.get("DOI", ""), "source": u.get("source", "")})
-    if re.match(r"\s*retracted\b", title, re.I):
+    if re.match(r"\s*retracted\b", title, re.IGNORECASE):
         out["retracted"] = True
     if note_title:
         out["title_ratio"] = round(difflib.SequenceMatcher(None, _norm(title), _norm(note_title)).ratio(), 3)

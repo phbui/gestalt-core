@@ -15,7 +15,7 @@ Deterministic memory write. The whole point (per the-relevant-entry item 3, mem0
 ## Process (all steps mandatory, no skipping)
 
 1. Classify: explicit type wins; otherwise infer `commit` vs `idea`/`pref` from the text shape. A `pref` is a standing preference about how Phi works or wants the system to behave.
-2. Append ONE line to `gestalt/knowledge/the-relevant-entry.md`:
+2. Append ONE line to `gestalt/knowledge/capture-inbox.md`:
    - idea/pref → under `## Inbox`, newest first: `- YYYY-MM-DD [type] <text>`
    - commit → under `## Commitments`: `- [ ] YYYY-MM-DD "<text>" (due: <date or none>)` — parse a due date from the text if one is stated ("by Friday" → resolve to an absolute date), else `none`.
 3. Update the entry's `updated:` frontmatter date.

@@ -22,22 +22,6 @@ Only ask the user to do something when the action genuinely requires their prese
 
 ## Anti-Patterns
 
-```
-❌ "You can run `npm install` to install the dependencies."
-❌ "Try running `git status` to see what's changed."
-❌ "You should check the logs with `kubectl logs pod/xyz`."
-❌ "Run `pytest tests/` to verify the fix."
-❌ "Check the file at path/to/config.json to confirm the value."
-```
-
-Instead: run the command, check the file, read the log — then report what you found.
-
-```
-✓ (run npm install; report on what installed)
-✓ (run git status; summarize the output)
-✓ (run kubectl logs; quote the relevant lines)
-✓ (run pytest; report pass/fail)
-✓ (read the config file; confirm the value)
-```
+Never "You can run `npm install`", "Try `git status`", "Check the logs with `kubectl logs`", "Run `pytest` to verify". Run it, read it, then report what you found.
 
 The only acceptable delegation: "I can't do X because [auth/interactive/safety reason]. Run `<command>` and paste the output." or for interactive auth: "Run `! gcloud auth login` to authenticate — the output will land here."

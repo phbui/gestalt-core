@@ -2,12 +2,21 @@
 """
 Auto-promote knowledge from Letta blocks and promotion queue to gestalt KB entries.
 Runs as a background process spawned by gestalt-session-start.sh when GESTALT_AUTO_CONSOLIDATE=true (default off).
-It proposes. It never edits a knowledge entry (N11, 2026-10-06): proposals go to <state-dir>/promotion-proposals.md.
+It proposes. It never edits a knowledge entry (N11, 2026-10-06). The default sink writes proposals to <state-dir>/promotion-proposals.md.
+The inbox sink (--sink inbox) adds one line per proposal to knowledge/capture-inbox.md under ## Inbox, where /weekly-review triages it (spec 7, 2026-10-08).
+Three gates run before either sink: stability, a minimum confidence, and a near-duplicate check against the target entry.
 """
-import argparse, json, os, re, sys, time, subprocess
-from pathlib import Path
+import argparse
+import fcntl
+import json
+import os
+import re
+import subprocess
+import sys
+import tempfile
+import time
 from datetime import datetime
-
+from pathlib import Path
 
 # =============================================================================
 # 5.8 — Log helper
@@ -21,7 +30,8 @@ class Log:
         with open(self.path, 'a', encoding='utf-8') as f:
             f.write(f"{ts} {level}: [auto-promote] {msg}\n")
     def info(self, msg): self._write('INFO', msg)
-    def warn(self, msg): self._write('WARN', msg)
+    def warning(self, msg): self._write('WARN', msg)
+    warn = warning
     def error(self, msg): self._write('ERROR', msg)
 
 
@@ -43,7 +53,7 @@ def read_letta_facts(letta_url: str, state_dir: Path, log) -> list[dict]:
         with urllib.request.urlopen(req, timeout=5) as resp:
             agent = json.loads(resp.read())
     except Exception as e:
-        log.warn(f"Letta unreachable: {e}")
+        log.warning(f"Letta unreachable: {e}")
         return []
 
     facts = []
@@ -96,11 +106,24 @@ def is_stable(fact: dict, queue_facts: list[dict], min_sessions: int) -> bool:
     if fact.get('source', '').startswith('letta_block:'):
         return True
 
-    # Queue facts: count distinct session_ids
+    # Queue facts: count distinct sessions. The hook keeps one row per fact with a `sessions` list.
+    # Old rows carry only `session_id`.
     fingerprint = fact['fact'][:80].lower()
-    session_ids = {f['session_id'] for f in queue_facts
-                   if f['fact'][:80].lower() == fingerprint}
-    return len(session_ids) >= min_sessions
+    return len(_session_ids(queue_facts, fingerprint)) >= min_sessions
+
+
+def _session_ids(queue_facts: list[dict], fingerprint: str) -> set:
+    """Distinct session ids over every queue row with this fingerprint. Reads `sessions`, falls back to `session_id`."""
+    ids = set()
+    for q in queue_facts:
+        if q.get('fact', '')[:80].lower() != fingerprint:
+            continue
+        listed = q.get('sessions')
+        if isinstance(listed, list) and listed:
+            ids.update(listed)
+        elif q.get('session_id') is not None:
+            ids.add(q['session_id'])
+    return ids
 
 
 def is_significant(fact: dict) -> bool:
@@ -200,9 +223,9 @@ def update_entry(entry_path: Path, facts: list[dict], log) -> None:
     for f in facts:
         # Strip investigation framing (AKP-FR-023)
         text = f['fact']
-        text = re.sub(r'^(?:we (?:discovered|found|realized) (?:that )?)', '', text, flags=re.I)
-        text = re.sub(r'^(?:it turns out (?:that )?)', '', text, flags=re.I)
-        text = re.sub(r'^(?:after investigating,? )', '', text, flags=re.I)
+        text = re.sub(r'^(?:we (?:discovered|found|realized) (?:that )?)', '', text, flags=re.IGNORECASE)
+        text = re.sub(r'^(?:it turns out (?:that )?)', '', text, flags=re.IGNORECASE)
+        text = re.sub(r'^(?:after investigating,? )', '', text, flags=re.IGNORECASE)
         text = text[0].upper() + text[1:] if text else text
         # HTML comment, not a visible tag: keeps the entry reading in authoritative voice
         # while making provenance (letta_block:<label> vs transcript, audit 2026-09-08)
@@ -265,7 +288,7 @@ def check_graphiti_staleness(graphiti_url: str, gestalt_dir: Path, log) -> int:
     try:
         import httpx
     except ImportError:
-        log.warn("httpx not available — skipping Graphiti staleness check")
+        log.warning("httpx not available — skipping Graphiti staleness check")
         return 0
 
     try:
@@ -310,7 +333,7 @@ def check_graphiti_staleness(graphiti_url: str, gestalt_dir: Path, log) -> int:
 
         return asyncio.run(_check())
     except Exception as e:
-        log.warn(f"Graphiti staleness check failed: {e}")
+        log.warning(f"Graphiti staleness check failed: {e}")
         return 0
 
 
@@ -341,7 +364,9 @@ def feed_graphiti(slug: str, gestalt_dir: Path, graphiti_url: str, log) -> None:
 
     content = entry_path.read_text(encoding="utf-8")
     try:
-        import httpx, asyncio
+        import asyncio
+
+        import httpx
 
         async def _feed():
             async with httpx.AsyncClient(timeout=10.0) as client:
@@ -363,7 +388,7 @@ def feed_graphiti(slug: str, gestalt_dir: Path, graphiti_url: str, log) -> None:
 
         asyncio.run(_feed())
     except Exception as e:
-        log.warn(f"Graphiti feed failed for {slug}: {e}")
+        log.warning(f"Graphiti feed failed for {slug}: {e}")
 
 
 def condense_letta(promoted: dict, letta_url: str, state_dir: Path, log) -> None:
@@ -399,7 +424,7 @@ def condense_letta(promoted: dict, letta_url: str, state_dir: Path, log) -> None
         urllib.request.urlopen(req, timeout=15)
         log.info("Letta condensation message sent")
     except Exception as e:
-        log.warn(f"Letta condensation failed: {e}")
+        log.warning(f"Letta condensation failed: {e}")
 
 
 # =============================================================================
@@ -489,6 +514,199 @@ def clear_queue(queue_path: Path, promoted_facts: list[str], log) -> None:
 # =============================================================================
 
 PROPOSALS_FILE = 'promotion-proposals.md'
+INBOX_FILE = 'capture-inbox.md'
+SINKS = ('state', 'inbox')
+DEFAULT_MIN_CONF = 0.5
+DUP_JACCARD = 0.8
+POLARITY = {'not', 'no', 'never', 'none', 'disabled', 'enabled', 'removed', 'added', 'off', 'on', 'without', 'with'}
+SUPERSEDE_JACCARD = 0.5
+
+
+def _tokens(text: str) -> set[str]:
+    return set(re.findall(r'[a-z0-9]+', text.lower()))
+
+
+def _numeric(tokens: set[str]) -> set[str]:
+    """Tokens that carry a digit. These stand in for numbers and identifiers."""
+    return {t for t in tokens if re.search(r'\d', t)}
+
+
+def _jaccard(a: set[str], b: set[str]) -> float:
+    return len(a & b) / len(a | b) if (a | b) else 0.0
+
+
+def _sentences(text: str) -> list[str]:
+    return [s.strip() for s in re.split(r'(?<=[.!?])\s+|\n+', text) if s.strip()]
+
+
+def min_confidence() -> float:
+    """GESTALT_PROMOTE_MIN_CONF, default 0.5. A bad value falls back to the default.
+
+    The gate applies only to facts that carry a confidence. A fact with no confidence field passes it."""
+    try:
+        return float(os.environ.get('GESTALT_PROMOTE_MIN_CONF', DEFAULT_MIN_CONF))
+    except ValueError:
+        return DEFAULT_MIN_CONF
+
+
+def _confidence(fact: dict) -> float | None:
+    """The fact's confidence as a float, or None when it carries none. A bad value counts as 0 and costs one stderr line."""
+    if fact.get('confidence') is None:
+        return None
+    try:
+        return float(fact['confidence'] or 0)
+    except (TypeError, ValueError):
+        print(f"auto-promote: bad confidence {fact.get('confidence')!r}, treated as 0", file=sys.stderr)
+        return 0.0
+
+
+def is_known(fact_text: str, entry_path: Path) -> bool:
+    """True when a sentence of the target entry says the same thing. Token Jaccard at 0.8 or more, the same numbers, the same polarity words.
+
+    The numbers must match. A fact that differs only by a port or a count is news, not a duplicate.
+    The polarity words must match too. "X is not enabled" against "X is enabled" is a flip, not a repeat."""
+    if not entry_path.exists():
+        return False
+    try:
+        body = entry_path.read_text(encoding='utf-8')
+    except OSError:
+        return False
+    ft = _tokens(fact_text)
+    return any(_jaccard(ft, _tokens(sent)) >= DUP_JACCARD and _numeric(ft) == _numeric(_tokens(sent))
+               and ft & POLARITY == _tokens(sent) & POLARITY
+               for sent in _sentences(body))
+
+
+_SERVER = None
+
+
+def _search_fts(query: str, limit: int = 5) -> list[dict]:
+    """Lexical search through the MCP server module, loaded the way evals/retrieval/replay_captured.py loads it.
+
+    Any failure returns no rows, so a missing index only costs the supersede link. Tests replace this function."""
+    global _SERVER
+    # The server reads GESTALT_HITS_LOG on every search, not only at import. The variable stays "off" for the whole call and is restored after.
+    saved = os.environ.get("GESTALT_HITS_LOG")
+    os.environ["GESTALT_HITS_LOG"] = "off"
+    try:
+        if _SERVER is None:
+            import importlib.util
+            spec = importlib.util.spec_from_file_location("gms", Path(__file__).resolve().parent / "gestalt-mcp-server.py")
+            _SERVER = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(_SERVER)
+        return _SERVER.gestalt_search_fts(query, limit=limit) or []
+    except (KeyboardInterrupt, GeneratorExit):
+        raise
+    except BaseException:
+        # A server module that exits at import (SystemExit) must not end the promotion run.
+        _SERVER = None
+        return []
+    finally:
+        if saved is None:
+            os.environ.pop("GESTALT_HITS_LOG", None)
+        else:
+            os.environ["GESTALT_HITS_LOG"] = saved
+
+
+def find_supersedes(fact_text: str, slug: str) -> str:
+    """A [[slug#^block]] link to the section that holds the older version of this fact, or 'none'.
+
+    The older sentence shares the entity words with the fact and carries different numbers or identifiers.
+    This only names the section. Nothing is edited."""
+    ft = _tokens(fact_text)
+    fwords, fnums = ft - _numeric(ft), _numeric(ft)
+    for row in _search_fts(fact_text, limit=5):
+        if row.get('slug') != slug:
+            continue
+        for sent in _sentences(row.get('content') or ''):
+            st = _tokens(sent)
+            if _jaccard(fwords, st - _numeric(st)) >= SUPERSEDE_JACCARD and _numeric(st) != fnums and (fnums or _numeric(st)):
+                block = row.get('block_id')
+                return f"[[{slug}#^{block}]]" if block else f"[[{slug}]]"
+    return 'none'
+
+
+def provenance(fact: dict, queue_facts: list[dict]) -> tuple[int, str]:
+    """(distinct sessions, first-seen date) for a fact. A Letta block fact counts as one session first seen today."""
+    today = datetime.now().date().isoformat()
+    fp = fact['fact'][:80].lower()
+    same = [q for q in queue_facts if q.get('fact', '')[:80].lower() == fp]
+    sessions = len(_session_ids(queue_facts, fp)) or 1
+    stamps = sorted(str(q['timestamp'])[:10] for q in same if q.get('timestamp'))
+    return sessions, (stamps[0] if stamps else today)
+
+
+def inbox_line(slug: str, f: dict, supersedes: str, sessions: int, first_seen: str) -> str:
+    fact = ' '.join(f['fact'].split())
+    return (f"- {datetime.now().date().isoformat()} [promote] target [[{slug}]] | confidence {f.get('confidence', 0)} "
+            f"| source {f.get('source', '?')} | sessions {sessions} | first_seen {first_seen} "
+            f"| supersedes {supersedes} | {fact}")
+
+
+def _inbox_has(text: str, slug: str, fact: str) -> bool:
+    """True when a line for this slug already ends in `| <fact>`."""
+    tail = f"| {' '.join(fact.split())}"
+    target = f"target [[{slug}]]"
+    return any(target in ln and ln.rstrip().endswith(tail) for ln in text.splitlines())
+
+
+def append_inbox(path: Path, lines: list[str], log, keys: list[tuple[str, str]] | None = None, lock_path: Path | None = None) -> int:
+    """Insert lines at the top of ## Inbox, newest first, as the file's own header asks. Creates the file when absent.
+
+    The write holds a flock on a lock file. The caller puts it outside knowledge/, by default it sits beside the inbox. It reads the inbox inside the lock, drops lines already present, and swaps the new text in with os.replace. A writer that takes no lock is caught by a second read before the swap, and the merge repeats.
+    Each line is judged on its own: same slug, same exact fact tail."""
+    if not lines:
+        return 0
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(lock_path or path.with_name(path.name + '.lock'), 'w') as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        written = 0
+        for _ in range(5):
+            before = path.read_text(encoding='utf-8') if path.exists() else ''
+            text = before
+            fresh = []
+            seen = set()
+            for i, ln in enumerate(lines):
+                m = re.search(r'target \[\[([^\]]+)\]\].*? \| ([^|]*)$', ln)
+                slug, fact = keys[i] if keys else (m.group(1), m.group(2)) if m else ('', ln)
+                key = (slug, ' '.join(fact.split()))
+                # Two equal proposals in one batch are written once.
+                if key in seen or _inbox_has(before, slug, fact):
+                    continue
+                seen.add(key)
+                fresh.append(ln)
+            if not fresh:
+                return 0
+            block = '\n'.join(fresh) + '\n'
+            m = re.search(r'^## Inbox[^\n]*\n\n?', text, re.MULTILINE)
+            if m:
+                text = text[:m.end()] + block + ('\n' if text[m.end():m.end() + 1] not in ('', '\n', '-') else '') + text[m.end():]
+            else:
+                text = (text.rstrip('\n') + '\n\n' if text else '# Capture Inbox\n\n') + '## Inbox\n\n' + block
+            fd, tmp = tempfile.mkstemp(dir=str(path.parent), prefix='.' + path.name + '.')
+            try:
+                with os.fdopen(fd, 'w', encoding='utf-8') as fh:
+                    fh.write(text)
+                    fh.flush()
+                    os.fsync(fh.fileno())
+                # A writer that takes no lock may have changed the file since the read. Look again, and redo on a change.
+                now = path.read_text(encoding='utf-8') if path.exists() else ''
+                if now != before:
+                    os.unlink(tmp)
+                    continue
+                os.replace(tmp, path)
+                written = len(fresh)
+                break
+            except BaseException:
+                if os.path.exists(tmp):
+                    os.unlink(tmp)
+                raise
+        else:
+            # Every attempt lost a race with an unlocked writer. Nothing was written, so say so.
+            log.info(f"Wrote 0 promotion proposal(s) to {path.name}: the file kept changing under the lock")
+            return 0
+    log.info(f"Wrote {written} promotion proposal(s) to {path.name}")
+    return written
 
 
 def append_proposals(path: Path, proposals: list[tuple[str, dict]], log) -> int:
@@ -536,6 +754,7 @@ def run_promotion(args, log) -> dict:
 
     # Step 5: Evaluate each candidate
     promoted_entries = {}  # slug -> list of facts to add
+    min_conf = min_confidence()
     for fact in candidates:
         # Stability check (AKP-FR-020)
         if not is_stable(fact, queue_facts, args.min_sessions):
@@ -547,9 +766,19 @@ def run_promotion(args, log) -> dict:
             stats['skipped'] += 1
             continue
 
+        # Confidence gate (spec 7). GESTALT_PROMOTE_MIN_CONF, default 0.5, applied only to facts that carry a confidence.
+        conf = _confidence(fact)
+        if conf is not None and conf < min_conf:
+            stats['skipped'] += 1
+            log.info(f"Low confidence {fact.get('confidence')} < {min_conf}: {fact['fact'][:80]}...")
+            continue
+
         # Find target entry (AKP-FR-022)
         target_slug = find_target_entry(fact, manifest)
-        if target_slug:
+        if target_slug and is_known(fact['fact'], gestalt_dir / 'knowledge' / f'{target_slug}.md'):
+            stats['skipped'] += 1
+            log.info(f"known: {target_slug} already says: {fact['fact'][:80]}...")
+        elif target_slug:
             promoted_entries.setdefault(target_slug, []).append(fact)
         else:
             # No existing entry — skip for now (creating new entries
@@ -561,12 +790,24 @@ def run_promotion(args, log) -> dict:
     # No `updated:` bump, no index rebuild, no Graphiti feed, no Letta condense: those only follow a
     # reviewed promotion. The proposals live under the state directory, off the encrypted corpus.
     proposals = [(slug, f) for slug, facts in promoted_entries.items() for f in facts]
-    if getattr(args, 'dry_run', False):
+    sink = getattr(args, 'sink', 'state') or 'state'
+    dry = getattr(args, 'dry_run', False)
+    links = {id(f): find_supersedes(f['fact'], slug) for slug, f in proposals} if sink == 'inbox' and not dry else {}
+    if dry:
         for slug, f in proposals:
-            log.info(f"[dry-run] would propose for {slug}: {f['fact'][:80]}")
+            log.info(f"[dry-run] would propose for {slug} conf={f.get('confidence')} supersedes={links.get(id(f), 'none')}")
         stats['promoted'] = len(proposals)
         return stats
-    fresh = append_proposals(state_dir / PROPOSALS_FILE, proposals, log)
+    if sink == 'inbox':
+        inbox = gestalt_dir / 'knowledge' / INBOX_FILE
+        lines, keys = [], []
+        for slug, f in proposals:
+            sessions, first_seen = provenance(f, queue_facts)
+            lines.append(inbox_line(slug, f, links[id(f)], sessions, first_seen))
+            keys.append((slug, ' '.join(f['fact'].split())))
+        fresh = append_inbox(inbox, lines, log, keys, lock_path=state_dir / 'capture-inbox.lock')
+    else:
+        fresh = append_proposals(state_dir / PROPOSALS_FILE, proposals, log)
     stats['promoted'] = fresh
 
     # Step 6: Graphiti staleness (AKP-FR-030, AKP-FR-061). Read-only against Graphiti.
@@ -595,6 +836,9 @@ def main():
                         help='Graphiti MCP server URL (default: http://localhost:8200)')
     parser.add_argument('--min-sessions', type=int, default=2,
                         help='Minimum sessions a fact must appear in before promotion (default: 2)')
+    parser.add_argument('--sink', choices=SINKS, default='state',
+                        help='Where proposals go: state = <state-dir>/promotion-proposals.md (default), '
+                             'inbox = knowledge/capture-inbox.md under ## Inbox')
     parser.add_argument('--dry-run', action='store_true',
                         help='Log what would be proposed and write nothing')
     parser.add_argument('--no-wait', action='store_true',

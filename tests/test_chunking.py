@@ -191,3 +191,101 @@ def test_no_internal_anchors_falls_back_to_size_only_split(write_entry, indexer)
     assert ids[0] == "big"
     assert len(ids) == len(set(ids))
     assert all(i.startswith("big") for i in ids)
+
+
+# --- title in the chunk (spec 3, TEXT_FORMAT v2-title) -------------------------------------------
+
+
+def test_frontmatter_title_rides_on_every_chunk(write_entry):
+    chunks = write_entry("---\ntype: note\ntitle: Deploying client sites\n---\n\n## A ^a\n\nx\n\n## B ^b\n\ny\n")
+    assert [c["title"] for c in chunks] == ["Deploying client sites"] * 2
+
+
+def test_quoted_title_loses_its_quotes_and_keeps_inner_colons(write_entry):
+    chunks = write_entry('---\ntitle: "Fleet: the mesh"\n---\n\n## A ^a\n\nx\n')
+    assert chunks[0]["title"] == "Fleet: the mesh"
+
+
+def test_split_parts_inherit_the_title(write_entry, indexer):
+    chunks = write_entry(FRONT + "## Big ^big\n\n" + ("word " * 1200))
+    assert len(chunks) > 1 and {c["title"] for c in chunks} == {"Fixture"}
+
+
+def test_first_h1_is_the_title_when_frontmatter_has_none(write_entry):
+    chunks = write_entry("# Plain entry heading\n\n## A ^a\n\nx\n")
+    assert chunks[0]["title"] == "Plain entry heading"
+
+
+def test_h1_inside_a_code_fence_is_not_a_title(write_entry):
+    chunks = write_entry("```\n# not a heading\n```\n\n## A ^a\n\nx\n")
+    assert chunks[0]["title"] == ""
+
+
+def test_rules_file_without_frontmatter_stays_untitled(tmp_path, monkeypatch, indexer):
+    """A .claude/rules file keeps its old embed text: an H1 does not become a title there."""
+    import gestalt_embed_config as ec
+
+    monkeypatch.setattr(indexer, "GESTALT_DIR", tmp_path, raising=False)
+    rules = tmp_path / "rules"
+    rules.mkdir()
+    path = rules / "agent-autonomy.md"
+    path.write_text("# Agent Autonomy\n\n## Rule ^rule\n\nDo it yourself.\n", encoding="utf-8")
+    chunks = indexer.parse_entry(path)
+    assert {c["title"] for c in chunks} == {""}
+    chunk = next(c for c in chunks if c["heading"] == "Rule")
+    assert ec.chunk_text(chunk["slug"], chunk["title"], chunk["heading"], chunk["content"]) == (
+        "search_document: agent autonomy — Rule\n\nDo it yourself."
+    )
+
+
+def test_titled_chunk_embed_text_and_fts_row(tmp_path, monkeypatch, indexer):
+    """The title is in the text that gets embedded and in a searchable FTS column."""
+    import gestalt_embed_config as ec
+
+    kd = tmp_path / "knowledge"
+    kd.mkdir()
+    (kd / "fleet-mesh.md").write_text("---\ntitle: Tailnet topology\n---\n\n## Hub ^hub\n\nthe hub is the hub\n", encoding="utf-8")
+    search = tmp_path / ".search"
+    for name, val in (("GESTALT_DIR", tmp_path), ("KNOWLEDGE_DIR", kd), ("SEARCH_DIR", search),
+                      ("DB_PATH", search / "gestalt.db"), ("BUILD_PATH", search / "gestalt.db.building"),
+                      ("LOCK_PATH", search / "build.lock"), ("RULES_DIR", tmp_path / ".claude" / "rules")):
+        monkeypatch.setattr(indexer, name, val, raising=False)
+    chunk = indexer.parse_entry(kd / "fleet-mesh.md")[0]
+    assert ec.chunk_text(chunk["slug"], chunk["title"], chunk["heading"], chunk["content"]) == (
+        "search_document: Tailnet topology (fleet mesh) — Hub\n\nthe hub is the hub"
+    )
+    indexer.build_index(force_fts_only=True)
+    import sqlite3
+
+    db = sqlite3.connect(search / "gestalt.db")
+    assert db.execute("SELECT title FROM sections_meta").fetchall() == [("Tailnet topology",)]
+    assert db.execute("SELECT slug FROM sections_fts WHERE sections_fts MATCH 'title:tailnet'").fetchall() == [("fleet-mesh",)]
+    assert db.execute("SELECT slug FROM sections_fts WHERE sections_fts MATCH 'tailnet'").fetchall() == [("fleet-mesh",)], "a bare query reaches the title column"
+
+
+def test_nested_title_key_is_not_the_entry_title(write_entry):
+    chunks = write_entry("---\nsource:\n  title: Nested source\n---\n\n## A ^a\n\nx\n")
+    assert chunks[0]["title"] == ""
+    chunks = write_entry("---\nsource:\n  title: Nested source\ntitle: Real title\n---\n\n## A ^a\n\nx\n")
+    assert chunks[0]["title"] == "Real title"
+
+
+def test_title_keeps_its_own_apostrophes_and_loses_only_a_matching_pair(write_entry):
+    assert write_entry("---\ntitle: 'Tis the season\n---\n\n## A ^a\n\nx\n")[0]["title"] == "'Tis the season"
+    assert write_entry("---\ntitle: The users'\n---\n\n## A ^a\n\nx\n")[0]["title"] == "The users'"
+    assert write_entry("---\ntitle: 'Quoted one'\n---\n\n## A ^a\n\nx\n")[0]["title"] == "Quoted one"
+
+
+def test_default_embed_text_and_cache_key_are_pinned(indexer):
+    """Values captured before the late-chunking fixes. A default build must keep both.
+
+    The two hashes are the SHA-256 of the exact strings asserted just above them. They pin the embedding-cache key, so a changed prefix or separator would invalidate every cached vector. Change them only when that is intended."""
+    import gestalt_embed_config as ec
+
+    text = ec.chunk_text("alpha-doc", "Alpha doc", "One", "body text")
+    assert text == "search_document: Alpha doc (alpha doc) \u2014 One\n\nbody text"
+    assert indexer.chunk_hash(text) == "bd1f4c5302ff24a3062af14cee35a9dac6094fb10658ea67273cc3a065bcaa0c"
+    plain = ec.chunk_text("beta", "", "H", "c")
+    assert plain == "search_document: beta \u2014 H\n\nc"
+    assert indexer.chunk_hash(plain) == "8553ad3a80b9c67d9c36e765a244e253cd46df56dded3c7e06c944805499da25"
+    assert indexer.cache_salt(False, None) == ""

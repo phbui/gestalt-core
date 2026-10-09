@@ -2,3 +2,5 @@ gestalt-core
 Copyright 2026 Philip Bui
 
 This product includes software developed by Philip Bui.
+
+Models, services and benchmark datasets are downloaded at run time under their own licences and are not part of this distribution. Their terms, including the academic-only terms of NFCorpus and the non-commercial terms of LoCoMo, are listed in THIRD-PARTY-NOTICES.md.

@@ -31,7 +31,13 @@ Usage:
                                            human; arming is Phi's call, per the standing
                                            quarantine from 2026-09-01.
 """
-import argparse, collections, hashlib, json, os, subprocess, sys
+import argparse
+import collections
+import hashlib
+import json
+import os
+import subprocess
+import sys
 
 GRAPH = os.environ.get("GESTALT_GRAPH", "gestalt")
 CONTAINER = os.environ.get("GESTALT_FALKOR_CONTAINER", "gestalt-falkordb")

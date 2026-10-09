@@ -128,3 +128,18 @@ def test_mark_synced_writes_the_planned_hash_without_sending(tmp_path) -> None:
     r = subprocess.run([str(SYNC), "--mark-synced=kb-fixture#9"], env=rig["env"], capture_output=True, text=True, timeout=120)
     assert r.returncode == 3 and "not in the current plan" in r.stderr, (r.returncode, r.stderr)
     assert not any(p.name.startswith("graphiti-sync.") and p.name != "graphiti-sync.json" for p in rig["state"].parent.glob("*"))
+
+
+def test_max_entries_caps_a_run_to_the_first_pending_entries(tmp_path: Path) -> None:
+    """GESTALT_SYNC_MAX_ENTRIES bounds one run so a drain window under the GPU lease queues a batch that lands in the
+    window. Two entries are pending on a fresh state, and a cap of 1 plans the chunks of one entry only."""
+    rig = _rig(tmp_path)
+    r = subprocess.run([str(SYNC), "--dry-run"], env=rig["env"], capture_output=True, text=True, timeout=120)
+    assert r.returncode == 0, r.stderr
+    all_names = {line.split("\t")[1].split("#")[0] for line in r.stdout.splitlines() if line.startswith("would send")}
+    assert all_names == {"kb-fixture", "kb-tiny"}, all_names
+    env = dict(rig["env"], GESTALT_SYNC_MAX_ENTRIES="1")
+    r = subprocess.run([str(SYNC), "--dry-run"], env=env, capture_output=True, text=True, timeout=120)
+    assert r.returncode == 0, r.stderr
+    names = {line.split("\t")[1].split("#")[0] for line in r.stdout.splitlines() if line.startswith("would send")}
+    assert len(names) == 1 and names < all_names, names

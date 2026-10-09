@@ -10,7 +10,9 @@ name-keyed tool would have destroyed two thirds of that history. The 50 duplicat
 Also asserts the survivor is deterministic: the newest by created_at, uuid as tiebreak, so
 two runs of the planner never disagree about which copy to keep.
 """
-import importlib.util, pathlib, sys
+import importlib.util
+import pathlib
+import sys
 
 spec = importlib.util.spec_from_file_location(
     "dd", pathlib.Path(__file__).resolve().parents[1] / "gestalt-graph-dedupe.py")

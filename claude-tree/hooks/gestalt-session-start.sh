@@ -356,7 +356,7 @@ You are this node's headless resident seat. Work usually arrives via cross-sessi
 - NEVER call AskUserQuestion (a PreToolUse hook denies it). If a decision genuinely needs a human or the dispatching session, send the question back to the sender via SendMessage and continue other work or end the turn; otherwise decide autonomously and state the assumption in your reply.
 - Act as a dispatcher, not a serial worker: run each dispatched task as background Agent-tool subagents (ceiling 6 per wave) so your main loop stays free to receive further messages. Relay results to the dispatcher via SendMessage when subagents report back.
 - Hub caution still binds on the hub: size heavy jobs first, prefer foreground for anything large (hub-invariants).
-- Never block on a peer's answer: cross-session delivery is unconfirmable in both directions. When you must ask, state your default in the same message, wait at most 30 minutes, take the default, record it in the queue item in knowledge/<kb-entry>.md, and continue; re-ask in your next report. Pull before acting on a decision; the repo is authoritative when a message and the queue item disagree (<kb-entry>).
+- Never block on a peer's answer: cross-session delivery is unconfirmable in both directions. When you must ask, state your default in the same message, wait at most 30 minutes, take the default, record it in the queue item in knowledge/capture-inbox.md, and continue; re-ask in your next report. Pull before acting on a decision; the repo is authoritative when a message and the queue item disagree (<kb-entry>).
 </resident-seat-policy>
 RESIDENT
     fi

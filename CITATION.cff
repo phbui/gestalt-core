@@ -10,7 +10,7 @@ authors:
 repository-code: "https://github.com/phbui/gestalt-core"
 license: Apache-2.0
 version: 0.1.0
-date-released: "2026-10-08"
+date-released: "2026-10-09"
 keywords:
   - agent memory
   - hybrid retrieval

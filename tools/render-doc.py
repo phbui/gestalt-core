@@ -70,8 +70,8 @@ def math_svg(latex: str, fontsize: float = 13.0) -> str | None:
         plt.close(fig)
     s = buf.getvalue()
     s = s[s.index("<svg"):]
-    s = re.sub(r"<metadata>.*?</metadata>", "", s, flags=re.S)
-    s = re.sub(r'<g id="patch_1">.*?</g>', "", s, flags=re.S)   # fill:none warning
+    s = re.sub(r"<metadata>.*?</metadata>", "", s, flags=re.DOTALL)
+    s = re.sub(r'<g id="patch_1">.*?</g>', "", s, flags=re.DOTALL)   # fill:none warning
     return s.replace("<svg ", '<svg fill="currentColor" ', 1).strip()
 
 CSS = """
@@ -254,7 +254,7 @@ def render(src: Path, want_pdf: bool, out_dir: Path | None = None) -> list[Path]
         def one(m):
             svg = math_svg(m.group(1).strip())
             return f'<div class="eq">{svg}</div>' if svg else m.group(0)
-        md_text = re.sub(r"\$\$(.+?)\$\$", one, md_text, flags=re.S)
+        md_text = re.sub(r"\$\$(.+?)\$\$", one, md_text, flags=re.DOTALL)
 
     body = markdown.markdown(
         md_text,

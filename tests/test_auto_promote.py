@@ -57,6 +57,8 @@ class _FakeLog:
     def error(self, msg):
         pass
 
+    def warning(self, *a, **k):
+        pass
 
 # ---------------------------------------------------------------------------
 # Producer/consumer contract: regenerate_manifest() -> read_manifest()

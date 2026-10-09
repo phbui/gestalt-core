@@ -253,11 +253,13 @@ def test_builder_logs_and_continues_fts_only_when_sqlite_vec_missing(tmp_path, m
 # --------------------------------------------------------------------------
 
 def _rrf_k() -> int:
-    """Read the RRF constant from the server rather than hardcoding it."""
+    """The RRF constant the server fuses with. It is defined once, in gestalt_rank, and the server binds it."""
+    sys.path.insert(0, str(TOOLS))
+    import gestalt_rank
+
     src = (TOOLS / "gestalt-mcp-server.py").read_text()
-    m = re.search(r"^\s*K\s*=\s*(\d+)\s*$", src, re.MULTILINE)
-    assert m, "could not find the RRF constant K in gestalt-mcp-server.py"
-    return int(m.group(1))
+    assert re.search(r"^\s*K\s*=\s*gestalt_rank\.RRF_K\s*$", src, re.MULTILINE), "the server must take K from gestalt_rank.RRF_K"
+    return int(gestalt_rank.RRF_K)
 
 
 def _n_legs() -> int:

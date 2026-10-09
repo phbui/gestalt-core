@@ -1,105 +1,200 @@
 {
- "generated_utc": "2026-10-08T05:36:43Z",
- "environment": {
-  "python": "3.12.3",
-  "platform": "Linux-6.6.87.2-microsoft-standard-WSL2-x86_64-with-glibc2.39",
-  "sqlite": "3.45.1",
-  "sqlite_vec": "0.1.9",
-  "numpy": "2.5.3",
-  "torch": "2.11.0+cu128",
-  "sentence_transformers": "6.0.0",
-  "ir_datasets": "0.6.3",
-  "device": "cuda:0",
-  "gpu": "NVIDIA GeForce RTX 4090 Laptop GPU",
-  "embedding_model": "nomic-ai/nomic-embed-text-v1.5",
-  "embedding_revision": "e9b6763023c676ca8431644204f50c2b100d9aab",
-  "doc_prefix": "search_document: ",
-  "query_prefix": "search_query: ",
-  "rrf_k": 60,
-  "code_sha256": {
-   "evals/retrieval/beir_bench.py": "a2b21090d36bccabe9243ebaba234921c42d4426bf0658b3a0bae12848d8b4bd",
-   "evals/retrieval/run_retrieval_evals.py": "eafd4551567fa960925e53efbeee8679b0f11277d0519ae126db1cfade7de393",
-   "tools/gestalt_embed_config.py": "9d5874890041e148c581dfd3579cccfd8955da1a7f9abba3155cc46a4f4d8c5f"
-  }
- },
- "results": {
-  "beir/scifact": {
-   "documents": 5183,
-   "queries": 300,
-   "systems": {
-    "bm25": {
-     "ndcg10": 0.6824,
-     "ci95_bootstrap": [
-      0.6378,
-      0.7251
-     ]
+  "environment": {
+    "attn_impl": null,
+    "code_sha256": {
+      "evals/retrieval/beir_bench.py": "718963cde790664bb056943de07da11caf69c59cc7eb8c5bea09e997305a87d3",
+      "evals/retrieval/bench_engine.py": "2a38063b776fbd442efc125ee11969bb0a75b83eede954d5cbcbeb374934ab91",
+      "evals/retrieval/bench_stats.py": "59f192f4df24fefaac60f466f1d2472417055e410f8c44cf35badbcb391cca57",
+      "evals/retrieval/fusion.py": "4c202efeb9bfd24bb65e4d7cd04309088e1dfbc6e83c9853402d17331997bc96",
+      "evals/retrieval/resumable.py": "f93d0368fab1b377f515d9f7821dc6e6738914e4ddd46c095c4f4f271d941b85",
+      "evals/retrieval/run_retrieval_evals.py": "cab0d20250dccdb6c66f19a616cedd233b5d3c120f3bda95b7d80bc72b5f1ec1",
+      "tools/gestalt_embed_config.py": "ae69f4812a600f6f0fe065c6d38f2dd7f5ad772554b0ffd4d71e1426f7b2607b",
+      "tools/gestalt_rank.py": "e3841a82cad94984606f9018f25dd05396b6ef3ca45ca83f3eb4bf7a3289af9f"
     },
-    "dense": {
-     "ndcg10": 0.6937,
-     "ci95_bootstrap": [
-      0.6504,
-      0.7359
-     ]
+    "device": "cuda:0",
+    "doc_prefix": "search_document: ",
+    "embed_batch_size": 16,
+    "embed_dim": 768,
+    "embed_dtype": "float32",
+    "embed_normalize": false,
+    "embed_profile": "nomic",
+    "embed_sort_order": "length-sorted",
+    "embedding_load_path": "native",
+    "embedding_model": "nomic-ai/nomic-embed-text-v1.5",
+    "embedding_revision": "e9b6763023c676ca8431644204f50c2b100d9aab",
+    "engine": {
+      "block_size": 20000,
+      "dense": "auto",
+      "dense_note": "sqlite-vec up to 300000 documents, exact blocked search above",
+      "dense_threshold": 300000,
+      "dtype": "float32",
+      "encode_budgets": {
+        "attn_budget": 4000000,
+        "token_budget": 16384
+      },
+      "fts": "file-backed FTS5, contentless, porter unicode61",
+      "query_encode": "one call per query",
+      "stopwords": false
     },
-    "hybrid": {
-     "ndcg10": 0.7373,
-     "ci95_bootstrap": [
-      0.6958,
-      0.7774
-     ]
-    }
-   },
-   "tests": {
-    "hybrid_vs_bm25": {
-     "mean_difference": 0.0549,
-     "p_value": 5e-05,
-     "permutations": 20000
+    "fusion": {
+      "alpha": 0.5,
+      "call_site": "bench_engine.fuse_pools, through gestalt_rank.fuse and evals/retrieval/fusion.py, the fusion the server runs",
+      "mode": "rrf",
+      "resolved": {
+        "alpha": 0.5,
+        "method": "rrf",
+        "missing": "zero",
+        "norm": "minmax",
+        "rescue": {
+          "dense_window": 20,
+          "insert_at": 5,
+          "max_rank": 3,
+          "max_rescues": 2,
+          "min_norm_score": 0.5
+        },
+        "rrf_k": 60,
+        "w_bm25": 0.5
+      }
     },
-    "hybrid_vs_dense": {
-     "mean_difference": 0.0437,
-     "p_value": 0.00035,
-     "permutations": 20000
-    }
-   }
+    "gpu": "NVIDIA GeForce RTX 4090 Laptop GPU",
+    "ir_datasets": "0.6.3",
+    "numpy": "2.5.3",
+    "platform": "Linux-6.6.87.2-microsoft-standard-WSL2-x86_64-with-glibc2.39",
+    "python": "3.12.3",
+    "query_prefix": "search_query: ",
+    "rerank": {
+      "depth": 40,
+      "instruction": {
+        "beir/nfcorpus": "Given a question, retrieve relevant documents that best answer the question",
+        "beir/scifact": "Given a scientific claim, retrieve documents that support or refute the claim"
+      },
+      "instruction_note": "The Qwen rerankers prepend this instruction. It is dataset-specific tuning, set per dataset with GESTALT_RERANK_INSTRUCTION. The default names a personal knowledge base.",
+      "maxchars": 2000,
+      "model": "qwen3-0.6b",
+      "on": true
+    },
+    "rerank_dtype": "float16",
+    "rrf_k": 60,
+    "sentence_transformers": "6.0.0",
+    "sqlite": "3.45.1",
+    "sqlite_vec": "0.1.9",
+    "tf32": false,
+    "torch": "2.11.0+cu128"
   },
-  "beir/nfcorpus": {
-   "documents": 3633,
-   "queries": 323,
-   "systems": {
-    "bm25": {
-     "ndcg10": 0.3217,
-     "ci95_bootstrap": [
-      0.2875,
-      0.3563
-     ]
+  "generated_utc": "2026-10-09T22:36:12Z",
+  "merged_from": [
+    "beir-scifact/summary.json",
+    "beir-nfcorpus/summary.json"
+  ],
+  "results": {
+    "beir/nfcorpus": {
+      "documents": 3633,
+      "queries": 323,
+      "queries_excluded_no_positive": 0,
+      "rerank_fallback_queries": 0,
+      "smoke_subset": false,
+      "systems": {
+        "bm25": {
+          "ci95_bootstrap": [
+            0.2875,
+            0.3563
+          ],
+          "ndcg10": 0.3217
+        },
+        "dense": {
+          "ci95_bootstrap": [
+            0.308,
+            0.3785
+          ],
+          "ndcg10": 0.3437
+        },
+        "hybrid": {
+          "ci95_bootstrap": [
+            0.3249,
+            0.3962
+          ],
+          "ndcg10": 0.3606
+        },
+        "hybrid_rerank": {
+          "ci95_bootstrap": [
+            0.3461,
+            0.418
+          ],
+          "ndcg10": 0.382
+        }
+      },
+      "tests": {
+        "hybrid_vs_bm25": {
+          "mean_difference": 0.0389,
+          "p_value": 5e-05,
+          "permutations": 20000
+        },
+        "hybrid_vs_dense": {
+          "mean_difference": 0.0169,
+          "p_value": 0.00655,
+          "permutations": 20000
+        },
+        "rerank_vs_hybrid": {
+          "mean_difference": 0.0214,
+          "p_value": 0.00015,
+          "permutations": 20000
+        }
+      }
     },
-    "dense": {
-     "ndcg10": 0.3437,
-     "ci95_bootstrap": [
-      0.308,
-      0.3785
-     ]
-    },
-    "hybrid": {
-     "ndcg10": 0.3606,
-     "ci95_bootstrap": [
-      0.3249,
-      0.3962
-     ]
+    "beir/scifact": {
+      "documents": 5183,
+      "queries": 300,
+      "queries_excluded_no_positive": 0,
+      "rerank_fallback_queries": 0,
+      "smoke_subset": false,
+      "systems": {
+        "bm25": {
+          "ci95_bootstrap": [
+            0.6378,
+            0.7251
+          ],
+          "ndcg10": 0.6824
+        },
+        "dense": {
+          "ci95_bootstrap": [
+            0.6504,
+            0.7359
+          ],
+          "ndcg10": 0.6937
+        },
+        "hybrid": {
+          "ci95_bootstrap": [
+            0.6958,
+            0.7774
+          ],
+          "ndcg10": 0.7373
+        },
+        "hybrid_rerank": {
+          "ci95_bootstrap": [
+            0.7362,
+            0.8127
+          ],
+          "ndcg10": 0.7748
+        }
+      },
+      "tests": {
+        "hybrid_vs_bm25": {
+          "mean_difference": 0.0549,
+          "p_value": 5e-05,
+          "permutations": 20000
+        },
+        "hybrid_vs_dense": {
+          "mean_difference": 0.0437,
+          "p_value": 0.00035,
+          "permutations": 20000
+        },
+        "rerank_vs_hybrid": {
+          "mean_difference": 0.0375,
+          "p_value": 0.0013,
+          "permutations": 20000
+        }
+      }
     }
-   },
-   "tests": {
-    "hybrid_vs_bm25": {
-     "mean_difference": 0.0389,
-     "p_value": 5e-05,
-     "permutations": 20000
-    },
-    "hybrid_vs_dense": {
-     "mean_difference": 0.0169,
-     "p_value": 0.00655,
-     "permutations": 20000
-    }
-   }
-  }
- }
+  },
+  "smoke_subset": false
 }

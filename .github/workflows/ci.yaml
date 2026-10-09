@@ -6,6 +6,9 @@ on:
   pull_request:
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -15,22 +18,31 @@ jobs:
     name: Unit tests
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: "3.12"
           cache: pip
-      - name: Install test dependencies
-        run: python -m pip install --upgrade pip pytest pyyaml markdown
+          cache-dependency-path: tools/requirements.txt
+      - name: Install CPU torch, then the tool requirements
+        # torch comes from the CPU index first, so pip does not pull a CUDA build of about 2 GB.
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install -r tools/requirements.txt pytest pyyaml markdown
       - name: Run tests
+        # The tests use stub encoders. Offline mode makes a model download at test time an error.
+        env:
+          HF_HUB_OFFLINE: "1"
+          TRANSFORMERS_OFFLINE: "1"
         run: python -m pytest tests/ -q
 
   skill-evals:
     name: Skill eval configs
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: "3.12"
       - run: python -m pip install --upgrade pip pyyaml
@@ -41,7 +53,7 @@ jobs:
     name: Shell syntax
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - name: bash -n every shell script
         run: |
           set -euo pipefail
@@ -58,7 +70,7 @@ jobs:
     name: Secret scan
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - name: Scan tracked files for credential patterns
         run: |
           set -uo pipefail

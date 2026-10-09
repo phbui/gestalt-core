@@ -1,0 +1,71 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "gestalt-zoo-result-v1",
+  "title": "One dataset result of beir_bench.py or zoo_run.py",
+  "type": "object",
+  "required": ["dataset", "split", "documents", "queries", "queries_excluded_no_positive", "smoke_subset", "metric", "systems", "tests", "query_ids"],
+  "properties": {
+    "dataset": {"type": "string", "minLength": 1},
+    "split": {"type": "string"},
+    "documents": {"type": "integer", "minimum": 0},
+    "queries": {"type": "integer", "minimum": 1},
+    "queries_excluded_no_positive": {"type": "integer", "minimum": 0},
+    "smoke_subset": {"type": "boolean"},
+    "subset": {"type": "boolean"},
+    "max_docs": {"type": "integer", "minimum": 1},
+    "metric": {"const": "nDCG@10"},
+    "query_log_header": {"type": "object"},
+    "model": {"type": "object"},
+    "systems": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": {
+        "type": "object",
+        "required": ["ndcg10", "ci95_bootstrap", "per_query"],
+        "properties": {
+          "ndcg10": {"type": "number", "minimum": 0, "maximum": 1},
+          "ci95_bootstrap": {"type": "array", "items": {"type": "number"}, "minItems": 2, "maxItems": 2},
+          "per_query": {"type": "array", "items": {"type": "number", "minimum": 0, "maximum": 1}},
+          "cost": {"$ref": "#/$defs/cost"}
+        }
+      }
+    },
+    "tests": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["mean_difference", "p_value", "permutations"],
+        "properties": {
+          "mean_difference": {"type": "number"},
+          "p_value": {"type": "number", "exclusiveMinimum": 0, "maximum": 1},
+          "permutations": {"type": "integer", "minimum": 1}
+        }
+      }
+    },
+    "rerank_fallback_queries": {"type": "integer", "minimum": 0},
+    "seconds": {"type": "object", "additionalProperties": {"type": "number", "minimum": 0}},
+    "query_ids": {"type": "array", "items": {"type": "string"}}
+  },
+  "$defs": {
+    "cost": {
+      "description": "Measured cost of one system. A field that cannot be measured is null: peak_vram_mib and gpu on a CPU, parameters for BM25.",
+      "type": "object",
+      "required": ["index_seconds", "docs_per_second", "query_latency_ms_p50", "query_latency_ms_p95", "latency_queries", "queries_per_second",
+                   "peak_vram_mib", "index_bytes", "parameters", "dtype", "gpu"],
+      "additionalProperties": false,
+      "properties": {
+        "index_seconds": {"type": "number", "minimum": 0},
+        "docs_per_second": {"type": ["number", "null"], "minimum": 0},
+        "query_latency_ms_p50": {"type": ["number", "null"], "minimum": 0},
+        "query_latency_ms_p95": {"type": ["number", "null"], "minimum": 0},
+        "latency_queries": {"type": "integer", "minimum": 0},
+        "queries_per_second": {"type": ["number", "null"], "minimum": 0},
+        "peak_vram_mib": {"type": ["number", "null"], "minimum": 0},
+        "index_bytes": {"type": ["integer", "null"], "minimum": 0},
+        "parameters": {"type": ["integer", "null"], "minimum": 0},
+        "dtype": {"type": ["string", "null"]},
+        "gpu": {"type": ["string", "null"]}
+      }
+    }
+  }
+}

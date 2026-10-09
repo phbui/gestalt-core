@@ -1,6 +1,18 @@
-ir_datasets>=0.5.6
-sentence-transformers
-sqlite-vec
+# Pins for the BEIR benchmark environment (evals/retrieval/beir_bench.py). Version numbers are the ones the benchmark run recorded.
+# The torch build there was 2.11.0 for CUDA 12.8 (cu128). On a matching driver install it from the PyTorch index:
+#   pip install --index-url https://download.pytorch.org/whl/cu128 torch==2.11.0
+# Without a GPU, install torch from the CPU index first so pip skips the CUDA wheels:
+#   pip install --index-url https://download.pytorch.org/whl/cpu torch==2.11.0
+# transformers is pinned to the build that ran the 2026-10-08 benchmark. A clean clone on 2026-10-08 resolved 5.19.0, where nomic's remote modelling code fails with `get_extended_attention_mask`. Qwen3 models need 4.51 or newer.
+ir_datasets==0.6.3
+sentence-transformers==6.0.0
+sqlite-vec==0.1.9
 numpy
-torch
+pyyaml
+jsonschema
 einops
+torch==2.11.0
+transformers==5.15.0
+# mteb_bench.py. 2.24.1 is the version the harness was written against (interface: SearchProtocol, mteb/models/models_protocols.py).
+mteb==2.24.1
+pyarrow>=15  # the held-out LitSearch set ships as parquet (heldout_datasets.py)

@@ -44,7 +44,10 @@ deny() {
 # PHBUI-PERSONAL-REPO-ALLOWLIST-MARKER
 # Loosens exactly six git verb families (push incl. main, pull,
 # checkout/switch, merge/rebase, commit, stash) for the user's own
-# personal repos (github.com/phbui/gestalt, github.com/phbui/artifacts).
+# personal repos. The set of repos comes from an extended regex matched against
+# `git remote get-url origin`. The regex is read from GESTALT_PERSONAL_REPO_RE, or else from the
+# first line of the file $GESTALT_DIR/.personal-repos. With neither, the default never matches,
+# so no repo is loosened.
 # All other guards (system destroyers, deploy/infra, other repos, and
 # destructive-but-unlisted git ops like reset --hard / clean -f /
 # push --force / branch -D) are untouched.
@@ -58,7 +61,14 @@ if echo "$CMD_NORM" | grep -qE '(^|&&|;|\|)\s*git\s'; then
   _PHBUI_CD_DIR=$(echo "$CMD_NORM" | sed -n 's/^[[:space:]]*cd[[:space:]]\+\([^[:space:];&]\+\)[[:space:]]*&&.*/\1/p' | sed "s#^~#$HOME#; s#^\$HOME#$HOME#")
   _PHBUI_REPO_DIR="${_PHBUI_C_DIR:-${_PHBUI_CD_DIR:-${_PHBUI_CWD_JSON:-$PWD}}}"
   _PHBUI_ORIGIN=$(git -C "$_PHBUI_REPO_DIR" remote get-url origin 2>/dev/null)
-  if echo "$_PHBUI_ORIGIN" | grep -qE '^(https://|git@|ssh://git@)?github\.com[:/]phbui/(gestalt|artifacts)(\.git)?/?$'; then
+  _PHBUI_ORIGIN_RE="${GESTALT_PERSONAL_REPO_RE:-}"
+  if [ -z "$_PHBUI_ORIGIN_RE" ]; then
+    _PHBUI_CFG="${GESTALT_DIR:-$(cd "$(dirname "$(readlink -f "$0")")/../.." && pwd)}/.personal-repos"
+    [ -r "$_PHBUI_CFG" ] && IFS= read -r _PHBUI_ORIGIN_RE < "$_PHBUI_CFG"
+  fi
+  # 'x^x' cannot match: a caret in the middle of an ERE is an anchor.
+  _PHBUI_ORIGIN_RE="${_PHBUI_ORIGIN_RE:-x^x}"
+  if echo "$_PHBUI_ORIGIN" | grep -qE "$_PHBUI_ORIGIN_RE"; then
     PHBUI_REPO=1
   fi
 fi
@@ -94,7 +104,8 @@ fi
 echo "$CMD_NORM" | grep -qE '^git\s+checkout\s+(-b|--orphan)\s' && exit 0
 echo "$CMD_NORM" | grep -qE '^git\s+restore\s+--staged\b' && exit 0
 echo "$CMD_NORM" | grep -qE '^git\s+clean\s+[a-z-]*(-n|--dry-run)' && exit 0
-echo "$CMD_NORM" | grep -qE '^git\s+push\s+.*--force-with-lease' && exit 0
+# --force-with-lease is the safe form and is allowed wherever the push sits in the command line (a leading `cd dir &&` used to defeat the ^ anchor, 2026-10-08).
+echo "$CMD_NORM" | grep -qE '\bgit\s+push\s+[^|;&]*--force-with-lease\b' && exit 0
 
 # Safe rm targets
 echo "$CMD_NORM" | grep -qE '^rm\s+.*\s/tmp/' && exit 0

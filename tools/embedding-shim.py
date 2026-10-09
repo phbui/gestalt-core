@@ -14,10 +14,22 @@ Unit: ~/.config/systemd/user/gestalt-embed-shim.service
 
 import argparse
 import json
+import os
+import sys
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-MODEL_NAME = "nomic-ai/nomic-embed-text-v1.5"
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import gestalt_embed_config as ec
+
+MODEL_NAME = ec.MODEL_NAME
+
+
+def require_nomic() -> None:
+    """The shim embeds raw text with no query or document prefix and always L2-normalises. That is the nomic recipe for Graphiti.
+    Any other profile would serve vectors from the wrong space, so the shim refuses to start on one."""
+    if ec.PROFILE != "nomic":
+        raise SystemExit(f"embedding-shim serves the nomic profile only, but GESTALT_EMBED_PROFILE={ec.PROFILE!r}. Unset it and start again.")
 
 _model = None
 _model_lock = threading.Lock()
@@ -29,7 +41,10 @@ def get_model():
         if _model is None:
             from sentence_transformers import SentenceTransformer
 
-            _model = SentenceTransformer(MODEL_NAME, trust_remote_code=True)
+            # Same pins as the index builder: the weights by revision and the remote modelling code by
+            # commit, so the shim can never load code or weights the benchmark did not run.
+            _model = SentenceTransformer(ec.MODEL_NAME, revision=ec.MODEL_REVISION, trust_remote_code=ec.TRUST_REMOTE_CODE,
+                                         model_kwargs=ec.MODEL_KWARGS, tokenizer_kwargs=ec.TOKENIZER_KWARGS)
         return _model
 
 
@@ -80,7 +95,7 @@ class Handler(BaseHTTPRequestHandler):
         except Exception as e:  # noqa: BLE001 - surface any failure as a 500 body
             self._send(500, {"error": str(e)})
 
-    def log_message(self, format, *args):  # noqa: A002 - stdlib signature
+    def log_message(self, format, *args):
         pass  # keep journal quiet; errors surface in response bodies
 
 
@@ -89,6 +104,7 @@ def main():
     ap.add_argument("--host", default="172.17.0.1")
     ap.add_argument("--port", type=int, default=8201)
     args = ap.parse_args()
+    require_nomic()
     get_model()  # load at startup so the first request isn't slow
     server = ThreadingHTTPServer((args.host, args.port), Handler)
     print(f"embedding-shim serving {MODEL_NAME} on {args.host}:{args.port}")

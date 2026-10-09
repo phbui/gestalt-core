@@ -1,0 +1,1 @@
+# Human labels for judge calibration. One JSON object per line: {"id": "g01", "arm": "A1", "resp_sha": "<copied from the sheet>", "human": "yes"}. A label whose resp_sha does not match the current response is rejected. The loader skips this line and blank lines.

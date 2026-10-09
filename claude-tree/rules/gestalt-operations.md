@@ -48,6 +48,10 @@ last-verified: YYYY-MM-DD
 confidence: high | medium | low
 ```
 
+### Supersession and freshness (optional keys)
+
+A note that replaces another names it: `supersedes: [old-slug]`. The old note may name its successor with `superseded_by: new-slug`, and a time-bound fact carries `valid_until: YYYY-MM-DD`. The index stores these with `note_modified` and its source. Under `GESTALT_FRESHNESS=on` the ranker halves a superseded section's score, quarters an expired one, drops nothing, and prefixes snippets with the age. Off, nothing changes. Knobs and details: the header of `tools/gestalt_freshness.py`.
+
 ## Agent Teams
 
 For write-heavy operations (`/learn`, `/review`, `/sync`, `/fix`), use parallel subagents. Shared orchestration patterns (concurrency, file partitioning, model selection, verification, error escalation) live in `gestalt/.claude/references/orchestration.md` and `gestalt/.claude/references/verification.md`. Skills reference these instead of repeating inline.

@@ -324,10 +324,21 @@ for i, msg in enumerate(parsed):
                     })
 
 # Deduplicate against existing queue (by fact text fingerprint)
-existing_fingerprints = {f['fact'][:80].lower() for f in queue}
+# A repeat in a new session adds that session id to the queued fact. auto-promote needs two.
+by_fingerprint = {f['fact'][:80].lower(): f for f in queue}
 for nf in new_facts:
-    if nf['fact'][:80].lower() not in existing_fingerprints:
+    fp = nf['fact'][:80].lower()
+    row = by_fingerprint.get(fp)
+    if row is None:
+        nf['sessions'] = [nf['session_id']]
         queue.append(nf)
+        by_fingerprint[fp] = nf
+    else:
+        seen = row.get('sessions') or ([row['session_id']] if row.get('session_id') else [])
+        if nf['session_id'] and nf['session_id'] not in seen:
+            seen.append(nf['session_id'])
+        row['sessions'] = seen
+        row['last_seen'] = nf['timestamp']
 
 # Cap queue at 100 entries (FIFO eviction)
 queue = queue[-100:]

@@ -315,6 +315,7 @@ def test_no_tracked_file_references_gestalt_capture_except_known_exceptions():
         "knowledge/gestalt.md",
         "knowledge/gestalt-efficiency-audit-2026-08.md",
         "knowledge/gestalt-internals.md",  # names the deleted digest only as history (F9 decision)
+        "evals/graphiti/cases.yaml",  # a knowledge-update case quotes that history as its outdated answer
         "tests/test_memory_stack.py",
         "tools/gestalt-graphiti-sync.sh",
     }
