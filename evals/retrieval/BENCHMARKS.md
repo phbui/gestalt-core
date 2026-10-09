@@ -148,7 +148,7 @@ The first line of pip installs torch from the CPU index, so pip does not pull th
 
 The lock file holds the exact versions of the environment that reproduced the stored numbers on 2026-10-09 from a clean checkout, with all transitive dependencies, `mteb` and `pyarrow` included. The looser `requirements-bench.txt` lists the direct dependencies. The lock pins `torch==2.11.0` without a build tag, so install torch from the index that matches your machine first, as above, and the lock then leaves it alone.
 
-Install the bench requirements before you run the test suite. Without them, the tests for the bench harnesses skip and do not fail. Those are `tests/test_bench_engine.py` (needs `sqlite-vec` and `torch`), `tests/test_beir_bench.py` and `tests/test_memory_bench.py` (need `sqlite-vec`), and `tests/test_mteb_bench.py` (needs `sqlite-vec` and `mteb`). A green run that skipped them has not checked the harnesses.
+Install the bench requirements before you run the test suite. Without them, the tests for the bench harnesses skip and do not fail. They skip on `sqlite-vec`, `ir_datasets`, `torch` or `mteb`, whichever they need: the engine, BEIR, zoo, pairing and coverage tests, `tests/test_memory_bench.py`, and `tests/test_mteb_bench.py`. A green run that skipped them has not checked the harnesses.
 
 The first run needs network access. It downloads the datasets and the model weights. After that the cache serves them.
 

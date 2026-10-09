@@ -1,8 +1,23 @@
 # gestalt-core
 
-A gestalt is a whole whose meaning exceeds the sum of its parts. Scattered notes become a gestalt when a system recalls the right note at the right moment, so that each session of a coding agent starts with everything the previous sessions learned. Gestalt-core is that system. It stores notes as Markdown files, indexes them with SQLite full-text search and dense vectors fused by reciprocal rank fusion, and injects relevant sections into Claude Code or Cursor at session start and before each prompt.
+[![CI](https://github.com/phbui/gestalt-core/actions/workflows/ci.yaml/badge.svg)](https://github.com/phbui/gestalt-core/actions/workflows/ci.yaml)
+[![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
+[![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](#install)
+[![BEIR SciFact nDCG@10 0.775](https://img.shields.io/badge/SciFact_nDCG%4010-0.775-brightgreen.svg)](evals/retrieval/BENCHMARKS.md)
+[![BEIR NFCorpus nDCG@10 0.382](https://img.shields.io/badge/NFCorpus_nDCG%4010-0.382-brightgreen.svg)](evals/retrieval/BENCHMARKS.md)
 
-I built it for my own work. I use it every day for personal, school, and research related thinking.
+**Hybrid retrieval memory for coding agents.** Markdown notes in, the right section back at the right moment: SQLite FTS5 BM25 plus dense vectors fused by reciprocal rank fusion, an optional cross-encoder rerank, and hooks that inject what matters into Claude Code or Cursor at session start and before each prompt. Measured on public BEIR sets with a harness that reproduces from a clean checkout.
+
+A gestalt is a whole whose meaning exceeds the sum of its parts. Scattered notes become a gestalt when a system recalls the right note at the right moment, so that each session of a coding agent starts with everything the previous sessions learned. I built it for my own work. I use it every day for personal, school, and research related thinking.
+
+## Features
+
+- **Hybrid search** over your notes: FTS5 BM25 and nomic-embed-text-v1.5 vectors, fused by RRF at K=60, in one SQLite file. No service to run.
+- **Optional reranking** with Qwen3-Reranker-0.6B at depth 40, the headline configuration: 0.775 nDCG@10 on SciFact and 0.382 on NFCorpus.
+- **Agent integration**: an MCP server (`gestalt_search`), session-start and per-prompt hooks, slash commands such as `/save` and `/learn`, for Claude Code and Cursor.
+- **Honest measurement**: bootstrap intervals, paired permutation tests, sealed held-out sets, a release gate that ties every published number to the hashes of the code that produced it, and `reproduce.py`, which rebuilds the headline table and checks every cell.
+- **Runs on a laptop**: the hybrid on a CPU in about 25 ms a query, the reranked pipeline on one consumer GPU in half precision at 1.5 GB.
+- **Knobs for the long tail**: abstention from a calibrated reranker score, wikilink expansion, supersession and freshness demotion, all off by default.
 
 ```mermaid
 flowchart LR
@@ -15,7 +30,9 @@ flowchart LR
   A -->|"/save, /learn"| N
 ```
 
-## Quickstart
+
+## Install
+
 
 Python 3.11 or newer is required. Lexical search needs neither a model nor a GPU.
 
@@ -51,72 +68,8 @@ ln -s ../claude-tree/settings.json .claude/settings.json
 
 The optional memory services are defined in `docker-compose.yml` and `graphiti/`. The compose file binds their ports to `127.0.0.1`. None of the services authenticates requests, so their ports must stay off the network.
 
-## What it is not
+## Benchmarks
 
-It is not a hosted service and it has no cloud. It does not write extracted facts into your notes. Every write goes to an inbox a person reviews. It is not a leaderboard entry. The numbers above are two small scientific datasets, and a bigger embedder beats the dense leg. The comparisons stop where the reruns stop. The benchmark pipeline downloads datasets with their own terms, and some of them, NFCorpus and LoCoMo among them, allow academic or non-commercial use only. The code is Apache-2.0. The pipeline as a whole is not a commercial-use claim, and `THIRD-PARTY-NOTICES.md` lists each dataset's terms.
-
-## How a search works
-
-```mermaid
-flowchart TD
-  Q["query"] --> T["tokenize, quote each token, join with OR"]
-  Q --> E["embed with search_query: prefix"]
-  T --> F["FTS5 MATCH<br/>porter unicode61, bm25()"]
-  E --> V["sqlite-vec nearest neighbours<br/>768 floats, L2"]
-  F -->|"top 20 ranks"| R["reciprocal rank fusion<br/>score = sum 1/(60 + rank)"]
-  V -->|"top 20 ranks"| R
-  R --> O["top k sections<br/>slug, heading, block id, snippet"]
-```
-
-Each `*.md` file in `knowledge/` is one entry. The index builder splits every entry at its `##` headings, and a heading may carry a block id such as `^overview`, so a search result points at a section rather than a file.
-
-A query runs two retrievals. SQLite FTS5 with the porter tokenizer matches terms. A nearest-neighbour search over 768-dimension vectors from nomic-embed-text-v1.5, stored with sqlite-vec, matches meaning. Reciprocal rank fusion with K=60 merges the two ranked lists by rank rather than score, because lexical scores and vector distances occupy different scales. The fused score carries no absolute meaning, so no threshold is applied to it.
-
-## How a session works
-
-```mermaid
-sequenceDiagram
-  participant U as you
-  participant C as Claude Code
-  participant H as hooks
-  participant I as index
-  U->>C: start a session
-  C->>H: SessionStart
-  H->>I: index older than notes?
-  I-->>H: rebuild in background
-  H-->>C: inject memory block
-  U->>C: prompt
-  C->>H: UserPromptSubmit
-  H->>I: search the prompt
-  I-->>H: relevant sections
-  H-->>C: inject as context
-  C->>H: PreToolUse (Bash, Edit)
-  H-->>C: allow or deny
-  C->>H: Stop
-  H->>H: write session summary
-```
-
-Hooks live in `claude-tree/hooks/` and are registered in `claude-tree/settings.json`. Skills in `claude-tree/skills/` are slash commands such as `/investigate`, `/research`, `/review` and `/save`. Rules in `claude-tree/rules/` are standing instructions loaded every session. `tools/sync-cursor-tree.py` generates `.cursor/` from `claude-tree/`. Each component has a diagram in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
-
-## What the hooks do
-
-The hooks act without confirmation, so their effects are stated here before installation.
-
-The session-start hook rebuilds the search index in the background whenever the index is older than the notes. That rebuild downloads the embedding model from Hugging Face and embeds every note. With transformers 5.5 or later the model loads through the library's own class and no code from the Hub runs. On an older library it falls back to remote code pinned to one commit. `GESTALT_TRUST_REMOTE_CODE=0` forbids the remote code. `1` forces it. The default is `auto`. Exporting `GESTALT_INDEX_BUILD_ROLE=hub` in the environment that launches Claude Code keeps the automatic rebuild lexical-only, and `tools/gestalt-index-builder.py` builds vectors on demand.
-
-The stop hook sends up to 800 characters of each message in the session to a Letta server at `http://localhost:8283` when one is running, and Letta forwards that text to whatever model its agent is configured with. Nothing is sent when no server answers.
-
-The audit hook appends every shell command the agent runs to `~/.claude/audit.log`, capped at 5 MB. A secret typed into a command lands there.
-
-The safety hooks block destructive shell commands and edits to the hooks themselves.
-
-Hybrid search runs only when `GESTALT_SEARCH_MODE=hybrid` is set. Otherwise the MCP server uses the lexical leg, which holds no model in memory. With `GESTALT_HUB_MCP_URL` set, semantic searches are relayed to that URL instead of running locally. The default is empty.
-
-## Security
-
-Read `SECURITY.md` before installing the hooks. The short form: notes are an input channel to the agent and can carry instructions, so review notes from other people before indexing them. The MCP server's HTTP mode, the embedding shim and the Docker services accept any request that reaches them, so their ports stay on `127.0.0.1`, and stdio mode opens no port at all. The index build runs remote model code from Hugging Face, pinned by weight revision and code commit in `tools/gestalt_embed_config.py`, and the embedding shim uses the same pins. The stop hook sends session text to a local Letta server when one is running, and the audit hook logs every shell command to `~/.claude/audit.log`, secrets included. The safety hooks are best-effort guardrails and not a sandbox. Vulnerabilities go through GitHub's private reporting, linked from `SECURITY.md`.
-
-## Search quality
 
 Retrieval quality was measured on two public benchmarks from the BEIR collection. A benchmark supplies a fixed corpus and a set of queries with known relevant documents, and scores how high the relevant documents rank. No default of gestalt was chosen on either dataset. The optional fusion weights are tuned on a dev half of the queries and reported apart from the headline.
 
@@ -163,7 +116,8 @@ On SciFact the reranked pipeline is within 0.3 points of OpenAI's text-embedding
 
 **Scope of the result.** The measurement establishes that the pipeline is sound and that fusion improves on either leg. It does not establish that gestalt outperforms a strong retriever, and it says nothing about retrieval over personal notes, whose structure differs from scientific abstracts. The method, the limits and the one-command reproduction are in [evals/retrieval/BENCHMARKS.md](evals/retrieval/BENCHMARKS.md). Per-query scores and run files are in `evals/retrieval/results/`.
 
-## Reproducing the benchmarks
+### Reproduce
+
 
 `evals/retrieval/BENCHMARKS.md` is the full guide. It gives the install, the smoke, standard and full commands for BEIR, MTEB, LongMemEval and LoCoMo, how to resume and shard a run, the disk and GPU cost, and the licence of every dataset. One command rebuilds the headline table from the stored summary and checks every cell:
 
@@ -174,7 +128,74 @@ python3 evals/retrieval/reproduce.py --out out/beir-repro
 
 Add `--smoke` for a 200-document run that proves the code works, and `--fast` to embed in float16. On a machine without CUDA the preflight ends in NO-GO. That is expected. The smoke run still works there with `GESTALT_BENCH_ALLOW_CPU=1`, and only a GPU run produces numbers. A run labelled subset or smoke is never a result.
 
-## Settings
+## What it is not
+
+It is not a hosted service and it has no cloud. It does not write extracted facts into your notes. Every write goes to an inbox a person reviews. It is not a leaderboard entry. The numbers above are two small scientific datasets, and a bigger embedder beats the dense leg. The comparisons stop where the reruns stop. The benchmark pipeline downloads datasets with their own terms, and some of them, NFCorpus and LoCoMo among them, allow academic or non-commercial use only. The code is Apache-2.0. The pipeline as a whole is not a commercial-use claim, and `THIRD-PARTY-NOTICES.md` lists each dataset's terms.
+
+## How it works
+
+### How a search works
+
+```mermaid
+flowchart TD
+  Q["query"] --> T["tokenize, quote each token, join with OR"]
+  Q --> E["embed with search_query: prefix"]
+  T --> F["FTS5 MATCH<br/>porter unicode61, bm25()"]
+  E --> V["sqlite-vec nearest neighbours<br/>768 floats, L2"]
+  F -->|"top 20 ranks"| R["reciprocal rank fusion<br/>score = sum 1/(60 + rank)"]
+  V -->|"top 20 ranks"| R
+  R --> O["top k sections<br/>slug, heading, block id, snippet"]
+```
+
+Each `*.md` file in `knowledge/` is one entry. The index builder splits every entry at its `##` headings, and a heading may carry a block id such as `^overview`, so a search result points at a section rather than a file.
+
+A query runs two retrievals. SQLite FTS5 with the porter tokenizer matches terms. A nearest-neighbour search over 768-dimension vectors from nomic-embed-text-v1.5, stored with sqlite-vec, matches meaning. Reciprocal rank fusion with K=60 merges the two ranked lists by rank rather than score, because lexical scores and vector distances occupy different scales. The fused score carries no absolute meaning, so no threshold is applied to it.
+
+### How a session works
+
+```mermaid
+sequenceDiagram
+  participant U as you
+  participant C as Claude Code
+  participant H as hooks
+  participant I as index
+  U->>C: start a session
+  C->>H: SessionStart
+  H->>I: index older than notes?
+  I-->>H: rebuild in background
+  H-->>C: inject memory block
+  U->>C: prompt
+  C->>H: UserPromptSubmit
+  H->>I: search the prompt
+  I-->>H: relevant sections
+  H-->>C: inject as context
+  C->>H: PreToolUse (Bash, Edit)
+  H-->>C: allow or deny
+  C->>H: Stop
+  H->>H: write session summary
+```
+
+Hooks live in `claude-tree/hooks/` and are registered in `claude-tree/settings.json`. Skills in `claude-tree/skills/` are slash commands such as `/investigate`, `/research`, `/review` and `/save`. Rules in `claude-tree/rules/` are standing instructions loaded every session. `tools/sync-cursor-tree.py` generates `.cursor/` from `claude-tree/`. Each component has a diagram in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+
+### What the hooks do
+
+The hooks act without confirmation, so their effects are stated here before installation.
+
+The session-start hook rebuilds the search index in the background whenever the index is older than the notes. That rebuild downloads the embedding model from Hugging Face and embeds every note. With transformers 5.5 or later the model loads through the library's own class and no code from the Hub runs. On an older library it falls back to remote code pinned to one commit. `GESTALT_TRUST_REMOTE_CODE=0` forbids the remote code. `1` forces it. The default is `auto`. Exporting `GESTALT_INDEX_BUILD_ROLE=hub` in the environment that launches Claude Code keeps the automatic rebuild lexical-only, and `tools/gestalt-index-builder.py` builds vectors on demand.
+
+The stop hook sends up to 800 characters of each message in the session to a Letta server at `http://localhost:8283` when one is running, and Letta forwards that text to whatever model its agent is configured with. Nothing is sent when no server answers.
+
+The audit hook appends every shell command the agent runs to `~/.claude/audit.log`, capped at 5 MB. A secret typed into a command lands there.
+
+The safety hooks block destructive shell commands and edits to the hooks themselves.
+
+Hybrid search runs only when `GESTALT_SEARCH_MODE=hybrid` is set. Otherwise the MCP server uses the lexical leg, which holds no model in memory. With `GESTALT_HUB_MCP_URL` set, semantic searches are relayed to that URL instead of running locally. The default is empty.
+
+## Security
+
+Read `SECURITY.md` before installing the hooks. The short form: notes are an input channel to the agent and can carry instructions, so review notes from other people before indexing them. The MCP server's HTTP mode, the embedding shim and the Docker services accept any request that reaches them, so their ports stay on `127.0.0.1`, and stdio mode opens no port at all. The index build runs remote model code from Hugging Face, pinned by weight revision and code commit in `tools/gestalt_embed_config.py`, and the embedding shim uses the same pins. The stop hook sends session text to a local Letta server when one is running, and the audit hook logs every shell command to `~/.claude/audit.log`, secrets included. The safety hooks are best-effort guardrails and not a sandbox. Vulnerabilities go through GitHub's private reporting, linked from `SECURITY.md`.
+
+## Configuration
 
 Every setting is an environment variable. A variable you leave unset keeps its default. A value the code does not recognise logs one line on stderr and falls back to the default.
 

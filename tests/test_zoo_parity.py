@@ -17,6 +17,7 @@ from conftest import HashEncoder, make_fake_ir_datasets
 REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO))
 pytest.importorskip("sqlite_vec")
+pytest.importorskip("ir_datasets")  # the harness imports it at module level; without the bench requirements these tests skip, as the README says
 pytest.importorskip("yaml")
 import evals.zoo  # noqa: E402,F401
 import beir_bench as bb  # noqa: E402

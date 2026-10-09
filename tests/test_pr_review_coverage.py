@@ -19,6 +19,7 @@ sys.path.insert(0, str(REPO / "evals" / "retrieval"))
 sys.path.insert(0, str(REPO / "evals" / "memory"))
 sys.path.insert(0, str(REPO / "tools"))
 pytest.importorskip("sqlite_vec")
+pytest.importorskip("ir_datasets")  # the harness imports it at module level; without the bench requirements these tests skip, as the README says
 import beir_bench as bb  # noqa: E402
 import common as mem_common  # noqa: E402
 
