@@ -271,8 +271,14 @@ class _Registered:
 
 
 def register() -> None:
-    """Add the three sets to the ir_datasets registry, with and without the /test suffix. Safe to call twice."""
-    import ir_datasets
+    """Add the three sets to the ir_datasets registry, with and without the /test suffix. Safe to call twice.
+
+    Without ir_datasets installed (a checkout without the bench requirements) this does nothing, so importing the harness
+    for its pure functions and tests still works; the first real dataset read then raises the usual ModuleNotFoundError."""
+    try:
+        import ir_datasets
+    except ModuleNotFoundError:
+        return
 
     for key in CLASSES:
         for alias in (key, f"{key}/test"):
