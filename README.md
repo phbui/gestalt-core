@@ -10,6 +10,10 @@
 
 A gestalt is a whole whose meaning exceeds the sum of its parts. Scattered notes become a gestalt when a system recalls the right note at the right moment, so that each session of a coding agent starts with everything the previous sessions learned. I built it for my own work. I use it every day for personal, school, and research related thinking.
 
+![The graph view of the Obsidian vault gestalt searches: about a thousand notes, a few dense clusters and a wide ring of loose ones.](docs/obsidian-graph.png)
+
+*The notebook gestalt searches, in Obsidian's graph view. Software patterns, research papers, cool repos, and a pizza order are all in there.*
+
 ## Features
 
 - **Hybrid search** over your notes: FTS5 BM25 and nomic-embed-text-v1.5 vectors, fused by RRF at K=60, in one SQLite file. No service to run.
