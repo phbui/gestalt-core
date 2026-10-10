@@ -27,15 +27,16 @@ LABEL = {
     "e5-mistral-7b-instruct": "e5-mistral (7B)", "bge-large-en-v1.5": "bge-large (335M)", "bge-base-en-v1.5": "bge-base (109M)",
     "gte-modernbert-base": "gte-modernbert (149M)", "mxbai-embed-large-v1": "mxbai-large (335M)", "all-MiniLM-L6-v2": "MiniLM-L6 (23M)",
     "nomic-embed-text-v1.5, gestalt's dense leg alone": "nomic-embed v1.5 (137M),\ngestalt's embedder alone",
+    "stella_en_400M_v5": "stella 400M v5", "gte-base-en-v1.5": "gte-base v1.5 (137M)", "SearchMap_Preview": "SearchMap preview (434M)",
     "gestalt hybrid + Qwen3-Reranker-0.6B": "gestalt hybrid + reranker\n137M + 0.6B, one laptop GPU", "gestalt hybrid": "gestalt hybrid\n137M, runs on a CPU",
     "OpenAI text-embedding-3-large": "OpenAI 3-large, $0.13/M tokens", "OpenAI text-embedding-3-small": "OpenAI 3-small, $0.02/M",
     "Cohere embed-english-v3.0": "Cohere v3, about $0.10/M",
 }
 # Eight labels a band can carry without collisions: gestalt's two, the ceiling, the best 4B, the size-class neighbours, the best API, the floor.
 LABEL_BY_BAND = {
-    "scifact": {"gestalt hybrid + Qwen3-Reranker-0.6B", "gestalt hybrid", "NV-Embed-v2", "Qwen3-Embedding-4B", "bge-base-en-v1.5", "gte-modernbert-base",
+    "scifact": {"gestalt hybrid + Qwen3-Reranker-0.6B", "gestalt hybrid", "NV-Embed-v2", "Qwen3-Embedding-4B", "stella_en_400M_v5", "gte-base-en-v1.5",
                 "nomic-embed-text-v1.5, gestalt's dense leg alone", "OpenAI text-embedding-3-large", "all-MiniLM-L6-v2"},
-    "nfcorpus": {"gestalt hybrid + Qwen3-Reranker-0.6B", "gestalt hybrid", "NV-Embed-v2", "Qwen3-Embedding-4B", "bge-base-en-v1.5", "mxbai-embed-large-v1",
+    "nfcorpus": {"gestalt hybrid + Qwen3-Reranker-0.6B", "gestalt hybrid", "NV-Embed-v2", "Qwen3-Embedding-4B", "stella_en_400M_v5", "SearchMap_Preview",
                  "nomic-embed-text-v1.5, gestalt's dense leg alone", "OpenAI text-embedding-3-large", "all-MiniLM-L6-v2"},
 }
 opens = [r for r in rows if r["open"] and r.get("params_m") and "self-reported" not in r.get("note", "")]
@@ -61,7 +62,10 @@ for ax, key, lo, hi, band in ((top, "scifact", 0.625, 0.825, "SciFact"), (bot, "
         col = RED if g else (API if api else (INK if lab else GREY))
         mk = "*" if g else ("s" if api else "o")
         ax.scatter(x, r[key], s=240 if g else (54 if (lab or api) else 22), marker=mk, c=col, edgecolors="white" if g else None, linewidths=0.8 if g else 0, zorder=5 if g else 3)
-        if lab:
+        if lab and r["name"] == "stella_en_400M_v5" and key == "scifact":
+            ax.annotate(lab, (x, r[key]), xytext=(x * 0.42, r[key] + 0.022), fontsize=8.4, color=col, zorder=6,
+                        arrowprops=dict(arrowstyle="-", color=GREY, lw=0.6))  # placed by hand: adjust_text pushed it into gestalt's label
+        elif lab:
             texts.append(ax.text(x, r[key], lab, fontsize=9.4 if g else 8.4, color=col, fontweight="bold" if g else "normal", zorder=6, linespacing=1.15))
     adjust_text(texts, ax=ax, expand=(1.3, 1.7), force_text=(0.35, 0.8), iter_lim=600, arrowprops=dict(arrowstyle="-", color=GREY, lw=0.6), only_move={"points": "y", "text": "xy"})
 top.spines["bottom"].set_visible(False); top.tick_params(axis="x", which="both", bottom=False)

@@ -100,25 +100,35 @@ The reranked row is the headline. It is what `--rerank on` gives you: the hybrid
 
 The conventional threshold is p < 0.05, and all six comparisons clear it. The smallest gain, hybrid over dense on NFCorpus, is under two points and still unlikely under chance.
 
-**Comparison with released systems.** The rows below are the most used released embedders, sorted by SciFact score, with their per-task scores from the MTEB results repository (2026-10-09). Those are the BEIR test splits scored with nDCG@10, each model's own run with its own prompts. The full table of 26 systems with licences, memory and prices, the classic BEIR-paper baselines, and a score-against-size chart are in [evals/retrieval/BENCHMARKS.md](evals/retrieval/BENCHMARKS.md).
+**Comparison with released systems.** The table lists the systems most people use, the ones that compete with gestalt in size or score, and the baselines from the BEIR paper. It is sorted by SciFact score. Scores are the MTEB results repository's own per-task numbers from 2026-10-09. Those are the BEIR test splits at nDCG@10, each model's own run with its own prompts. The gestalt rows are measured here. The full data file, with 40 systems and their licences, memory and prices, is `docs/released-systems.json`, and the method page has the longer table.
 
 | System | Type | Parameters, or price | SciFact | NFCorpus |
 |---|---|---|---|---|
-| NV-Embed-v2 | dense, 7.9B | 7.8B | 0.801 | 0.450 |
-| Qwen3-Embedding-4B | dense, 4B | 4.0B | 0.783 | 0.411 |
+| NV-Embed-v2 | dense | 7.8B | 0.801 | 0.450 |
+| Qwen3-Embedding-4B | dense | 4.0B | 0.783 | 0.411 |
+| stella_en_400M_v5 | dense | 435M | 0.782 | 0.415 |
 | OpenAI text-embedding-3-large | dense API | $0.13/M | 0.778 | 0.421 |
-| **gestalt hybrid + Qwen3-Reranker-0.6B** | lexical + dense, RRF, cross-encoder | 137M + 0.6B | **0.775** | **0.382** |
-| e5-mistral-7b-instruct | dense, 7B | 7.1B | 0.764 | 0.386 |
+| **gestalt hybrid + Qwen3-Reranker-0.6B** | BM25 + dense, RRF, cross-encoder | 137M + 0.6B | **0.775** | **0.382** |
+| gte-base-en-v1.5 | dense | 137M | 0.768 | 0.359 |
 | gte-modernbert-base | dense | 149M | 0.764 | 0.343 |
 | bge-large-en-v1.5 | dense | 335M | 0.746 | 0.381 |
 | bge-base-en-v1.5 | dense | 109M | 0.743 | 0.374 |
-| **gestalt hybrid** | lexical + dense, RRF | 137M | **0.737** | **0.361** |
+| **gestalt hybrid** | BM25 + dense, RRF | 137M | **0.737** | **0.361** |
 | OpenAI text-embedding-3-small | dense API | $0.02/M | 0.734 | 0.383 |
 | nomic-embed-text-v1.5, gestalt's dense leg alone | dense | 137M | 0.703 | 0.347 |
+| BM25 + cross-encoder, BEIR paper | two stage | 110M | 0.688 | 0.350 |
+| Contriever | dense | 110M | 0.677 | 0.328 |
+| ColBERT, BEIR paper | late interaction | 110M | 0.671 | 0.305 |
+| BM25, BEIR paper | lexical | none | 0.665 | 0.325 |
+| all-MiniLM-L6-v2 | dense | 23M | 0.645 | 0.316 |
+| TAS-B | dense | 66M | 0.643 | 0.319 |
+| DPR | dense, 2020 | 220M | 0.318 | 0.189 |
 
 ![Retrieval quality against model size: gestalt among the released systems. Two labelled bands on a broken vertical axis, SciFact above and NFCorpus below, each system at its parameter count. Stars are gestalt, dots are published MTEB results, squares are closed APIs placed by price, and the dashed line marks one billion parameters.](docs/score-vs-cost.png)
 
-On SciFact the reranked pipeline is within 0.3 points of OpenAI's text-embedding-3-large and above most 7B open models, with a 137M embedder and a 0.6B reranker that fit one laptop GPU in half precision. On NFCorpus it is 4 points under that API and 3 to 7 under the 7B class, and two 335M embedders score higher than it. Without the reranker the hybrid runs on a CPU in about 25 milliseconds a query and sits 0.6 points under bge-base. The classic BEIR baselines all sit below both gestalt rows on both sets. On SciFact the hybrid interval lies above the published BM25 plus cross-encoder score of 0.688. On NFCorpus the hybrid point score is above 0.350, but the hybrid interval contains that number, so the two are not separated.
+On SciFact the reranked pipeline sits between the 400M and the 7B embedders. It scores 0.7 points under stella_en_400M_v5 at 435M parameters and 0.3 under OpenAI's text-embedding-3-large, and above gte-base v1.5, gte-modernbert, bge-large and every classic baseline. On NFCorpus it is further back. NV-Embed-v2, OpenAI's large embedding, stella and Qwen3-Embedding-4B all score clearly higher, and OpenAI's small embedding is level. What gestalt offers is two small models, a 137M embedder and a 0.6B reranker, on one laptop GPU, and the hybrid alone runs on a CPU. It does not claim the top of either leaderboard. A stronger embedder served through the same pipeline is the open improvement, and the zoo measures candidates on the same queries.
+
+Against the closest published design, BM25 with a cross-encoder reranker, the picture is more favourable. On SciFact the hybrid interval lies above that published score of 0.688. On NFCorpus the hybrid point score is above 0.350, but the hybrid interval contains that number, so the two are not separated.
 
 **Scope of the result.** The measurement establishes that the pipeline is sound and that fusion improves on either leg. It does not establish that gestalt outperforms a strong retriever, and it says nothing about retrieval over personal notes, whose structure differs from scientific abstracts. The method, the limits and the one-command reproduction are in [evals/retrieval/BENCHMARKS.md](evals/retrieval/BENCHMARKS.md). Per-query scores and run files are in `evals/retrieval/results/`.
 

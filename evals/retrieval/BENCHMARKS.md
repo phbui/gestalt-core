@@ -33,42 +33,39 @@ Every harness scores retrieval. It asks how high the relevant documents rank. No
 
 ## Against the systems people use
 
-The table below is every released embedding model with a widely used position that has a per-task score in the MTEB results repository (commit `b64a5db`, 2026-10-09), plus the two gestalt rows measured on this page, sorted by SciFact. MTEB's SciFact and NFCorpus tasks are the BEIR test splits, scored with nDCG@10, so the columns line up with the headline table, with one caveat: each MTEB row is that model's own run with its own prompts and cosine ranking, not a run through this harness. The closed-API prices are the vendors' published per-token prices where an official page states them, and third-party listings where it does not, as marked. Memory is the parameter count at two bytes each.
+The table holds three kinds of system: the common baselines people reach for, the systems that compete with gestalt in size or score, and the baselines from the BEIR paper. It is sorted by SciFact score and the gestalt rows are the stored results above, placed where they fall. The other 19 systems that were scored sit in `docs/released-systems.json` with `"in_table": false`. They include the 7B-class open models, five more sub-billion embedders and the other closed APIs.
+
+Scores are the MTEB results repository's per-task numbers at commit `b64a5db`, 2026-10-09. MTEB's SciFact and NFCorpus tasks are the BEIR test splits scored with nDCG@10, so the columns line up with the headline table, with one caveat: each row is that model's own run with its own prompts and cosine ranking, not a run through this harness. The paper baselines are from the BEIR paper and the Pyserini reproductions. Closed-API prices are the vendors' published per-token prices where an official page states them. Memory is the parameter count at two bytes each.
 
 | System | Open, licence | Parameters | Memory at fp16, or price | SciFact | NFCorpus | Source |
 |---|---|---|---|---|---|---|
-| gte-large-en-v1.5 | open, Apache-2.0 | 434M | 434M, 0.9 GB fp16 | 0.824 | 0.369 | model card, self-reported |
 | NV-Embed-v2 | open, CC BY-NC 4.0 | 7.8B | 7.9B, 15.7 GB fp16 | 0.801 | 0.450 | MTEB results |
-| gte-Qwen2-7B-instruct | open, Apache-2.0 | 7.6B | 7.6B, 15.2 GB fp16 | 0.791 | 0.406 | MTEB results |
-| Qwen3-Embedding-8B | open, Apache-2.0 | 7.6B | 7.6B, 15.1 GB fp16 | 0.785 | 0.414 | MTEB results |
 | Qwen3-Embedding-4B | open, Apache-2.0 | 4.0B | 4.0B, 8.0 GB fp16 | 0.783 | 0.411 | MTEB results |
-| Linq-Embed-Mistral | open, CC BY-NC 4.0 | 7.1B | 7.1B, 14.2 GB fp16 | 0.783 | 0.420 | MTEB results |
-| OpenAI text-embedding-3-large | closed API | not published | $0.13/M | 0.778 | 0.421 | MTEB results |
-| SFR-Embedding-Mistral | open, CC BY-NC 4.0 | 7.1B | 7.1B, 14.2 GB fp16 | 0.777 | 0.419 | MTEB results |
-| **gestalt hybrid + Qwen3-Reranker-0.6B** | open, Apache-2.0 | 737M | 137M + 0.6B, 1.5 GB fp16, one laptop GPU | **0.775** | **0.382** | measured here |
-| e5-mistral-7b-instruct | open, MIT | 7.1B | 7.1B, 14.2 GB fp16 | 0.764 | 0.386 | MTEB results |
+| stella_en_400M_v5 | open, MIT | 435M | 435M, 0.9 GB fp16 | 0.782 | 0.415 | results file imported from the model card (revision external) |
+| OpenAI text-embedding-3-large | closed API | $0.13/M | $0.13/M | 0.778 | 0.421 | MTEB results |
+| **gestalt hybrid + Qwen3-Reranker-0.6B** | open, Apache-2.0 | 137M + 0.6B | 137M + 0.6B, 1.5 GB fp16, one laptop GPU | **0.775** | **0.382** | measured here |
+| gte-base-en-v1.5 | open, Apache-2.0 | 137M | 137M, 0.3 GB fp16 | 0.768 | 0.359 | results file imported from the model card (revision external) |
 | gte-modernbert-base | open, Apache-2.0 | 149M | 149M, 0.3 GB fp16 | 0.764 | 0.343 | MTEB results |
-| granite-embedding-english-r2 | open, Apache-2.0 | 149M | 149M, 0.3 GB fp16 | 0.758 | 0.375 | MTEB results |
 | bge-large-en-v1.5 | open, MIT | 335M | 335M, 0.7 GB fp16 | 0.746 | 0.381 | MTEB results |
 | bge-base-en-v1.5 | open, MIT | 109M | 109M, 0.2 GB fp16 | 0.743 | 0.374 | MTEB results |
-| mxbai-embed-large-v1 | open, Apache-2.0 | 335M | 335M, 0.7 GB fp16 | 0.739 | 0.387 | MTEB results |
 | **gestalt hybrid** | open, Apache-2.0 | 137M | 137M, 0.3 GB fp16, runs on a CPU | **0.737** | **0.361** | measured here |
-| snowflake-arctic-embed-m | open, Apache-2.0 | 109M | 109M, 0.2 GB fp16 | 0.736 | 0.368 | MTEB results |
-| OpenAI text-embedding-3-small | closed API | not published | $0.02/M | 0.734 | 0.383 | MTEB results |
-| jina-embeddings-v3 | open, CC BY-NC 4.0 | 572M | 572M, 1.1 GB fp16 | 0.725 | 0.366 | MTEB results |
-| e5-large-v2 | open, MIT | 335M | 335M, 0.7 GB fp16 | 0.722 | 0.371 | MTEB results |
-| Cohere embed-english-v3.0 | closed API | not published | about $0.10/M | 0.718 | 0.386 | MTEB results |
-| snowflake-arctic-embed-l-v2.0 | open, Apache-2.0 | 568M | 568M, 1.1 GB fp16 | 0.709 | 0.351 | MTEB results |
-| nomic-embed-text-v1.5, gestalt's dense leg alone | open, Apache-2.0 | 137M | 137M, 0.3 GB fp16 | 0.703 | 0.347 | MTEB results |
-| Qwen3-Embedding-0.6B | open, Apache-2.0 | 596M | 0.6B, 1.2 GB fp16 | 0.697 | 0.367 | MTEB results |
+| OpenAI text-embedding-3-small | closed API | $0.02/M | $0.02/M | 0.734 | 0.383 | MTEB results |
+| nomic-embed-text-v1.5, gestalt's dense leg alone | open, Apache-2.0 | 137M | 137M, 0.3 GB fp16 | 0.703 | 0.347 | MTEB's run of the same model with cosine ranking |
+| BM25 + cross-encoder, BEIR paper | open | 110M | BM25 + 110M | 0.688 | 0.350 | BEIR paper, Table 2 |
+| Contriever | open | 110M | 110M | 0.677 | 0.328 | Pyserini BEIR reproductions |
+| ColBERT, BEIR paper | open | 110M | 110M | 0.671 | 0.305 | BEIR paper, Table 2 |
+| BM25, BEIR paper | open | none | no model | 0.665 | 0.325 | BEIR paper, Table 2 |
 | all-MiniLM-L6-v2 | open, Apache-2.0 | 23M | 23M, 0.05 GB fp16 | 0.645 | 0.316 | MTEB results |
-| bge-m3 | open, MIT | 568M | 568M, 1.1 GB fp16 | 0.644 | 0.314 | MTEB results |
+| TAS-B | open | 66M | 66M | 0.643 | 0.319 | BEIR paper, Table 2 |
+| DPR | open | 220M | 2 x 110M | 0.318 | 0.189 | BEIR paper, Table 2 |
 
 ![Score against size for released retrieval systems](../../docs/score-vs-cost.png)
 
-Reading the chart. The vertical axis is broken into two labelled bands, SciFact above and NFCorpus below, and each system appears once in each at its parameter count, so the two scores stay apart as they do in the table. Eight systems carry labels in each band and the rest are small grey dots. Stars are gestalt, dots are the published rows with the landmarks labelled, squares are the closed APIs placed at the right by price, and the dashed line marks one billion parameters. Left of that line, the reranked pipeline is the highest SciFact point and the highest NFCorpus point among the open systems. Right of it, the 7B class and the APIs score higher on NFCorpus by 3 to 7 points, while on SciFact the pipeline is level with OpenAI's text-embedding-3-large and above every 7B model except NV-Embed-v2, gte-Qwen2, Qwen3-8B, Linq and SFR. The hybrid alone sits just under bge-base and gte-modernbert at the same size and runs on a CPU, and the hollow points show that two 335M embedders, mxbai-large and bge-large, beat it and the reranked pipeline on NFCorpus. The chart is drawn by `docs/make_score_cost_chart.py` from `docs/released-systems.json`. The self-reported gte-large-en-v1.5 card number is left out.
+Reading the chart. The vertical axis is broken into two labelled bands, SciFact above and NFCorpus below, and each system appears once in each at its parameter count, so the two scores stay apart as they do in the table. Eight systems carry labels in each band and the rest are small grey dots. The dashed line marks one billion parameters.
 
-What the comparison is for. It places a 0.74B-parameter pipeline that fits a laptop GPU, or a 137M one that fits a CPU, among models ten times larger and among paid APIs. It does not claim that gestalt beats them. The data file behind the table and the chart is `docs/released-systems.json`, and the chart is rebuilt from it. A reader who wants another system in it adds a row with its source.
+Where gestalt lands, stated with its limits. On SciFact the reranked pipeline scores 0.7 points under stella_en_400M_v5, which has 435M parameters, so it is not the best sub-billion system. A scan of the 705 entries in the results repository found stella to be the only model under a billion parameters with a results file that scores higher on SciFact, and gte-large-en-v1.5 claims a higher score on its own model card. A few entries carry no parameter count and could not be sized. The pipeline is 0.3 points under OpenAI's text-embedding-3-large there, and above gte-base v1.5, gte-modernbert, bge-large and the paper baselines. On NFCorpus several sub-billion embedders score higher than the reranked pipeline, among them stella at 0.415, SearchMap_Preview at 0.409, jina-embeddings-v5-text-small at 0.398 and DenseOn at 0.390, and so do the 7B models and the large APIs. The unreranked hybrid sits under bge-base and gte-modernbert on SciFact.
+
+What the comparison is for. It places a 0.74B-parameter pipeline that fits a laptop GPU, or a 137M one that fits a CPU, among models ten times larger and among paid APIs. It does not claim that gestalt beats them. The chart is drawn by `docs/make_score_cost_chart.py` from `docs/released-systems.json`. A reader who wants another system in it adds a row with its source.
 
 ## Published numbers for comparison
 
