@@ -9,11 +9,15 @@
 
 **Local search over your Markdown notes for Claude Code and Cursor, with BEIR numbers you can rerun.** Notes in, the right section back at the right moment. A stella_en_400M_v5 dense leg in SQLite with sqlite-vec, full-text BM25 as the lexical fallback, an optional cross-encoder rerank blended with the dense order, and hooks that put what matters in front of the agent at session start and before each prompt. Nothing leaves your machine and nothing needs an API key. Every published number comes from a harness that reproduces it from a clean checkout.
 
-A gestalt is a whole whose meaning exceeds the sum of its parts. Scattered notes become a gestalt when a system recalls the right note at the right moment, so that each session of a coding agent starts with everything the previous sessions learned. I built it for my own work. I use it every day for personal, school, and research related thinking.
+A gestalt is a whole whose meaning exceeds the sum of its parts. Scattered notes become a gestalt when a system recalls the right note at the right moment, so that each session of a coding agent starts with everything the previous sessions learned. I built it for my own work and I use it every day for personal, school, and research related thinking.
+
+On three public BEIR benchmarks the shipped pipeline scores 0.794 nDCG@10 on SciFact, 0.422 on NFCorpus and 0.572 on FiQA. The dense leg alone, which runs on a CPU, scores 0.780, 0.414 and 0.554, and keyword search scores 0.682, 0.322 and 0.248. One command reruns the table. The intervals, the tests and the comparison with released systems are in [Benchmarks](#benchmarks).
+
+![Search quality on SciFact, NFCorpus and FiQA, nDCG@10 with 95% bootstrap intervals, for keyword search, gestalt's default search and gestalt with the reranker.](docs/benchmark-card.png)
 
 ![The graph view of the Obsidian vault gestalt searches: about a thousand notes, a few dense clusters and a wide ring of loose ones.](docs/obsidian-graph.png)
 
-*The notebook gestalt searches, in Obsidian's graph view. Software patterns, research papers, cool repos, and a pizza order are all in there.*
+*A screenshot from my Obsidian notes.*
 
 ## Why
 
