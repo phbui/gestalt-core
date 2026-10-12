@@ -1,7 +1,8 @@
 sentence-transformers>=3.0
-# transformers 5.19 removed ModuleUtilsMixin.get_extended_attention_mask, which stella_en_400M_v5's modelling code calls, so the
-# default embedder does not load on it. The stored numbers were produced on 5.15 (evals/retrieval/requirements-bench.lock).
-transformers>=5.5,<5.19
+# transformers 5.17 removed ModuleUtilsMixin.get_extended_attention_mask, which stella_en_400M_v5's modelling code calls, so the
+# default embedder does not load on 5.17 or later (checked 5.16.1 has it, 5.17.0 and 5.18.0 do not, 2026-10-12). The stored numbers
+# were produced on 5.15 (evals/retrieval/requirements-bench.lock) and the hub runs 5.16.
+transformers>=5.5,<5.17
 sqlite-vec>=0.1.0
 # <2: mcp 2.0.0 removed mcp.server.fastmcp, which gestalt-mcp-server.py imports.
 # <1.30: gestalt-mcp-server.py sets mcp.settings.host, which the Settings model dropped after
