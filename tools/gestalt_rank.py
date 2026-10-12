@@ -18,7 +18,7 @@ Every knob is read from the environment at call time. With every knob unset, eac
   GESTALT_RERANK_INSTRUCTION  task line the Qwen rerankers prepend (default names the personal knowledge base)
     GESTALT_SLUG_DECAY      1.0 keeps today's order, 0.5 demotes a repeated slug, 0 is strict dedup (default 1.0)
     GESTALT_FTS_STOPWORDS   on | off             drop closed-class words from the FTS query (default off)
-    GESTALT_FUSION          rrf | convex | wrrf | rescue   how the two legs fuse (default rrf, see fuse below)
+    GESTALT_FUSION          rrf | convex | wrrf | rescue   how the two legs fuse (the profile's default: convex under stella-400m, rrf under nomic; see fuse below)
     GESTALT_FUSION_ALPHA    weight of the lexical leg, the first leg, under convex fusion (default 0.5)
     GESTALT_FUSION_W_BM25   0 to 1, the lexical weight under wrrf. The dense leg gets 1 minus it, and both are doubled, so 0.5 gives the plain RRF scores (default 0.5)
     GESTALT_FUSION_NORM     minmax | zscore | tmin, how convex and rescue normalise a leg (default minmax). tmin divides by the pool max over a declared floor: 0 for BM25, -2 for the negated L2 distance of unit vectors
@@ -28,7 +28,10 @@ Every knob is read from the environment at call time. With every knob unset, eac
     GESTALT_RESCUE_WINDOW   rescue: and be absent from this many dense hits (default 20)
     GESTALT_RESCUE_AT       rescue: rescued hits go in at this position from 0, and the dense hits above it never move (default 5)
     GESTALT_RESCUE_MAX      rescue: at most this many hits are rescued (default 2)
-    GESTALT_ABSTAIN         off | on, add confidence and abstain to the result when the reranker ran (default off). Rows are never reordered or dropped
+    GESTALT_RERANK_BLEND    0 to 0.95, mix the z-scored fused score into the reranked order instead of replacing it (default 0)
+    GESTALT_ABSTAIN         off | on, add confidence and abstain to the result: the reranker's top score when it ran, else the top dense cosine (default off). Rows are never reordered or dropped
+    GESTALT_ABSTAIN_DENSE_MIN  cosine below which a query without the reranker abstains (default unset: confidence only, never abstains)
+    An embedding profile in gestalt_embed_config.py may set KNOB_DEFAULTS for any of these; a set environment variable always wins
     GESTALT_ABSTAIN_MIN     abstain when confidence is below this (default 0.5). A probability with GESTALT_CALIB, else a raw reranker score
     GESTALT_CALIB           path to a JSON written by evals/retrieval/calibration.py. Its top1 Platt fit maps the top score to a probability (default unset, the identity map)
     GESTALT_LINK_EXPAND     off | on, after fusion and before the rerank, append the best section of each note linked to or from the top fused notes (default off)
@@ -42,6 +45,7 @@ The fusion arithmetic lives in evals/retrieval/fusion.py, which bench_engine cal
 This module is stdlib only, and so is fusion.py. The CrossEncoder import is lazy and sits inside a try, so a node without sentence-transformers still imports it.
 """
 
+import ast
 import importlib.util
 import json
 import math
@@ -111,8 +115,96 @@ def _warn_once(name: str, raw: str, why: str) -> None:
         _log(f"{name}={raw!r} {why}, using the default")
 
 
+_PROFILE_DEFAULTS: dict = {}
+_PROFILE_NORMALIZE: dict = {}  # profile -> whether its vectors are unit length (the PROFILES "NORMALIZE" literal)
+_DEFAULT_PROFILE: list[str] = []  # the config module's DEFAULT_PROFILE literal, read with the profiles
+_profile_lock = threading.Lock()
+
+
+def current_profile(profile: str | None = None) -> str:
+    """The embedding profile in force: `profile` when given, else GESTALT_EMBED_PROFILE, else the config module's DEFAULT_PROFILE.
+
+    The default is read as data with the profiles, so this module and gestalt_embed_config agree on it without importing the config.
+    Before 2026-10-12 the fallback here was the literal nomic, so a process with the variable unset embedded with the default profile,
+    stella, and fused and reranked with nomic's knobs (RRF at alpha 0.5, bge, no blend)."""
+    if profile is None:
+        profile = os.environ.get("GESTALT_EMBED_PROFILE") or ""
+    if not profile.strip():
+        _load_profiles()
+        profile = _DEFAULT_PROFILE[0] if _DEFAULT_PROFILE else "nomic"
+    return profile.strip().lower()
+
+
+def profile_knob_defaults(profile: str | None = None) -> dict:
+    """The KNOB_DEFAULTS of an embedding profile in tools/gestalt_embed_config.py, keyed by knob name.
+
+    A profile can set the defaults its dense leg needs (stella ships with no BM25 leg and the reranker blended 0.5 with its order,
+    2026-10-11: on BEIR the BM25-RRF plus reranker pipeline lowered every strong dense leg). An environment variable that is set always wins. The profile comes from
+    GESTALT_EMBED_PROFILE at call time, else it is the config module's default (current_profile). The config module is read once per
+    process, without importing transformers, and a profile it cannot read gives no defaults rather than an error, so a bad profile still
+    fails where the embedder loads, not here."""
+    profile = current_profile(profile)
+    _load_profiles()
+    return _PROFILE_DEFAULTS.get(profile, {})
+
+
+def _load_profiles() -> None:
+    """Read PROFILES from gestalt_embed_config.py once, as data, into _PROFILE_DEFAULTS and _PROFILE_NORMALIZE.
+
+    Built in local dicts and published whole under a lock, so a second thread never sees a half-parsed table (before 2026-10-11 it
+    could, and then ran a profile with no defaults)."""
+    if _PROFILE_DEFAULTS:
+        return
+    with _profile_lock:
+        if _PROFILE_DEFAULTS:
+            return
+        defaults: dict = {}
+        unit: dict = {}
+        try:
+            path = Path(__file__).resolve().with_name("gestalt_embed_config.py")
+            # Parse the module and read only each profile's KNOB_DEFAULTS and NORMALIZE literals, as data: nothing in the config is executed here.
+            tree = ast.parse(path.read_text())
+            node = next(n.value for n in tree.body if isinstance(n, ast.Assign) and any(getattr(x, "id", "") == "PROFILES" for x in n.targets))
+            default_name = next(ast.literal_eval(n.value) for n in tree.body
+                                if isinstance(n, ast.Assign) and any(getattr(x, "id", "") == "DEFAULT_PROFILE" for x in n.targets))
+            for key, body in zip(node.keys, node.values):
+                fields = {k.value: v for k, v in zip(body.keys, body.values) if isinstance(k, ast.Constant)}
+                name = ast.literal_eval(key)
+                defaults[name] = dict(ast.literal_eval(fields["KNOB_DEFAULTS"])) if "KNOB_DEFAULTS" in fields else {}
+                unit[name] = bool(ast.literal_eval(fields["NORMALIZE"])) if "NORMALIZE" in fields else False
+        except (OSError, ValueError, SyntaxError, AttributeError, StopIteration, KeyError) as e:  # a missing default must never fail a search
+            defaults["__error__"] = {}
+            _log(f"profile knob defaults unreadable ({type(e).__name__}: {str(e)[:80]}), using the module defaults")
+        else:
+            _DEFAULT_PROFILE[:] = [str(default_name).strip().lower()]
+        _PROFILE_NORMALIZE.update(unit)
+        _PROFILE_DEFAULTS.update(defaults)
+
+
+def dense_is_unit(profile: str | None = None) -> bool:
+    """True when the dense leg stores unit vectors, so sqlite-vec's L2 distance converts to a cosine (1 - d*d/2).
+
+    GESTALT_EMBED_NORMALIZE wins when set, as in gestalt_embed_config; otherwise the profile's NORMALIZE literal (stella on, nomic off)."""
+    raw = os.environ.get("GESTALT_EMBED_NORMALIZE", "").strip()
+    if raw in ("0", "1"):
+        return raw == "1"
+    profile = current_profile(profile)
+    _load_profiles()
+    return _PROFILE_NORMALIZE.get(profile, False)
+
+
 def _env(name: str, default: str = "") -> str:
-    return os.environ.get(name, default).strip()
+    """The knob's value: the environment when it is set and non-empty, else the embed profile's default, else `default`.
+
+    An exported but empty variable counts as unset. Before 2026-10-11 it beat the profile and then fell to the module default, so
+    `export GESTALT_FUSION_ALPHA=` in a wrapper ran the stella profile with alpha 0.5 and no blend."""
+    raw = os.environ.get(name, "").strip()
+    if raw:
+        return raw
+    value = profile_knob_defaults().get(name, default)
+    if isinstance(value, bool):  # a profile may write True; the on/off knobs read "on"
+        return "on" if value else "off"
+    return str(value).strip()
 
 
 def _float_env(name: str, default: float, lo: float, hi: float) -> float:
@@ -165,11 +257,13 @@ def is_hub() -> bool:
 
 
 def cuda_available() -> bool:
-    """True when torch imports and sees a GPU. Any failure counts as no GPU."""
+    """True when torch imports and sees a GPU. Any failure counts as no GPU, with one stderr line, because under GESTALT_RERANK=auto a
+    broken torch would otherwise turn the reranker off in silence."""
     try:
         import torch
         return bool(torch.cuda.is_available())
-    except Exception:
+    except Exception as e:
+        _warn_once("cuda_available", type(e).__name__, "raised while probing for a GPU; treating it as absent")
         return False
 
 
@@ -194,7 +288,7 @@ def rerank_for(hub: bool | None = None) -> str | None:
 
 
 def rerank_alias() -> str:
-    return _env("GESTALT_RERANK_MODEL", "bge") or "bge"
+    return canonical_alias(_env("GESTALT_RERANK_MODEL", "bge") or "bge")
 
 
 def rerank_depth() -> int:
@@ -203,6 +297,36 @@ def rerank_depth() -> int:
 
 def rerank_maxchars() -> int:
     return _int_env("GESTALT_RERANK_MAXCHARS", 2000, 100, 20000)
+
+
+def rerank_blend() -> float:
+    """GESTALT_RERANK_BLEND, 0 to 0.95 (default 0, the reranker's order replaces the fused order).
+
+    Above 0 the reranked head is ordered by (1 - blend) * z(reranker score) + blend * z(fused score), both z-scored within the head.
+    On BEIR SciFact, 2026-10-10, a 0.5 blend over stella scored 0.7920 against 0.7737 for the replacing reranker and 0.7796 for stella
+    alone (the zoo run in evals/zoo/zoo-wave3.yaml). A bad value raises ValueError."""
+    return _strict_float("GESTALT_RERANK_BLEND", 0.0, 0.0, 0.95)
+
+
+def _zscores(values: list[float]) -> list[float]:
+    n = len(values)
+    mean = sum(values) / n
+    sd = math.sqrt(sum((v - mean) ** 2 for v in values) / n)
+    # A leg whose scores differ only by rounding (sd near 1e-17) carries no order, and dividing by it would turn the noise into ±1.
+    if sd <= 1e-9 * max(1.0, abs(mean)):
+        return [0.0] * n
+    return [(v - mean) / sd for v in values]
+
+
+def blend_scores(ids: list, rerank_score: dict, inner_score: dict, blend: float) -> list[tuple]:
+    """(id, blended score) ordered best first: (1 - blend) * z(rerank) + blend * z(inner) over `ids`. Ties keep the order of `ids`.
+
+    The zoo's rerank adapter calls this too, so the benchmark measures the product's arithmetic."""
+    if not ids:
+        return []
+    mixed = [(1.0 - blend) * a + blend * b for a, b in zip(_zscores([float(rerank_score[i]) for i in ids]), _zscores([float(inner_score[i]) for i in ids]))]
+    order = sorted(range(len(ids)), key=lambda k: (-mixed[k], k))
+    return [(ids[k], mixed[k]) for k in order]
 
 
 def gpu_duty() -> float:
@@ -354,6 +478,10 @@ def config() -> dict:
         "rerank_instruction": qwen_instruction(),
         "rerank_depth": rerank_depth(),
         "rerank_maxchars": rerank_maxchars(),
+        "rerank_blend": rerank_blend(),
+        "rerank_dtype": rerank_dtype(),
+        "attn_impl": _strict_env("GESTALT_ATTN_IMPL", ("sdpa", "eager", "flash_attention_2")) or None,
+        "tf32": tf32_on(),
         "dedup": slug_decay(),
         "stopwords": stopwords_on(),
         "fusion": fusion_mode(),
@@ -363,6 +491,9 @@ def config() -> dict:
         "missing": fusion_missing(),
         "abstain": abstain_on(),
         "link_expand": link_expand_on(),
+        "link_expand_k": link_expand_k(),
+        "link_expand_max": link_expand_max(),
+        "rescue": rescue_params(),
         "freshness": _on_off("GESTALT_FRESHNESS"),
     }
 
@@ -484,6 +615,15 @@ def abstain_min(calibrated: bool) -> float:
     return _strict_float("GESTALT_ABSTAIN_MIN", 0.5, 0.0, 1.0) if calibrated else _strict_float("GESTALT_ABSTAIN_MIN", 0.5, -math.inf, math.inf)
 
 
+def abstain_dense_min() -> float | None:
+    """GESTALT_ABSTAIN_DENSE_MIN, the cosine below which a query with no reranker abstains. Unset: report the confidence, never abstain.
+
+    There is no built-in threshold on purpose: a floor is model-specific, and one fitted to one person's notes would not transfer.
+    Set it from a public calibration run. A bad value raises ValueError."""
+    raw = _env("GESTALT_ABSTAIN_DENSE_MIN")
+    return _strict_float("GESTALT_ABSTAIN_DENSE_MIN", 0.0, -1.0, 1.0) if raw else None
+
+
 def abstain_decision(top_score: float | None, calib: tuple[float, float] | None = None, minimum: float | None = None) -> tuple[float | None, bool]:
     """(confidence, abstain). Abstain is True when the confidence is below the minimum. A confidence equal to it does not abstain.
 
@@ -538,7 +678,8 @@ def expand_links(db, metas: list, fused: dict, k: int) -> list:
                 if target not in present and target != slug:
                     source.setdefault(target, slug)
     for slug in top:
-        like = "%[[" + slug.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
+        # The prefilter is the slug anywhere in the text; wikilink_slugs decides. "[[" + slug missed `[[ slug ]]` (2026-10-11).
+        like = "%" + slug.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
         for other, content in db.execute("SELECT slug, content FROM sections_meta WHERE slug != ? AND content LIKE ? ESCAPE '\\' ORDER BY id", (slug, like)).fetchall():
             if other not in present and slug in wikilink_slugs(content):
                 source.setdefault(other, slug)
@@ -675,6 +816,9 @@ RERANK_MODELS = {
     "bge": "BAAI/bge-reranker-v2-m3",
     "qwen3-4b": "Qwen/Qwen3-Reranker-4B",
     "qwen3-0.6b": "Qwen/Qwen3-Reranker-0.6B",
+    "ettin-150m": "cross-encoder/ettin-reranker-150m-v1",
+    "mxbai-base-v2": "mixedbread-ai/mxbai-rerank-base-v2",
+    "mxbai-large-v2": "mixedbread-ai/mxbai-rerank-large-v2",
 }
 DEFAULT_QWEN_INSTRUCTION = "Given a question about a personal engineering knowledge base, retrieve the note section that answers it"
 
@@ -689,7 +833,24 @@ RERANK_REVISIONS = {
     "bge": ("BAAI/bge-reranker-v2-m3", "953dc6f6f85a1b2dbfca4c34a2796e7dde08d41e"),
     "qwen3-4b": ("Qwen/Qwen3-Reranker-4B", "22e683669bc0f0bd69640a1354a6d0aebcfeede5"),
     "qwen3-0.6b": ("Qwen/Qwen3-Reranker-0.6B", "e61197ed45024b0ed8a2d74b80b4d909f1255473"),
+    # Tier 1 candidates, read from huggingface.co/api/models/<id> on 2026-10-10. All Apache-2.0 with a sentence-transformers config.
+    "ettin-150m": ("cross-encoder/ettin-reranker-150m-v1", "025501c4e0f9bbeb4c5b198318e0089ff061cc14"),
+    "mxbai-base-v2": ("mixedbread-ai/mxbai-rerank-base-v2", "3ea9d4dffa7d12a4f366be8e275c349de9fc9865"),
+    "mxbai-large-v2": ("mixedbread-ai/mxbai-rerank-large-v2", "ca7e1ee484c37c0ddd8d178a9a5c33cec575c5e6"),
 }
+
+
+def canonical_alias(alias: str) -> str:
+    """The short alias for a known reranker, whether given as the alias or as its Hub id; anything else unchanged.
+
+    Every check keyed on the alias (the Qwen instruction prompt, the 4B VRAM rule, the resident-model cache) must see one spelling.
+    Until 2026-10-11 `GESTALT_RERANK_MODEL=Qwen/Qwen3-Reranker-0.6B` loaded the right weights and skipped all three."""
+    if alias in RERANK_REVISIONS:
+        return alias
+    for short, (hub_id, _rev) in RERANK_REVISIONS.items():
+        if alias == hub_id:
+            return short
+    return alias
 
 
 def pinned_model(alias: str) -> tuple[str, str | None]:
@@ -699,7 +860,7 @@ def pinned_model(alias: str) -> tuple[str, str | None]:
     for hub_id, rev in RERANK_REVISIONS.values():
         if alias == hub_id:
             return hub_id, rev
-    if _env("GESTALT_RERANK_ALLOW_ANY") in _TRUE:
+    if _env("GESTALT_RERANK_ALLOW_ANY").lower() in _TRUE:
         return alias, None
     raise ValueError(f"unknown reranker {alias!r}: known aliases are {', '.join(RERANK_REVISIONS)}. Set GESTALT_RERANK_ALLOW_ANY=1 to load an unpinned Hub id")
 
@@ -739,7 +900,12 @@ def resolve_alias(alias: str | None = None) -> str:
     """The alias that will load. qwen3-4b needs 9 GB of free VRAM, else it falls back to bge with one stderr line.
 
     The answer is kept for ALIAS_TTL_S seconds, so a low-VRAM hub logs the fallback once per window and not once per query."""
-    alias = alias or rerank_alias()
+    alias = canonical_alias(alias or rerank_alias())
+    if alias in _rerankers:
+        # Already resident: its own weights are what fill the card, so a fresh free-VRAM check would always fail and swap it out.
+        # Until 2026-10-10 that happened ALIAS_TTL_S into every qwen3-4b run: the 4B loaded, answered for five minutes, then the
+        # re-check saw 5 GB free and every later query went to bge. The "4B loses to the 0.6B" numbers of 2026-10-09 were that mix.
+        return alias
     hit = _alias_memo.get(alias)
     if hit and time.monotonic() - hit[0] < ALIAS_TTL_S:
         return hit[1]
@@ -811,7 +977,7 @@ def rerank_dtype() -> str:
 def get_reranker(alias: str | None = None):
     """Load a CrossEncoder once and keep it. The import is lazy and may raise ImportError or a load error. Callers catch it."""
     global _rerank_last_used
-    alias = alias or rerank_alias()
+    alias = canonical_alias(alias or rerank_alias())
     name, revision = pinned_model(alias)  # an unknown alias is rejected before any load
     with _rerank_lock:
         model = _rerankers.get(alias)
@@ -876,9 +1042,14 @@ def rerank_rows(query: str, rows: list, alias: str | None = None, maxchars: int 
     scores is aligned with the returned rows, or None when the rerank did not run. Any import, CUDA or load error keeps the input order and says so in info["fallback"]. The sort is stable, so equal scores keep their fusion order.
     """
     t0 = time.perf_counter()
-    alias = resolve_alias(alias)
+    requested = canonical_alias(alias or rerank_alias())
+    alias = resolve_alias(requested)
     maxchars = maxchars or rerank_maxchars()
-    info = {"model": alias, "n": len(rows), "ms": 0, "top1_changed": False, "fallback": "none"}
+    info = {"model": alias, "requested": requested, "n": len(rows), "ms": 0, "top1_changed": False, "fallback": "none"}
+    if alias != requested:
+        # The search still gets a reranked order, from the smaller model; a benchmark must not, because the row would be another
+        # reranker under this one's name. bench_engine.rerank_failed counts any fallback other than none and too-few.
+        info["fallback"] = f"downgraded-to-{alias}"
     if len(rows) < 2:
         return list(rows), None, {**info, "fallback": "too-few"}
     try:
@@ -941,6 +1112,9 @@ class SearchResult:
     confidence: Optional[float] = None
     abstain: bool = False
     expanded: int = 0
+    blend: float = 0.0
+    dense_top: float | None = None
+    confidence_source: str | None = None
 
 
 _LIGHT_COLUMNS = "id, slug, heading, block_id, anchors"
@@ -1013,7 +1187,10 @@ def hybrid_search(db, query: str, limit: int, *, embed_query: Callable, mode: st
     metas = _fetch_meta(db, ordered[:keep], "*" if (full or alias) else _LIGHT_COLUMNS)
 
     if link_expand_on() and metas:
-        extra = expand_links(db, metas, fused, link_expand_k())[:link_expand_max()]
+        k, most = link_expand_k(), link_expand_max()  # read first, so a bad value raises whether or not the expansion runs
+        # The appended rows score below every pooled row, so without a reranker they sit past the cut: on the golden dev split
+        # (2026-10-11) S4 equalled S0 row for row. Expansion therefore runs only when a reranker will read the rows.
+        extra = expand_links(db, metas, fused, k)[:most] if alias else []
         if extra:
             floor = min(fused[m["id"]] for m in metas)
             for row in extra:
@@ -1029,6 +1206,11 @@ def hybrid_search(db, query: str, limit: int, *, embed_query: Callable, mode: st
         result.rerank_fallback = rr_scores is None and info["fallback"] != "too-few"
         if rr_scores is not None:
             rr_by_id = {m["id"]: sc for m, sc in zip(metas, rr_scores)}
+            blend = rerank_blend()
+            if blend > 0:  # every row of a reranked pool has a score, so the blend reorders the whole pool
+                by_id = {m["id"]: m for m in metas}
+                metas = [by_id[i] for i, _ in blend_scores([m["id"] for m in metas], rr_by_id, fused, blend)]
+                result.blend = blend
     if decay < 1.0:
         picked = slug_decay_select(metas, limit, decay)
         result.decay = decay_stats(metas, picked, limit)
@@ -1042,14 +1224,27 @@ def hybrid_search(db, query: str, limit: int, *, embed_query: Callable, mode: st
     result.rerank_scores = {i: rr_by_id[i] for i in result.fused_scores if i in rr_by_id}
     result.scores = {i: result.rerank_scores.get(i, f) for i, f in result.fused_scores.items()}
     top = metas[0]["id"]
-    if top in rr_by_id:
-        result.top_score = rr_by_id[top]
+    if rr_by_id:
+        # The reranker's best score, which after a blend or a slug decay need not sit in row 0. It is the abstention signal.
+        result.top_score = max(rr_by_id.values())
     elif mode == "fts":
         result.top_score = next((-r["score"] for r in fts_rows if r["rowid"] == top), None)
     else:
         result.top_score = fused.get(top)
-    if abstain_on() and top in rr_by_id:
+    if vec_rows and dense_is_unit():
+        # cosine of the best dense hit, from sqlite-vec's L2 distance; exact for unit vectors only, so an unnormalised profile (nomic)
+        # reports none. It is the abstention signal when no reranker ran, so the reranker can stay off and the query still learns it has no answer.
+        d = float(vec_rows[0]["distance"])
+        result.dense_top = 1.0 - d * d / 2.0
+    downgraded = bool(result.rerank) and str(result.rerank.get("fallback", "")).startswith("downgraded")
+    if abstain_on() and rr_by_id and not downgraded:  # a swapped-in model's scores are not the scores the calibration was fitted on
         result.confidence, result.abstain = abstain_decision(result.top_score, load_calib())
+        result.confidence_source = "rerank"
+    elif abstain_on() and result.dense_top is not None and alias is None:  # a requested reranker that failed is a fallback, not a dense signal
+        floor = abstain_dense_min()
+        result.confidence = result.dense_top
+        result.abstain = floor is not None and result.dense_top < floor
+        result.confidence_source = "dense"
     _freshness().apply_to_result(db, result)  # a no-op until GESTALT_FRESHNESS=on; then demotes superseded and expired sections
     return result
 

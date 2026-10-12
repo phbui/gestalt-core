@@ -108,7 +108,10 @@ def is_stable(fact: dict, queue_facts: list[dict], min_sessions: int) -> bool:
 
     # Queue facts: count distinct sessions. The hook keeps one row per fact with a `sessions` list.
     # Old rows carry only `session_id`.
-    fingerprint = fact['fact'][:80].lower()
+    text = fact.get('fact') or ''  # a row without a fact (a hook write cut short) is never stable, and must not crash the run (2026-10-11)
+    if not text:
+        return False
+    fingerprint = text[:80].lower()
     return len(_session_ids(queue_facts, fingerprint)) >= min_sessions
 
 
@@ -501,12 +504,14 @@ def clear_queue(queue_path: Path, promoted_facts: list[str], log) -> None:
         with open(queue_path, encoding='utf-8') as f:
             queue = json.load(f)
         promoted_fps = {f[:80].lower() for f in promoted_facts}
-        remaining = [e for e in queue if e['fact'][:80].lower() not in promoted_fps]
-        with open(queue_path, 'w', encoding='utf-8') as f:
+        remaining = [e for e in queue if (e.get('fact') or '')[:80].lower() not in promoted_fps]  # a row without a fact is kept
+        tmp = queue_path.with_suffix(queue_path.suffix + '.tmp')
+        with open(tmp, 'w', encoding='utf-8') as f:  # written whole and swapped in, so a concurrent reader never sees a cut file
             json.dump(remaining, f, indent=2)
+        os.replace(tmp, queue_path)
         log.info(f"Queue: {len(queue)} → {len(remaining)} after clearing promoted facts")
-    except Exception:
-        pass
+    except Exception as e:
+        log.info(f"Queue: not cleared ({type(e).__name__}: {str(e)[:120]})")
 
 
 # =============================================================================
@@ -813,8 +818,10 @@ def run_promotion(args, log) -> dict:
     # Step 6: Graphiti staleness (AKP-FR-030, AKP-FR-061). Read-only against Graphiti.
     stats['flagged'] = check_graphiti_staleness(args.graphiti_url, gestalt_dir, log)
 
-    # Step 10: Clear queue entries that are now recorded as proposals (AKP-FR-011)
-    clear_queue(queue_path, [f['fact'] for _, f in proposals], log)
+    # Step 10: Clear queue entries that are now recorded as proposals (AKP-FR-011). Only when something was written: a sink that lost
+    # every race returns 0, and clearing then would drop the proposals unreviewed (2026-10-11).
+    if fresh:
+        clear_queue(queue_path, [f['fact'] for _, f in proposals], log)
 
     return stats
 

@@ -1,0 +1,22 @@
+# Wave 5, 2026-10-11 (knowledge/gestalt-improvement-plan-2026-10.md): the one encoder left to try above stella_en_400M_v5 is its
+# 1.5B sibling. Same family, same instruct prefix, Qwen2-1.5B backbone with last-token pooling and the 1024-d Dense head from the
+# repository's sentence-transformers config. bfloat16 because Qwen2 overflows at float16 (dense_hf._unit raises on it).
+# Pairs run against the wave-4 result files (stella-400m, stella-rr-qwen3-0.6b-b05), so only the two new systems run here.
+systems:
+  stella-1.5b:
+    adapter: dense_hf
+    args:
+      model: NovaSearch/stella_en_1.5B_v5
+      revision: 7817065102fd9e1b031fe874e910c01f40b2f001
+      trust_remote_code: true
+      query_prefix: "Instruct: Given a web search query, retrieve relevant passages that answer the query.\nQuery: "
+      max_seq_length: 512
+      normalize: true
+      dtype: bfloat16
+      batch_size: 32
+      licence: mit
+
+  # the shipped shape over the bigger encoder: Qwen3-Reranker-0.6B at depth 40, blended 0.5
+  stella-1.5b-rr-qwen3-0.6b-b05:
+    adapter: rerank
+    args: {inner: stella-1.5b, model: qwen3-0.6b, depth: 40, blend: 0.5}

@@ -1,0 +1,87 @@
+# Candidate replacements for the shipped embedder, run against the shipped one on the same queries.
+# Why these three: on the MTEB results repository (2026-10-09) they score above nomic-embed-text-v1.5 on SciFact and NFCorpus,
+# gte-base-en-v1.5 at the same 137M parameters, DenseOn at 149M, stella_en_400M_v5 at 435M. Prefixes, remote code and licences were
+# read from each model card and huggingface.co/api/models/<id> on 2026-10-09. None of the three cards says whether a SciFact or
+# NFCorpus training split was used, and DenseOn's data mixture was tuned on BEIR, so a gain here is a candidate, not a result.
+# Run with:  python3 evals/zoo/zoo_run.py --dataset beir/scifact --config evals/zoo/zoo-candidates.yaml --systems <names> --out <dir>
+# Give every config its own --work-dir. The reranked variants read GESTALT_RERANK_INSTRUCTION, set per dataset as in zoo.yaml.
+systems:
+  bm25:
+    adapter: bm25
+
+  nomic:
+    adapter: dense_hf
+    args:
+      model: nomic-ai/nomic-embed-text-v1.5
+      revision: e9b6763023c676ca8431644204f50c2b100d9aab
+      doc_prefix: "search_document: "
+      query_prefix: "search_query: "
+      dtype: float16
+      licence: apache-2.0
+
+  # 137M, 768 dims, no prefixes. The modelling code is in the repo Alibaba-NLP/new-impl, pinned by code_revision.
+  gte-base-v15:
+    adapter: dense_hf
+    args:
+      model: Alibaba-NLP/gte-base-en-v1.5
+      revision: a829fd0e060bb84554da0dfd354d0de0f7712b7f
+      code_revision: 40ced75c3017eb27626c9d4ea981bde21a2662f4
+      trust_remote_code: true
+      normalize: true  # the card scores by cosine
+      dtype: float16
+      licence: apache-2.0
+
+  # 435M, 1024 dims, MIT. The query takes the s2p_query instruction, the document takes no prefix, and the card recommends 512 tokens.
+  stella-400m:
+    adapter: dense_hf
+    args:
+      model: NovaSearch/stella_en_400M_v5
+      revision: ffeb2b7ee715c226d4ffe5e4619f7dbb48624c20
+      trust_remote_code: true  # the modelling code is in the model repo, so the revision above pins it
+      # the checkpoint asks for xformers memory-efficient attention and unpadding; the card says to turn both off without xformers
+      config_kwargs: {use_memory_efficient_attention: false, unpad_inputs: false}
+      query_prefix: "Instruct: Given a web search query, retrieve relevant passages that answer the query.\nQuery: "
+      max_seq_length: 512
+      normalize: true
+      dtype: float16
+      licence: mit
+
+  # 149M, 768 dims, ModernBERT base, Apache-2.0. No remote code. The prompts are named query and document, and the card gives their text.
+  denseon:
+    adapter: dense_hf
+    args:
+      model: lightonai/DenseOn
+      revision: cb9947ebccb33862d24e3c7ca2edb25e51acd887
+      doc_prefix: "document: "
+      query_prefix: "query: "
+      max_seq_length: 512
+      normalize: true
+      dtype: bfloat16  # float16 overflowed on 628 of 5183 SciFact documents (zero rows, 2026-10-09 C1); ModernBERT trains in bfloat16
+      licence: apache-2.0
+
+  nomic-bm25-rrf:
+    adapter: fused
+    args: {a: bm25, b: nomic, fusion: rrf}
+  gte-base-v15-bm25-rrf:
+    adapter: fused
+    args: {a: bm25, b: gte-base-v15, fusion: rrf}
+  stella-400m-bm25-rrf:
+    adapter: fused
+    args: {a: bm25, b: stella-400m, fusion: rrf}
+  denseon-bm25-rrf:
+    adapter: fused
+    args: {a: bm25, b: denseon, fusion: rrf}
+
+  # The shipped reranker over each hybrid, depth 40: the pipeline a swap would actually change.
+  nomic-bm25-rrf-rerank-qwen3-0.6b:
+    adapter: rerank
+    args: {inner: nomic-bm25-rrf, model: qwen3-0.6b, depth: 40}
+  gte-base-v15-bm25-rrf-rerank-qwen3-0.6b:
+    adapter: rerank
+    args: {inner: gte-base-v15-bm25-rrf, model: qwen3-0.6b, depth: 40}
+  stella-400m-bm25-rrf-rerank-qwen3-0.6b:
+    adapter: rerank
+    args: {inner: stella-400m-bm25-rrf, model: qwen3-0.6b, depth: 40}
+  denseon-bm25-rrf-rerank-qwen3-0.6b:
+    adapter: rerank
+    args: {inner: denseon-bm25-rrf, model: qwen3-0.6b, depth: 40}

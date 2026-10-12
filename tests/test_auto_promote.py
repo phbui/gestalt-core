@@ -526,3 +526,17 @@ def test_read_letta_facts_extracts_from_target_labels_only(ap, tmp_path, monkeyp
     assert facts[0]["fact"] == "The service depends on the users database schema."
     assert facts[0]["source"] == "letta_block:project_context"
     assert facts[0]["confidence"] == 0.6
+
+
+# --- 2026-10-11 line review -----------------------------------------------------------------------
+
+
+def test_a_queue_row_without_a_fact_is_kept_and_does_not_crash_the_clear(ap, tmp_path):
+    p = tmp_path / "queue.json"
+    p.write_text('[{"session_id": "s1"}, {"fact": "The service uses redis for caching."}]')
+    ap.clear_queue(p, ["The service uses redis for caching."], _FakeLog())
+    assert ap.read_queue(p, _FakeLog()) == [{"session_id": "s1"}]
+
+
+def test_a_queue_row_without_a_fact_is_not_stable(ap):
+    assert ap.is_stable({"session_id": "s1"}, [{"session_id": "s1"}, {"session_id": "s2"}], 2) is False

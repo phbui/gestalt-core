@@ -160,7 +160,11 @@ def test_misaligned_token_vectors_raise(ib):
 
 def test_cache_key_is_salted_with_pooling_and_document_sha(ib):
     plain = ib.chunk_hash("t")
-    assert plain == hashlib.sha256(f"{ib.MODEL_NAME}\x00t".encode()).hexdigest(), "an unsalted key must stay the old key"
+    # Since 2026-10-11 the unsalted key carries the model's pinned revision, normalisation and dtype too, so a flip of any of them
+    # re-embeds instead of reusing the old index's vectors. The shape is pinned here on purpose.
+    ec = ib._ec  # the builder's own config object, which the key reads
+    ident = f"{ib.MODEL_NAME}\x00rev={ib.MODEL_REVISION or ''}\x00norm={int(bool(ec.EMBED_NORMALIZE))}\x00dtype={ec.EMBED_DTYPE}"
+    assert plain == hashlib.sha256(f"{ident}\x00t".encode()).hexdigest(), "an unsalted key is the identity plus the text"
     s1, s2 = ib.cache_salt(True, "aaaa"), ib.cache_salt(True, "bbbb")
     assert s1 != s2 and "pooling=late" in s1 and "doc=aaaa" in s1
     assert ib.chunk_hash("t", s1) != plain and ib.chunk_hash("t", s1) != ib.chunk_hash("t", s2)

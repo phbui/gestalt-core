@@ -97,16 +97,35 @@ def recv_frame(conn: socket.socket, timeout_s: float = REQUEST_TIMEOUT_S):
 
 # --- client --------------------------------------------------------------------------------------
 
-def encode(texts: list[str], state_dir, timeout_s: float) -> list[list[float]]:
-    """Ask the daemon for query vectors. Raises on any failure, including FileNotFoundError or ConnectionRefusedError when no daemon is up."""
+class IdentityMismatch(RuntimeError):
+    """The daemon encodes with another embedding setup than the caller expects (a profile swap while it was alive)."""
+
+
+def identity(ec) -> dict:
+    """What a query vector depends on: the profile, the model, its revision, the width, the query prefix, and since 2026-10-11 the
+    normalisation and the dtype (GESTALT_EMBED_NORMALIZE and GESTALT_EMBED_DTYPE differ per process). Both ends build it from their own config."""
+    return {"profile": getattr(ec, "PROFILE", None), "model_name": ec.MODEL_NAME, "model_revision": getattr(ec, "MODEL_REVISION", None) or "",
+            "embed_dim": int(ec.EMBED_DIM), "query_prefix": getattr(ec, "QUERY_PREFIX", ""),
+            "embed_normalize": bool(getattr(ec, "EMBED_NORMALIZE", False)), "embed_dtype": str(getattr(ec, "EMBED_DTYPE", "float32"))}
+
+
+def encode(texts: list[str], state_dir, timeout_s: float, expect: dict | None = None) -> list[list[float]]:
+    """Ask the daemon for query vectors. Raises on any failure, including FileNotFoundError or ConnectionRefusedError when no daemon is up.
+
+    With expect (an identity() dict), a daemon that answers with another identity, or with none (an older daemon), raises
+    IdentityMismatch: until 2026-10-10 a daemon started under the old profile kept encoding for up to its idle time after a swap,
+    and the hook silently fell back to full text."""
     sock_path = paths(state_dir)[0]
+    deadline = time.monotonic() + timeout_s  # one budget for connect, send and reply; before 2026-10-11 the reply got a fresh timeout
     with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as s:
         s.settimeout(max(timeout_s, 0.001))
         s.connect(str(sock_path))
         send_frame(s, {"texts": texts})
-        resp = recv_frame(s, timeout_s)
+        resp = recv_frame(s, max(deadline - time.monotonic(), 0.001))
     if "vectors" not in resp:
         raise RuntimeError(str(resp.get("error", "bad response")))
+    if expect is not None and resp.get("identity") != expect:
+        raise IdentityMismatch(f"daemon encodes with {resp.get('identity')}, the caller expects {expect}")
     return resp["vectors"]
 
 
@@ -152,17 +171,46 @@ def spawn(state_dir) -> bool:
 
 # --- server --------------------------------------------------------------------------------------
 
-def _reply(texts, embed) -> dict:
+CACHE_MAX = 512  # query vectors kept; a repeated prompt (hooks re-ask the same short queries often) costs a dict lookup
+
+
+class QueryCache:
+    """Most-recently-used query vectors, keyed by the exact text. One daemon has one identity, so the text is the whole key."""
+
+    def __init__(self, embed, size: int = CACHE_MAX):
+        from collections import OrderedDict
+
+        self.embed, self.size, self.store, self.hits = embed, size, OrderedDict(), 0
+
+    def __call__(self, texts: list[str]) -> list:
+        missing = [t for t in dict.fromkeys(texts) if t not in self.store]
+        if missing:
+            for t, v in zip(missing, self.embed(missing)):
+                self.store[t] = v.tolist() if hasattr(v, "tolist") else list(v)
+        self.hits += len(texts) - len(missing)
+        out = []
+        for t in texts:
+            self.store.move_to_end(t)
+            out.append(self.store[t])
+        while len(self.store) > self.size:
+            self.store.popitem(last=False)
+        return out
+
+
+def _reply(texts, embed, ident: dict | None = None) -> dict:
     if not isinstance(texts, list) or len(texts) > MAX_TEXTS or not all(isinstance(t, str) for t in texts):
         return {"error": f"texts must be a list of at most {MAX_TEXTS} strings"}
     try:
         vecs = embed(texts) if texts else []
-        return {"vectors": [v.tolist() if hasattr(v, "tolist") else list(v) for v in vecs]}
+        out = {"vectors": [v.tolist() if hasattr(v, "tolist") else list(v) for v in vecs]}
+        if ident is not None:
+            out["identity"] = ident
+        return out
     except Exception as e:
         return {"error": f"{type(e).__name__}: {str(e)[:200]}"}
 
 
-def serve(state_dir, embed, idle_s: float, stop: threading.Event | None = None) -> str:
+def serve(state_dir, embed, idle_s: float, stop: threading.Event | None = None, ident: dict | None = None) -> str:
     """Bind the socket and answer until idle_s seconds pass without a request, or stop is set. Returns "idle" or "stop"."""
     stop = stop or threading.Event()
     sock_path = paths(state_dir)[0]
@@ -184,7 +232,7 @@ def serve(state_dir, embed, idle_s: float, stop: threading.Event | None = None) 
             with conn:
                 try:
                     req = recv_frame(conn)
-                    send_frame(conn, _reply(req.get("texts") if isinstance(req, dict) else None, embed))
+                    send_frame(conn, _reply(req.get("texts") if isinstance(req, dict) else None, embed, ident))
                 except Exception:
                     pass  # a broken client costs this daemon nothing
             last = time.monotonic()
@@ -230,6 +278,13 @@ def run(state_dir, idle_s: float) -> int:
             if (pid := _read_pid(state_dir)) is not None and _is_daemon(pid):
                 print(f"already running, pid {pid}", file=sys.stderr)
                 return 1
+            try:
+                young = time.time() - pid_path.stat().st_mtime < 5
+            except OSError:
+                young = False
+            if pid is None and young:  # another starter holds the file and has not written its pid yet (two spawns within microseconds)
+                print("another daemon is starting", file=sys.stderr)
+                return 1
             pid_path.unlink(missing_ok=True)  # a stale file from a dead daemon
     else:
         return 1
@@ -239,9 +294,13 @@ def run(state_dir, idle_s: float) -> int:
     for sig in (signal.SIGTERM, signal.SIGINT):
         signal.signal(sig, lambda *_: stop.set())
     try:
-        embed = load_embedder()
-        print(f"gestalt-embed-daemon: ready, pid {os.getpid()}, idle exit {idle_s:g}s", file=sys.stderr, flush=True)
-        print(f"gestalt-embed-daemon: exit on {serve(state_dir, embed, idle_s, stop)}", file=sys.stderr, flush=True)
+        embed = QueryCache(load_embedder())
+        sys.path.insert(0, str(Path(__file__).resolve().parent))
+        import gestalt_embed_config as ec
+
+        ident = identity(ec)
+        print(f"gestalt-embed-daemon: ready, pid {os.getpid()}, idle exit {idle_s:g}s, {ident['model_name']} at {ident['embed_dim']}", file=sys.stderr, flush=True)
+        print(f"gestalt-embed-daemon: exit on {serve(state_dir, embed, idle_s, stop, ident)}", file=sys.stderr, flush=True)
         return 0
     finally:
         pid_path.unlink(missing_ok=True)
@@ -288,12 +347,16 @@ def main(argv=None) -> int:
     g = ap.add_mutually_exclusive_group()
     g.add_argument("--status", action="store_true")
     g.add_argument("--stop", action="store_true")
+    g.add_argument("--spawn", action="store_true", help="start a detached daemon unless one is running, then return at once")
     a = ap.parse_args(argv)
     state_dir = Path(a.state_dir).expanduser() if a.state_dir else default_state_dir()
     if a.status:
         return status(state_dir)
     if a.stop:
         return stop(state_dir)
+    if a.spawn:
+        spawn(state_dir)
+        return 0
     return run(state_dir, a.idle_s)
 
 

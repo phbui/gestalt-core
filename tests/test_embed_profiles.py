@@ -1,4 +1,4 @@
-"""Embedding profiles (10): nomic stays the default, qwen3-4b reaches the builder through the same names (2026-10-08).
+"""Embedding profiles (10): stella-400m is the default since 2026-10-11 (nomic until then), qwen3-4b reaches the builder through the same names (2026-10-08).
 
 No model loads. The builder is driven with a stand-in for SentenceTransformer that records how it was constructed.
 """
@@ -14,9 +14,11 @@ from conftest import ConstEncoder, ConstSentenceTransformer, _load
 from test_matryoshka import fresh_config
 
 
-def test_default_profile_keeps_every_old_value(indexer):
-    import gestalt_embed_config as ec
-
+def test_default_profile_keeps_every_old_value(indexer, monkeypatch):
+    ec = fresh_config(monkeypatch)  # the variable deleted: the shipped default, not the suite's nomic session (conftest)
+    assert ec.PROFILE == "stella-400m" and ec.DEFAULT_PROFILE == "stella-400m"  # the default since 2026-10-11
+    assert ec.MODEL_NAME == "NovaSearch/stella_en_400M_v5" and ec.EMBED_NORMALIZE is True and ec.EMBED_DIM == 1024
+    ec = fresh_config(monkeypatch, GESTALT_EMBED_PROFILE="nomic")
     assert ec.PROFILE == "nomic"
     assert ec.MODEL_NAME == "nomic-ai/nomic-embed-text-v1.5"
     assert ec.MODEL_REVISION == "e9b6763023c676ca8431644204f50c2b100d9aab"
@@ -46,9 +48,9 @@ def test_qwen_profile_values(monkeypatch):
     assert q.MODEL_KWARGS.get("torch_dtype") == "bfloat16"
 
 
-def test_unknown_profile_warns_and_uses_nomic(monkeypatch, capsys):
+def test_unknown_profile_warns_and_uses_the_default(monkeypatch, capsys):
     c = fresh_config(monkeypatch, GESTALT_EMBED_PROFILE="nope")
-    assert c.PROFILE == "nomic" and "unknown GESTALT_EMBED_PROFILE" in capsys.readouterr().err
+    assert c.PROFILE == "stella-400m" and "unknown GESTALT_EMBED_PROFILE" in capsys.readouterr().err
 
 
 def test_device_and_search_dir(monkeypatch, tmp_path):
@@ -63,7 +65,9 @@ def test_device_and_search_dir(monkeypatch, tmp_path):
 
 
 def test_chunk_text_layouts(monkeypatch):
-    c = fresh_config(monkeypatch)
+    s = fresh_config(monkeypatch)  # the default, stella: no document prefix
+    assert s.chunk_text("home-mesh", "", "Fleet", "body") == "home mesh — Fleet\n\nbody"
+    c = fresh_config(monkeypatch, GESTALT_EMBED_PROFILE="nomic")
     assert c.chunk_text("home-mesh", "", "Fleet", "body") == "search_document: home mesh — Fleet\n\nbody"
     assert c.chunk_text("home-mesh", "Home mesh", "Fleet", "body") == "search_document: Home mesh (home mesh) — Fleet\n\nbody"
     assert c.chunk_text("home-mesh", "Home mesh", "Fleet", "body", prefix="") == "Home mesh (home mesh) — Fleet\n\nbody"
@@ -109,7 +113,8 @@ def build(indexer):
     return sqlite3.connect(indexer.DB_PATH)
 
 
-def test_default_constructor_call_pins_the_weights(corpus, indexer):
+def test_default_constructor_call_pins_the_weights(corpus, indexer, monkeypatch):
+    use_profile(monkeypatch, indexer, fresh_config(monkeypatch, GESTALT_EMBED_PROFILE="nomic"))  # the stub encoder is 768 wide
     build(indexer)
     kw = StubST.last.kw
     assert StubST.last.name == "nomic-ai/nomic-embed-text-v1.5"
@@ -167,10 +172,13 @@ def test_query_side_is_prefix_plus_query(corpus, indexer, monkeypatch):
     import gestalt_embed_config as ec
 
     q_prefix = fresh_config(monkeypatch, GESTALT_EMBED_PROFILE="qwen3-4b").QUERY_PREFIX
+    use_profile(monkeypatch, indexer, fresh_config(monkeypatch, GESTALT_EMBED_PROFILE="nomic"))  # the stub encoder is 768 wide
+    ec = indexer._ec
     monkeypatch.setattr(ec, "QUERY_PREFIX", q_prefix)
     monkeypatch.setattr(indexer, "QUERY_PREFIX", q_prefix)
     build(indexer)
     srv = _load("gestalt_mcp_server_profiles", "tools/gestalt-mcp-server.py")
+    monkeypatch.setattr(srv, "_ec", ec)  # the server and the builder judge the index by one config
     model = ConstEncoder(768)
     monkeypatch.setenv("GESTALT_SEARCH_MODE", "hybrid")
     monkeypatch.setattr(srv, "DB_PATH", indexer.DB_PATH, raising=False)
@@ -295,3 +303,71 @@ def test_a_missing_transformers_means_remote_code_is_needed(monkeypatch):
 
     monkeypatch.setattr(importlib.metadata, "version", gone)
     assert cfg._native_class_available("nomic_bert") is False
+
+
+# Candidate profiles (2026-10-09). No model loads. They only prove the configuration is complete, pinned and never silently downgraded.
+
+CANDIDATES = ("gte-base-v15", "stella-400m", "denseon")
+
+
+@pytest.mark.parametrize("name", CANDIDATES)
+def test_candidate_profiles_are_complete_and_pinned(monkeypatch, name):
+    c = fresh_config(monkeypatch, GESTALT_EMBED_PROFILE=name)
+    assert c.PROFILE == name
+    assert re.fullmatch(r"[0-9a-f]{40}", c.MODEL_REVISION)  # a full commit hash, never a branch
+    assert c.EMBED_DIM in (768, 1024) and c.EMBED_NORMALIZE is True  # trained for cosine, so unit length by default
+    for key in ("MODEL_NAME", "MODEL_REVISION", "CODE_REPO", "CODE_REVISION", "DOC_PREFIX", "QUERY_PREFIX", "TRUST_REMOTE_CODE", "MODEL_KWARGS", "TOKENIZER_KWARGS"):
+        assert hasattr(c, key), key
+    if c.CODE_REPO:  # remote code in another repository must be pinned and passed to the loader
+        assert re.fullmatch(r"[0-9a-f]{40}", c.CODE_REVISION) and c.MODEL_KWARGS.get("code_revision") == c.CODE_REVISION
+
+
+def test_gte_base_remote_code_is_never_switched_off_by_auto(monkeypatch):
+    """The auto mode turns remote code off only for a profile whose architecture transformers ships. gte-base's is not shipped."""
+    g = fresh_config(monkeypatch, GESTALT_EMBED_PROFILE="gte-base-v15", GESTALT_TRUST_REMOTE_CODE="auto")
+    assert g.TRUST_REMOTE_CODE is True and g.LOAD_PATH == "remote-code"
+    assert (g.CODE_REPO, g.CODE_REVISION) == ("Alibaba-NLP/new-impl", "40ced75c3017eb27626c9d4ea981bde21a2662f4")
+    assert g.MODEL_KWARGS["code_revision"] == g.CODE_REVISION
+    assert (g.DOC_PREFIX, g.QUERY_PREFIX) == ("", "")
+
+
+def test_stella_and_denseon_prefix_recipes(monkeypatch):
+    s = fresh_config(monkeypatch, GESTALT_EMBED_PROFILE="stella-400m")
+    assert s.QUERY_PREFIX.startswith("Instruct: ") and s.QUERY_PREFIX.endswith("\nQuery: ") and s.DOC_PREFIX == "" and s.EMBED_DIM == 1024
+    assert s.TRUST_REMOTE_CODE is True and s.CODE_REPO is None  # its code is in the model repo, which the revision pins
+    d = fresh_config(monkeypatch, GESTALT_EMBED_PROFILE="denseon")
+    assert (d.DOC_PREFIX, d.QUERY_PREFIX) == ("document: ", "query: ") and d.TRUST_REMOTE_CODE is False
+
+
+def test_the_old_profiles_keep_their_normalisation_default(monkeypatch):
+    assert fresh_config(monkeypatch).EMBED_NORMALIZE is True  # the default, stella, stores unit vectors
+    assert fresh_config(monkeypatch, GESTALT_EMBED_PROFILE="nomic").EMBED_NORMALIZE is False
+    assert fresh_config(monkeypatch, GESTALT_EMBED_PROFILE="qwen3-4b").EMBED_NORMALIZE is False
+    assert fresh_config(monkeypatch, GESTALT_EMBED_PROFILE="denseon", GESTALT_EMBED_NORMALIZE="0").EMBED_NORMALIZE is False  # an explicit 0 wins
+
+
+def test_candidate_vectors_are_unit_length_through_postprocess(monkeypatch):
+    c = fresh_config(monkeypatch, GESTALT_EMBED_PROFILE="gte-base-v15")
+    v = c.postprocess(np.random.default_rng(0).normal(size=(4, 768)).astype("float32") * 3.0)
+    assert np.allclose(np.linalg.norm(v, axis=-1), 1.0, atol=1e-5)
+
+
+def test_stella_carries_its_config_overrides_and_every_profile_has_the_load_hooks(monkeypatch):
+    s = fresh_config(monkeypatch, GESTALT_EMBED_PROFILE="stella-400m")
+    assert s.CONFIG_KWARGS == {"use_memory_efficient_attention": False, "unpad_inputs": False}
+    assert callable(s.before_load) and callable(s.after_load)
+    n = fresh_config(monkeypatch, GESTALT_EMBED_PROFILE="nomic")
+    assert n.CONFIG_KWARGS == {}
+
+
+def test_builder_passes_config_kwargs_for_stella(monkeypatch):
+    """The builder's load kwargs carry the profile's config overrides. A fresh config is patched in, so no shared module changes."""
+    from conftest import _load
+
+    builder = _load("gestalt_index_builder_cfg", "tools/gestalt-index-builder.py")
+    stella = fresh_config(monkeypatch, GESTALT_EMBED_PROFILE="stella-400m")
+    monkeypatch.setattr(builder, "_ec", stella)
+    monkeypatch.setattr(builder, "MODEL_REVISION", stella.MODEL_REVISION)
+    kw = builder.model_init_kwargs()
+    assert kw["config_kwargs"] == {"use_memory_efficient_attention": False, "unpad_inputs": False}
+    assert kw["revision"] == "ffeb2b7ee715c226d4ffe5e4619f7dbb48624c20"

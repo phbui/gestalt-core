@@ -691,3 +691,20 @@ def test_cached_encoder_keeps_queries_and_drops_documents_per_scope():
     enc.encode("what is a")
     assert m.calls == [["a b", "c d"], ["what is a"], ["a b"]]  # the document is embedded again after the scope change, the query is not
     assert enc.docs.keys() == {"a b"} and enc.queries.keys() == {"what is a"}
+
+
+# ----------------------------------------------------------------- 2026-10-11 line review
+
+
+def test_a_fusion_flag_that_did_not_take_effect_is_refused_like_the_profile_flag(tmp_path, lme_file, monkeypatch):
+    """--fusion and --alpha were accepted and ignored: only beir_bench exports them to the environment, and only as __main__."""
+    import gestalt_rank
+    monkeypatch.delenv("GESTALT_FUSION", raising=False)
+    monkeypatch.delenv("GESTALT_FUSION_ALPHA", raising=False)
+    monkeypatch.setenv("GESTALT_EMBED_PROFILE", "nomic")  # the profile whose default fusion is RRF; the shipped default fuses convex since 2026-10-11
+    assert gestalt_rank.fusion_mode() == "rrf"
+    with pytest.raises(SystemExit, match="fusion"):
+        C.resolve_run(args_for(tmp_path, lme_file, fusion="convex"))
+    monkeypatch.setenv("GESTALT_FUSION", "convex")
+    with pytest.raises(SystemExit, match="alpha"):
+        C.resolve_run(args_for(tmp_path, lme_file, fusion="convex", alpha=0.3))

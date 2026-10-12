@@ -160,7 +160,8 @@ def test_argparse_defaults_snapshot(monkeypatch):
     defaults = {a.dest: a.default for a in parser._actions if a.dest != "help"}
     assert defaults["datasets"] == ["beir/scifact", "beir/nfcorpus"]
     assert defaults["limit_docs"] is None and defaults["batch_size"] == 64 and defaults["rerank"] == "off"
-    assert defaults["rerank_depth"] == 40 and defaults["fusion"] is None and defaults["alpha"] is None and defaults["embed_profile"] is None
+    assert defaults["rerank_depth"] is None and defaults["rerank_model"] is None  # resolved by rerank_spec from the knobs, 2026-10-11
+    assert defaults["fusion"] is None and defaults["alpha"] is None and defaults["embed_profile"] is None
     assert defaults["all_public"] is False and defaults["max_docs"] is None
     legacy = {"datasets", "out", "limit_docs", "batch_size", "embed_profile", "rerank", "rerank_model", "rerank_depth", "fusion", "alpha"}
     assert legacy <= set(defaults) and set(defaults) - legacy == {"all_public", "max_docs", "resume", "work_dir", "engine", "block_size", "rebuild",
@@ -388,9 +389,12 @@ def read_runs(out: Path, name: str, systems=("bm25", "dense", "hybrid")) -> dict
 
 @pytest.mark.parametrize("fusion,dense", [("rrf", "vec"), ("convex", "vec"), ("rrf", "exact")])
 def test_engine_rankings_equal_the_old_in_memory_path(monkeypatch, tmp_path, fusion, dense):
-    """No published number may move: bm25, dense and hybrid rankings must be the old path's, id for id."""
+    """No published number may move: bm25, dense and hybrid rankings must be the old path's, id for id.
+    The old path never unit-normalised, so the parity is defined under the nomic profile (normalize off). Under a normalising
+    profile the exact dense leg and sqlite-vec break the stub corpus's exact ties differently after float rounding."""
     mod, docs, queries = corpus_dataset(400, 40)
     monkeypatch.setitem(sys.modules, "ir_datasets", mod)
+    monkeypatch.setattr(bb.ec, "EMBED_NORMALIZE", False)  # bb.ec is the module loaded at import; the env alone would not reach it
     model = StubModel()
     monkeypatch.setattr(bb.harness, "_model", model)
     monkeypatch.setenv("GESTALT_RERANK", "off")
@@ -472,7 +476,7 @@ def test_a_killed_run_resumes_to_the_identical_result_and_redoes_no_finished_wor
     assert third.docs == []
     n_scored = len(json.loads((tmp_path / "out" / "beir-fiqa.json").read_text())["query_ids"])
     assert len(calls) == n_scored - 6  # the six finished queries were not run again
-    log = next((tmp_path / "work" / "beir-fiqa").glob("queries-*.jsonl")).read_text().splitlines()
+    log = next((tmp_path / "work" / bb.dataset_key("beir/fiqa", None, None)).glob("queries-*.jsonl")).read_text().splitlines()
     assert len(log) == 1 + 3 * n_scored  # one line per (system, query), never a duplicate
     assert _result_without_timings(tmp_path / "out") == _result_without_timings(tmp_path / "out-clean")
 
@@ -521,7 +525,7 @@ def test_summary_carries_the_subset_labels(monkeypatch, stubbed, tmp_path, flags
 def test_the_work_dir_is_git_ignored(stubbed, tmp_path):
     bb.run_dataset("beir/fiqa", tmp_path / "out", None, 8, StubModel(), None, work_dir=tmp_path / "w")
     assert (tmp_path / "w" / ".gitignore").read_text() == "*\n"
-    assert json.loads((tmp_path / "w" / "beir-fiqa" / "status.json").read_text())["phase"] == "done"
+    assert json.loads((tmp_path / "w" / bb.dataset_key("beir/fiqa", None, None) / "status.json").read_text())["phase"] == "done"
 
 
 # --- ndcg_at_10, build_db and code_hashes ---------------------------------------------------------
@@ -654,7 +658,7 @@ def _grid_run(monkeypatch, tmp_path, grid, tag):
 
 def test_run_files_carry_the_real_score_higher_is_better_in_rank_order(monkeypatch, tmp_path):
     out, r = _grid_run(monkeypatch, tmp_path, [], "")
-    log = next((tmp_path / "work" / "beir-fiqa").glob("queries-*.jsonl")).read_text().splitlines()[1:]
+    log = next((tmp_path / "work" / bb.dataset_key("beir/fiqa", None, None)).glob("queries-*.jsonl")).read_text().splitlines()[1:]
     logged = {(e["system"], e["qid"]): e for e in map(json.loads, log)}
     for system in ("bm25", "dense", "hybrid"):
         for qid, rows in _run_lines(out, "beir/fiqa", system).items():
@@ -707,7 +711,7 @@ def test_the_grid_adds_systems_and_leaves_the_default_systems_and_their_numbers_
     half = _run_lines(grid_out, "beir/fiqa", "hybrid:wrrf@0.5")
     assert {q: [sc for *_, sc in v] for q, v in half.items()} == {q: [sc for *_, sc in v] for q, v in hyb.items()}
     assert "fusion_params" in grid["query_log_header"] and "fusion_params" not in plain["query_log_header"]
-    logs = sorted(p.name for p in (tmp_path / "work" / "beir-fiqa").glob("queries-*.jsonl"))
+    logs = sorted(p.name for p in (tmp_path / "work" / bb.dataset_key("beir/fiqa", None, None)).glob("queries-*.jsonl"))
     assert len(logs) == 2 and sum("-grid-" in n for n in logs) == 1  # the grid run keeps its own log
 
 
@@ -720,3 +724,17 @@ def test_a_grid_result_is_reused_only_by_a_run_with_the_same_grid_and_knobs(monk
     assert bb.load_finished(out, "beir/fiqa", False, None, None, wider) is None
     monkeypatch.setenv("GESTALT_FUSION_NORM", "zscore")
     assert bb.load_finished(out, "beir/fiqa", False, None, None, bb.run_identity(None, "rrf", 0.5, list(bb.engine.BASE_SYSTEMS) + GRID[:2])) is None
+
+
+def test_the_bench_takes_the_reranker_and_depth_from_the_profile_when_the_flags_are_absent(monkeypatch):
+    """2026-10-11 audit: --rerank-model defaulted to the environment or "bge", so a stella run with no flag reranked with bge while the
+    served path used the profile's qwen3-0.6b. The flags stay as explicit overrides."""
+    import gestalt_rank as gr
+    monkeypatch.setenv("GESTALT_EMBED_PROFILE", "stella-400m")
+    for k in ("GESTALT_RERANK_MODEL", "GESTALT_RERANK_DEPTH"):
+        monkeypatch.delenv(k, raising=False)
+    assert bb.rerank_spec(None, None) == {"model": "qwen3-0.6b", "depth": 40}
+    assert bb.rerank_spec("bge", 20) == {"model": "bge", "depth": 20}
+    monkeypatch.setenv("GESTALT_RERANK_DEPTH", "25")
+    assert bb.rerank_spec(None, None)["depth"] == 25
+    assert gr.rerank_alias() == "qwen3-0.6b"

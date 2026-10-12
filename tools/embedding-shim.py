@@ -20,7 +20,10 @@ import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import gestalt_embed_config as ec
+# Graphiti's vectors live in their own store, built with nomic. The search index may switch profiles (stella from 2026-10), and a
+# global GESTALT_EMBED_PROFILE must not reach this process, so the shim pins its own profile before the config reads it.
+os.environ["GESTALT_EMBED_PROFILE"] = "nomic"
+import gestalt_embed_config as ec  # noqa: E402
 
 MODEL_NAME = ec.MODEL_NAME
 

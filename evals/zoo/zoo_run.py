@@ -14,11 +14,13 @@ import argparse
 import datetime as dt
 import hashlib
 import importlib
+import json
 import platform
 import re
 import shutil
 import sys
 import time
+import types
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -26,15 +28,16 @@ REPO = HERE.parent.parent
 sys.path[:] = [p for p in sys.path if Path(p or ".").resolve() != HERE]  # run as a script, HERE would shadow modules such as cost
 sys.path.insert(0, str(REPO))
 
-import beir_bench as bb
-import bench_engine as engine
-import gestalt_rank
 import yaml
-from bench_stats import bootstrap_ci, code_hashes, ndcg_at_10, permutation_p
-from resumable import atomic_write, atomic_write_json
 
-import evals.zoo  # noqa: F401  puts evals/retrieval and tools on sys.path
+import evals.zoo  # noqa: F401  puts evals/retrieval and tools on sys.path; it must run before the harness imports below
 from evals.zoo import cost
+
+import beir_bench as bb  # noqa: E402
+import bench_engine as engine  # noqa: E402
+import gestalt_rank  # noqa: E402
+from bench_stats import bootstrap_ci, code_hashes, ndcg_at_10, permutation_p  # noqa: E402
+from resumable import atomic_write, atomic_write_json  # noqa: E402
 
 ADAPTERS = {"bm25": ("evals.zoo.bm25", "Bm25"), "dense_hf": ("evals.zoo.dense_hf", "DenseHF"),
             "fused": ("evals.zoo.fused", "Fused"), "rerank": ("evals.zoo.rerank", "Rerank"),
@@ -161,6 +164,64 @@ def measure(zoo: Zoo, name: str, queries: list[tuple[str, str]], k: int, n_laten
     return ranked, block, s, t_search
 
 
+class Measured:
+    """A system restored from a checkpoint: what the result writer needs of a Searcher, without rebuilding or re-searching it."""
+
+    def __init__(self, name: str, described: dict, part_names: list[str], fallbacks: int | None):
+        self.name, self._described = name, described
+        self.parts = [types.SimpleNamespace(name=n, parts=()) for n in part_names]
+        if fallbacks is not None:
+            self.fallbacks = fallbacks
+
+    def describe(self) -> dict:
+        return self._described
+
+    def close(self) -> None:
+        pass
+
+
+def checkpoint_key(name: str, specs: dict, dataset: str, qids: list[str], k: int) -> str:
+    """Everything a system's ranked lists depend on, so a checkpoint is reused only for the same run."""
+    payload = {"system": name, "specs": {n: specs[n] for n in sorted(deps(name, specs))}, "dataset": dataset, "k": k, "query_ids": qids,
+               "rerank": {"maxchars": gestalt_rank.rerank_maxchars(), "instruction": gestalt_rank.qwen_instruction()}, "fusion": gestalt_rank.fusion_settings(),
+               # the code that produced the rankings: a checkpoint from another version would otherwise be replayed under the new hashes (2026-10-11)
+               "code": code_hashes(), "zoo_code": zoo_code_hashes()}
+    return hashlib.sha256(json.dumps(payload, sort_keys=True, default=str).encode("utf-8")).hexdigest()
+
+
+def zoo_code_hashes() -> dict:
+    """SHA-256 of every zoo module, recorded in the result header and folded into the checkpoint key."""
+    return {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in sorted(HERE.glob("*.py"))}
+
+
+def checkpoint_path(out: Path, name: str) -> Path:
+    return out / "checkpoints" / (re.sub(r"[^A-Za-z0-9._-]", "_", name) + ".json")
+
+
+def save_checkpoint(path: Path, key: str, ranked: dict, cost_block: dict, s, t: float) -> None:
+    """One system's finished measurement. A wedge or a GPU loss later in the step then costs only the systems after it (2026-10-10: five
+    wedges on the hub each threw away one to two hours of finished reranked pipelines)."""
+    rerankers = [p for p in walk(s) if hasattr(p, "fallbacks")]
+    path.parent.mkdir(parents=True, exist_ok=True)
+    atomic_write_json(path, {"key": key, "ranked": {q: [[d, float(sc)] for d, sc in hits] for q, hits in ranked.items()}, "cost": cost_block,
+                             "describe": s.describe(), "part_names": [p.name for p in s.parts],
+                             "fallbacks": sum(p.fallbacks for p in rerankers) if rerankers else None, "t": t})
+
+
+def load_checkpoint(path: Path, key: str):
+    """(ranked, cost, Measured, t) when the checkpoint exists and was written for this exact run, else None."""
+    try:
+        d = json.loads(path.read_text())
+    except (OSError, ValueError):
+        return None
+    if d.get("key") != key:
+        return None
+    if d.get("fallbacks"):
+        return None  # a void measurement (the reranker fell back) is measured again, as the bench does, not replayed on every retry
+    ranked = {q: [(h[0], h[1]) for h in hits] for q, hits in d["ranked"].items()}
+    return ranked, d["cost"], Measured(path.stem, d["describe"], d["part_names"], d.get("fallbacks")), float(d["t"])
+
+
 def environment() -> dict:
     import numpy
     import sentence_transformers
@@ -172,7 +233,8 @@ def environment() -> dict:
     except Exception:
         ird = None
     return {"python": platform.python_version(), "platform": platform.platform(), "numpy": numpy.__version__, "torch": torch.__version__,
-            "sentence_transformers": sentence_transformers.__version__, "ir_datasets": ird, "gpu": cost.gpu_name(), "engine": "evals/zoo"}
+            "sentence_transformers": sentence_transformers.__version__, "ir_datasets": ird, "gpu": cost.gpu_name(), "engine": "evals/zoo",
+            "gpu_duty": gestalt_rank.gpu_duty()}  # the pause after each model call inflates every measured latency by about 1/duty
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -206,8 +268,19 @@ def main(argv: list[str] | None = None) -> int:
     zoo = Zoo(specs, corpus, work / bb.dataset_key(args.dataset, args.limit_docs, args.max_docs, "nomic"), args.rebuild)
 
     k, runs, costs, searchers, t_total = bb.TOPK, {}, {}, {}, 0.0
+    qids = [q for q, _ in qlist]
     for i, name in enumerate(args.systems):
-        runs[name], costs[name], searchers[name], t = measure(zoo, name, qlist, k, args.latency_queries)
+        key = checkpoint_key(name, specs, bb.dataset_key(args.dataset, args.limit_docs, args.max_docs, "nomic"), qids, k)
+        ck = checkpoint_path(out, name)
+        saved = None if args.rebuild else load_checkpoint(ck, key)
+        if saved:
+            runs[name], costs[name], searcher, t = saved
+            searcher.name = name
+            print(f"zoo_run: {name} resumed from {ck.name}", file=sys.stderr, flush=True)
+        else:
+            runs[name], costs[name], searcher, t = measure(zoo, name, qlist, k, args.latency_queries)
+            save_checkpoint(ck, key, runs[name], costs[name], searcher, t)
+        searchers[name] = searcher
         t_total += t
         zoo.release(set().union(*(deps(n, specs) for n in args.systems[i + 1:])))
 
@@ -226,11 +299,11 @@ def main(argv: list[str] | None = None) -> int:
         "metric": "nDCG@10",
         "query_log_header": {
             "zoo": True, "systems": list(args.systems), "limit": k, "specs": {n: specs[n] for n in set().union(*(deps(n, specs) for n in args.systems))},
-            "rerank": {"model": rr_spec["model"], "depth": rr_spec.get("depth", 40), "maxchars": gestalt_rank.rerank_maxchars(),
+            "rerank": {"model": rr_spec["model"], "depth": rr_spec.get("depth", 40), "blend": rr_spec.get("blend", 0.0), "maxchars": gestalt_rank.rerank_maxchars(),
                        "instruction": gestalt_rank.qwen_instruction()} if rr_spec else None,
             "fusion_params": gestalt_rank.fusion_settings(),
             "code_sha256": code_hashes(),
-            "zoo_code_sha256": {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in sorted(HERE.glob("*.py"))}},
+            "zoo_code_sha256": zoo_code_hashes()},
         "model": {"systems": {n: s.describe() for n, s in searchers.items()}},
         "systems": {n: {"ndcg10": round(sum(v) / len(v), 4), "ci95_bootstrap": bootstrap_ci(v), "per_query": [round(x, 5) for x in v], "cost": costs[n]}
                     for n, v in per_query.items()},

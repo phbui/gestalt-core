@@ -50,12 +50,12 @@ gestalt_rank.LOG_PREFIX = "gestalt-eval"  # the shared module's stderr lines car
 try:
     import gestalt_embed_config as _ec
 except ImportError:  # a lone copy of this file (a test fixture, a stale install): behave as before X14, unpinned
-    class _ec:  # noqa: N801
-        MODEL_NAME = "nomic-ai/nomic-embed-text-v1.5"
-        MODEL_REVISION = None
-        EMBED_DIM = 768
-        DOC_PREFIX = "search_document: "
-        QUERY_PREFIX = "search_query: "
+    class _ec:  # noqa: N801  # the shipped default since 2026-10-11, stella_en_400M_v5, so a lone copy embeds the same way
+        MODEL_NAME = "NovaSearch/stella_en_400M_v5"
+        MODEL_REVISION = "ffeb2b7ee715c226d4ffe5e4619f7dbb48624c20"
+        EMBED_DIM = 1024
+        DOC_PREFIX = ""
+        QUERY_PREFIX = "Instruct: Given a web search query, retrieve relevant passages that answer the query.\nQuery: "
 
 EVAL_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(EVAL_DIR))  # assign_splits, imported lazily where the clusters are needed
@@ -101,9 +101,16 @@ def get_model():
             kw["model_kwargs"] = _ec.MODEL_KWARGS
         if getattr(_ec, "TOKENIZER_KWARGS", None):
             kw["tokenizer_kwargs"] = _ec.TOKENIZER_KWARGS
+        if getattr(_ec, "CONFIG_KWARGS", None):
+            kw["config_kwargs"] = _ec.CONFIG_KWARGS
+        if getattr(_ec, "MODEL_REVISION", None):
+            kw["revision"] = _ec.MODEL_REVISION  # the server and the builder pin it; the runner loaded the branch head until 2026-10-10
         if hasattr(_ec, "apply_tf32"):
             _ec.apply_tf32()
-        set_model(SentenceTransformer(_ec.MODEL_NAME, trust_remote_code=getattr(_ec, "TRUST_REMOTE_CODE", True), **kw))
+        if hasattr(_ec, "before_load"):
+            _ec.before_load()
+        model = SentenceTransformer(_ec.MODEL_NAME, trust_remote_code=getattr(_ec, "TRUST_REMOTE_CODE", True), **kw)
+        set_model(_ec.after_load(model) if hasattr(_ec, "after_load") else model)
     return _model
 
 
@@ -124,6 +131,24 @@ def get_db(need_vec: bool = True) -> sqlite3.Connection:
         sqlite_vec.load(db)
         db.enable_load_extension(False)
     return db
+
+
+def index_meta_mismatch(db) -> dict:
+    """{key: (index value, run value)} where the index's index_meta disagrees with the embedding profile this run encodes queries with.
+
+    The server turns its vector leg off on any mismatch; the runner must refuse instead, or it would score queries from one model
+    against vectors from another and bank the result (found 2026-10-10 while planning the stella runs). An index without index_meta,
+    or without a given key, makes no claim about it and passes."""
+    try:
+        meta = dict(db.execute("SELECT key, value FROM index_meta").fetchall())
+    except sqlite3.Error:
+        return {}
+    want = {"model_name": _ec.MODEL_NAME, "model_revision": _ec.MODEL_REVISION or "", "embed_dim": str(_ec.EMBED_DIM),
+            "doc_prefix": _ec.DOC_PREFIX, "query_prefix": _ec.QUERY_PREFIX}
+    for key, attr in (("text_format", "TEXT_FORMAT"), ("embed_profile", "PROFILE")):
+        if getattr(_ec, attr, None) is not None:
+            want[key] = str(getattr(_ec, attr))
+    return {k: (meta[k], v) for k, v in want.items() if k in meta and meta[k] != v}
 
 
 def has_vectors(db) -> bool:
@@ -532,14 +557,33 @@ def _run_cases(db, cases, mode, families, knobs, max_depth, results, dog, progre
     return results
 
 
-# The shipped default configuration. A run whose config differs is a different experiment, so the gate refuses it.
-DEFAULT_CONFIG = {"rerank": "off", "dedup": 1.0, "stopwords": False, "fusion": "rrf", "search_dir": "default"}
-# Named configurations a bank can hold. default is the shipped off configuration. hub is the configuration the server
-# runs on the hub: the same knobs with the rerank on, at the model and depth the environment names.
-BANK_CONFIGS = {
-    "default": {"rerank": False, "decay": 1.0, "stopwords": False, "fusion": "rrf"},
-    "hub": {"rerank": True, "decay": 1.0, "stopwords": False, "fusion": "rrf"},
-}
+def _profile_fusion() -> tuple[str, float | None]:
+    """The fusion the shipped profile runs with GESTALT_FUSION and GESTALT_FUSION_ALPHA unset: convex at alpha 0 under stella-400m, RRF under nomic."""
+    knobs = gestalt_rank.profile_knob_defaults()
+    fusion = str(knobs.get("GESTALT_FUSION", "rrf")).lower()
+    alpha = float(knobs.get("GESTALT_FUSION_ALPHA", 0.5)) if fusion == "convex" else None
+    return fusion, alpha
+
+
+def default_config() -> dict:
+    """The shipped default configuration under the profile in force. A run whose config differs is a different experiment, so the gate
+    refuses it. Read at call time, because the profile is an environment variable. Until 2026-10-12 this was a constant that hard-coded
+    RRF, which the stella profile does not run."""
+    fusion, alpha = _profile_fusion()
+    return {"rerank": "off", "dedup": 1.0, "stopwords": False, "fusion": fusion, "alpha": alpha, "search_dir": "default"}
+
+
+BANK_NAMES = ("default", "hub")
+
+
+def shipped_bank_configs() -> dict[str, dict]:
+    """Named configurations a bank can hold. default is the shipped off configuration. hub is the configuration the server runs on the
+    hub: the same knobs with the rerank on, at the model and depth the environment names."""
+    fusion, alpha = _profile_fusion()
+    return {
+        "default": {"rerank": False, "decay": 1.0, "stopwords": False, "fusion": fusion, "alpha": alpha},
+        "hub": {"rerank": True, "decay": 1.0, "stopwords": False, "fusion": fusion, "alpha": alpha},
+    }
 
 
 def families_hash(families: list[list[str]] | None) -> str:
@@ -569,17 +613,20 @@ def run_config(opts: dict, families: list[list[str]] | None = None) -> dict:
 
 
 def config_diff(cur: dict | None, banked: dict | None) -> list[str]:
-    """Knob names where cur differs from the banked config. A bank with no config was taken at DEFAULT_CONFIG."""
+    """Knob names where cur differs from the banked config. A bank with no config was taken at default_config()."""
     banked_in = banked
-    cur, banked = cur or {}, {**DEFAULT_CONFIG, **(banked or {})}
+    shipped = default_config()
+    cur, banked = cur or {}, {**shipped, **(banked or {})}
     keys = ["rerank", "dedup", "stopwords", "fusion", "search_dir"]
     if "families" in (banked_in or {}):  # a bank taken before families were recorded has nothing to compare
         keys.append("families")
+    if "embed_profile" in (banked_in or {}):  # likewise a bank taken before profiles were recorded; a stella run against a nomic bank is drift
+        keys.append("embed_profile")
     if cur.get("rerank") == "on" or banked.get("rerank") == "on":
         keys += ["rerank_model", "rerank_depth", "rerank_maxchars"]
     if cur.get("fusion") == "convex" or banked.get("fusion") == "convex":
         keys.append("alpha")
-    return [k for k in keys if cur.get(k, DEFAULT_CONFIG.get(k)) != banked.get(k)]
+    return [k for k in keys if cur.get(k, shipped.get(k)) != banked.get(k)]
 
 
 def resolve_opts(rerank=None, decay=None, stopwords=None, fusion=None, alpha=None, rerank_alias=None) -> dict:
@@ -634,6 +681,10 @@ def evaluate(mode: str = "auto", split: str = "all", **knobs) -> dict:
             db = get_db(need_vec=False)
             mode = "fts"
         else:
+            bad = index_meta_mismatch(db)
+            if bad:
+                sys.exit(f"the index at {DB_PATH} was built for another embedding setup than this run's profile: {bad}. "
+                         "Build a side index with GESTALT_SEARCH_DIR under the same GESTALT_EMBED_PROFILE, or run with --mode fts.")
             mode = "hybrid"
     else:
         db = get_db(need_vec=False)
@@ -1095,7 +1146,7 @@ def _reranker_unavailable(alias: str | None) -> str | None:
 
 def bank_opts(name: str, cli: dict) -> dict:
     """The knobs a configuration is banked at. Knobs given on the command line must agree, or banking refuses."""
-    opts = dict(BANK_CONFIGS[name])
+    opts = dict(shipped_bank_configs()[name])
     for k, v in cli.items():
         if v is not None and k in opts and v != opts[k]:
             raise ValueError(f"--{k} conflicts with configuration {name}, which banks {k}={opts[k]}")
@@ -1104,7 +1155,7 @@ def bank_opts(name: str, cli: dict) -> dict:
 
 def check_opts(banked: dict, cli: dict) -> dict:
     """The knobs that reproduce a banked configuration, overridden by any knob given on the command line (which then reads as drift)."""
-    cfg = {**DEFAULT_CONFIG, **(banked or {})}
+    cfg = {**default_config(), **(banked or {})}
     opts = {"rerank": cfg["rerank"] == "on", "decay": cfg["dedup"], "stopwords": cfg["stopwords"], "fusion": cfg["fusion"],
             "alpha": cfg.get("alpha"), "rerank_alias": cfg.get("rerank_model")}
     opts.update({k: v for k, v in cli.items() if v is not None})
@@ -1226,7 +1277,7 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--json", metavar="PATH", help="write full results as JSON")
     ap.add_argument("--baseline", choices=["save", "bank", "check"], help="save is the old spelling of bank --config-name default")
-    ap.add_argument("--config-name", choices=sorted(BANK_CONFIGS), default=None,
+    ap.add_argument("--config-name", choices=sorted(BANK_NAMES), default=None,
                     help="with --baseline bank: the configuration to bank (default: default). With check: gate only this one (default: every banked one)")
     ap.add_argument("--split", choices=SPLITS, default="all", help="dev or test cases only (tags from assign_splits.py). Default all")
     ap.add_argument("--mode", choices=["auto", "hybrid", "fts"], default="auto",

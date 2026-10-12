@@ -277,3 +277,186 @@ def test_a_stalled_zoo_embed_exits_4_like_the_bench(monkeypatch, tmp_path, capsy
     assert stop.value.code == 4
     assert "embed stall: no sub-batch finished in 1s" in capsys.readouterr().err
     z.close()
+
+
+def test_the_candidates_config_loads_and_every_candidate_is_pinned(monkeypatch):
+    """evals/zoo/zoo-candidates.yaml names exact revisions, a prefix recipe per model, and a pinned code repo wherever remote code runs."""
+    from evals.zoo import zoo_run
+
+    specs = zoo_run.load_specs(Path(__file__).resolve().parent.parent / "evals" / "zoo" / "zoo-candidates.yaml")
+    dense = {n: s["args"] for n, s in specs.items() if s["adapter"] == "dense_hf"}
+    assert {"nomic", "gte-base-v15", "stella-400m", "denseon"} <= set(dense)
+    for name, a in dense.items():
+        assert len(a["revision"]) == 40, name  # a full commit hash, never a branch
+        assert a.get("licence"), name
+    assert dense["gte-base-v15"]["trust_remote_code"] and len(dense["gte-base-v15"]["code_revision"]) == 40  # its code lives in another repo
+    assert dense["stella-400m"]["trust_remote_code"] and "code_revision" not in dense["stella-400m"]  # its code is in the pinned model repo
+    assert "trust_remote_code" not in dense["denseon"]
+    assert dense["denseon"]["query_prefix"] == "query: " and dense["denseon"]["doc_prefix"] == "document: "
+    assert dense["stella-400m"]["query_prefix"].startswith("Instruct: ") and "doc_prefix" not in dense["stella-400m"]
+    # every fused and reranked variant points at a system that exists in the same file
+    for name, s in specs.items():
+        for key in ("a", "b", "c", "inner"):
+            if s["adapter"] in ("fused", "rerank") and key in s["args"]:
+                assert s["args"][key] in specs, (name, key)
+
+
+def test_a_pinned_code_revision_reaches_the_loader_and_the_fingerprint(monkeypatch, tmp_path):
+    seen = {}
+
+    def fake_load(model_id, revision, dtype, max_seq_length, trust_remote_code, code_revision=None, config_kwargs=None):
+        seen["code_revision"] = code_revision
+        return HashEncoder(dim=64)
+
+    monkeypatch.setattr(dense_hf, "load_model", fake_load)
+    docs = [(f"d{i}", f"alpha{i} beta{i}") for i in range(12)]
+    a = dense_hf.DenseHF(name="x", model="m", work_dir=tmp_path / "a", block_size=10, code_revision="c" * 40, trust_remote_code=True)
+    a.index(docs); a.close()
+    assert seen["code_revision"] == "c" * 40
+    b = dense_hf.DenseHF(name="x", model="m", work_dir=tmp_path / "a", block_size=10, trust_remote_code=True)
+    with pytest.raises(Exception, match="another configuration"):
+        b.index(docs)  # the same work directory under a different code revision is refused, never mixed
+    b.close()
+
+
+def test_the_zoo_runner_starts_as_a_script():
+    """2026-10-09: an import re-sort put the harness imports before `import evals.zoo`, which is what puts evals/retrieval on
+    sys.path, so `python evals/zoo/zoo_run.py` died with ModuleNotFoundError on the hub while every in-process test passed."""
+    import subprocess
+    import sys
+
+    r = subprocess.run([sys.executable, str(REPO / "evals/zoo/zoo_run.py"), "--help"], capture_output=True, text=True, timeout=300)
+    assert r.returncode == 0, r.stderr[-800:]
+    assert "--systems" in r.stdout
+
+
+def test_rebuild_nonpersistent_buffers_restores_the_rotary_cache_and_position_ids():
+    """transformers 5 leaves remote code's non-persistent buffers uninitialised (gte-v1.5 crashed on 2026-10-09)."""
+    torch = pytest.importorskip("torch")
+    from evals.zoo.dense_hf import rebuild_nonpersistent_buffers
+
+    class Rotary(torch.nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.dim, self.base, self.max_position_embeddings = 8, 10000.0, 16
+            self.register_buffer("inv_freq", torch.full((4,), float("nan")), persistent=False)
+            self.register_buffer("cos_cached", torch.full((3, 8), float("nan")), persistent=False)
+            self.register_buffer("sin_cached", torch.full((3, 8), float("nan")), persistent=False)
+
+        def _set_cos_sin_cache(self, seq_len, device, dtype):
+            t = torch.arange(seq_len, device=device, dtype=torch.float32)
+            emb = torch.cat([torch.outer(t, self.inv_freq)] * 2, dim=-1)
+            self.register_buffer("cos_cached", emb.cos().to(dtype), persistent=False)
+            self.register_buffer("sin_cached", emb.sin().to(dtype), persistent=False)
+
+    class Embeddings(torch.nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.register_buffer("position_ids", torch.tensor([-3674210544, 7, 7, 7]), persistent=False)
+            self.rotary = Rotary()
+
+    m = Embeddings()
+    assert rebuild_nonpersistent_buffers(m) == 2
+    assert m.position_ids.tolist() == [0, 1, 2, 3]
+    assert m.rotary.cos_cached.shape == (16, 8) and torch.isfinite(m.rotary.cos_cached).all()
+    assert torch.allclose(m.rotary.inv_freq, 1.0 / (10000.0 ** (torch.arange(0, 8, 2).float() / 8)))
+    assert rebuild_nonpersistent_buffers(torch.nn.Linear(2, 2)) == 0
+
+
+def test_the_attention_mask_shim_accepts_the_device_argument_remote_code_passes():
+    """stella's remote code calls get_extended_attention_mask(..., device=...), which transformers 5 no longer takes."""
+    torch = pytest.importorskip("torch")
+    from transformers.modeling_utils import ModuleUtilsMixin
+
+    from evals.zoo.dense_hf import shim_extended_attention_mask_device
+
+    shim_extended_attention_mask_device()
+    assert shim_extended_attention_mask_device() is False  # idempotent
+
+    class M(torch.nn.Module, ModuleUtilsMixin):
+        def __init__(self):
+            super().__init__()
+            self.lin = torch.nn.Linear(2, 2)
+            self.config = type("C", (), {"is_decoder": False})()
+
+    m = M()
+    mask = torch.tensor([[1, 1, 0]])
+    out = m.get_extended_attention_mask(mask, (1, 3), device=torch.device("cpu"))
+    assert out.shape[-1] == 3 and torch.isfinite(out[..., :2]).all() and out[..., 2].item() < -1e4
+    assert torch.equal(out, m.get_extended_attention_mask(mask, (1, 3)))
+
+
+def test_blend_mixes_reranker_and_inner_scores_and_zero_keeps_the_reranker_order():
+    from evals.zoo.rerank import Rerank, blend_scores
+
+    reranked = [("a", 0.9), ("b", 0.8), ("c", 0.1)]  # reranker order a, b, c
+    inner = {"a": 0.01, "b": 0.05, "c": 0.04}  # the fused first stage liked b and c
+    assert [d for d, _ in blend_scores(reranked, inner, 0.0)] == ["a", "b", "c"]
+    mixed = blend_scores(reranked, inner, 0.5)
+    assert [d for d, _ in mixed] == ["b", "a", "c"]  # b wins once half the weight is the first stage
+    assert all(isinstance(s, float) for _, s in mixed)
+    assert [d for d, _ in blend_scores([("x", 1.0), ("y", 1.0)], {"x": 1.0, "y": 1.0}, 0.3)] == ["x", "y"]  # ties keep the order
+    with pytest.raises(ValueError):
+        Rerank("r", inner=None, model="qwen3-0.6b", work_dir="/nonexistent", blend=1.0)
+
+
+@pytest.mark.parametrize("config", ["zoo-wave2.yaml", "zoo-wave3.yaml", "zoo-wave4.yaml"])
+def test_the_wave_configs_are_pinned_and_pair_every_variant_against_the_shipped_pipeline(config):
+    """evals/zoo/zoo-wave{2,3}.yaml: exact revisions, the shipped pipeline as the baseline row, depths from the sweep, blends below 1."""
+    from evals.zoo import zoo_run
+
+    specs = zoo_run.load_specs(Path(__file__).resolve().parent.parent / "evals" / "zoo" / config)
+    for name, s in specs.items():
+        a = s.get("args", {})
+        if s["adapter"] in ("dense_hf", "colbert"):
+            assert len(a["revision"]) == 40 and a.get("licence"), name
+        if s["adapter"] == "rerank":
+            assert a["model"] in gestalt_rank.RERANK_REVISIONS and 0 <= a.get("blend", 0) < 1 and a["depth"] in (20, 40, 100), name
+            assert a["inner"] in specs and specs[a["inner"]]["adapter"] in ("fused", "dense_hf"), name
+    assert specs["nomic-bm25-rrf-rerank-qwen3-0.6b"]["args"] == {"inner": "nomic-bm25-rrf", "model": "qwen3-0.6b", "depth": 40}
+    assert specs["nomic"]["args"]["dtype"] == "float16" and specs["nomic"]["args"]["doc_prefix"] == "search_document: "
+    if config == "zoo-wave2.yaml":
+        assert {"lateon", "gte-modernbert", "granite-r2", "qwen3-0.6b"} <= set(specs)
+    elif config == "zoo-wave3.yaml":
+        assert {"stella-400m", "stella-400m-rerank-qwen3-0.6b", "stella-400m-bm25-convex0.2-rerank-qwen3-0.6b"} <= set(specs)
+    else:
+        assert {"harrier-270m", "harrier-0.6b", "pplx-0.6b", "stella-rr-qwen3-4b-d20-b05", "stella-rr-ettin-150m-d40"} <= set(specs)
+
+
+def test_a_non_finite_embedding_fails_the_run_instead_of_becoming_a_zero_row():
+    """DenseOn at float16 overflowed on 628 SciFact documents (2026-10-09); the normaliser used to zero them silently."""
+    import numpy as np
+
+    from evals.zoo.dense_hf import _unit
+
+    ok = _unit(np.array([[3.0, 4.0], [0.0, 0.0]]))
+    assert np.allclose(ok, [[0.6, 0.8], [0.0, 0.0]])
+    with pytest.raises(RuntimeError, match="2 of 3 embeddings are not finite"):
+        _unit(np.array([[1.0, float("inf")], [float("nan"), 1.0], [1.0, 1.0]]))
+
+
+def test_a_finished_system_is_resumed_from_its_checkpoint_and_a_changed_spec_is_not(env, monkeypatch):
+    """2026-10-10: five hub wedges each threw away one to two hours of finished pipelines. Each measured system is now checkpointed
+    under <out>/checkpoints and reused when the run (specs, dataset, queries, rerank settings) is the same."""
+    _, cfg, tmp = env
+    assert run(cfg, tmp, "out", "bm25", "hash", "hash-bm25-rrf") == 0
+    first = json.loads((tmp / "out" / "beir-scifact.json").read_text())
+    assert sorted(p.name for p in (tmp / "out" / "checkpoints").glob("*.json")) == ["bm25.json", "hash-bm25-rrf.json", "hash.json"]
+
+    def boom(*a, **k):
+        raise AssertionError("measure must not run for a checkpointed system")
+
+    monkeypatch.setattr(zoo_run, "measure", boom)
+    assert run(cfg, tmp, "out", "bm25", "hash", "hash-bm25-rrf") == 0
+    second = json.loads((tmp / "out" / "beir-scifact.json").read_text())
+    for n in ("bm25", "hash", "hash-bm25-rrf"):
+        assert second["systems"][n]["ndcg10"] == first["systems"][n]["ndcg10"] and second["systems"][n]["per_query"] == first["systems"][n]["per_query"]
+    assert "hash-bm25-rrf_vs_hash" in second["tests"]
+    strip = lambda d: {k: v for k, v in d.items() if k != "index_bytes"}  # noqa: E731  the directory size is read live and grows
+    assert strip(second["model"]["systems"]["hash"]) == strip(first["model"]["systems"]["hash"])
+    assert (tmp / "out" / "beir-scifact.hash.run").read_text().startswith("q1 Q0 ")
+
+    # a different spec under the same name must not reuse the checkpoint
+    cfg.write_text(YAML.replace("depth: 5", "depth: 7"))
+    with pytest.raises(AssertionError, match="must not run"):
+        run(cfg, tmp, "out", "rr")

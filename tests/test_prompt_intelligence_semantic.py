@@ -108,8 +108,13 @@ def state(tmp_path):
 class StubDaemon:
     """Serves daemon.serve() on a thread with a stub embedder. `delay` makes it slow."""
 
-    def __init__(self, state_dir: Path, embed, delay: float = 0.0):
+    def __init__(self, state_dir: Path, embed, delay: float = 0.0, ident: dict | None = None):
         self.seen: list[list[str]] = []
+        if ident is None:  # the real daemon answers with its embedding identity, and the hook refuses any other
+            sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "tools"))
+            import gestalt_embed_config as ec
+
+            ident = daemon.identity(ec)
 
         def slow(texts):
             self.seen.append(list(texts))
@@ -117,7 +122,7 @@ class StubDaemon:
             return embed(texts)
 
         self.stop = threading.Event()
-        self.t = threading.Thread(target=daemon.serve, args=(state_dir, slow, 30.0, self.stop), daemon=True)
+        self.t = threading.Thread(target=daemon.serve, args=(state_dir, slow, 30.0, self.stop, ident), daemon=True)
         self.t.start()
         end = time.monotonic() + 5
         while time.monotonic() < end:  # the file exists at bind. Listening starts a moment later, so wait for a connect
@@ -259,3 +264,20 @@ def test_settings_parse(monkeypatch):
     for raw, want in (("300", 300), ("abc", 150), ("0", 150), ("-5", 150)):
         monkeypatch.setenv("GESTALT_HOOK_SEMANTIC_MS", raw)
         assert hook.semantic_settings()[1] == want
+
+
+def test_a_daemon_from_another_profile_is_refused_and_stopped(on, index, state, monkeypatch):
+    """A daemon left over from another embedding profile answers with its own identity; the hook must not use its vectors."""
+    target = DOCS[4][2]
+    stopped = []
+    monkeypatch.setattr(daemon, "stop", lambda sd, *a, **k: stopped.append(sd) or 0)
+    other = {"profile": "stella-400m", "model_name": "NovaSearch/stella_en_400M_v5", "model_revision": "x", "embed_dim": 1024, "query_prefix": ""}
+    d = StubDaemon(state, lambda texts: [vec_of("search_document: " + target) for _ in texts], ident=other)
+    try:
+        assert "cooking" not in slugs(sync("zzz qqq", index, state))
+        end = time.monotonic() + 2
+        while not stopped and time.monotonic() < end:
+            time.sleep(0.01)
+        assert stopped == [str(state)] or stopped == [state]
+    finally:
+        d.close()

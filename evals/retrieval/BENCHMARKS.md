@@ -6,19 +6,21 @@ This page tells you how to reproduce every retrieval number gestalt reports. It 
 
 nDCG@10 on the BEIR test split. Each cell is the mean over queries with a 95% bootstrap interval.
 
-| Dataset | Docs | Queries | BM25 leg | Dense leg | Hybrid (RRF, K=60) | Hybrid + reranker |
+| Dataset | Docs | Queries | BM25 leg | Dense leg, the default search | Dense + reranker |
 |---|---|---|---|---|---|---|
-| SciFact | 5,183 | 300 | 0.682 [0.638, 0.725] | 0.694 [0.650, 0.736] | 0.737 [0.696, 0.777] | **0.775 [0.736, 0.813]** |
-| NFCorpus | 3,633 | 323 | 0.322 [0.287, 0.356] | 0.344 [0.308, 0.379] | 0.361 [0.325, 0.396] | **0.382 [0.346, 0.418]** |
+| SciFact | 5,183 | 300 | 0.682 [0.638, 0.725] | 0.780 [0.742, 0.815] | **0.794 [0.757, 0.830]** |
+| NFCorpus | 3,633 | 323 | 0.322 [0.287, 0.356] | 0.414 [0.378, 0.450] | **0.422 [0.386, 0.458]** |
+| FiQA | 57,638 | 648 | 0.248 [0.224, 0.273] | 0.554 [0.526, 0.581] | **0.572 [0.545, 0.600]** |
 
-The reranked column is the headline: the hybrid's top 40 candidates re-scored by `Qwen/Qwen3-Reranker-0.6B` in float16 with a task line per dataset (`GESTALT_RERANK_INSTRUCTION`, recorded per dataset in `results/summary.json`). The hybrid column is what a machine without a GPU serves.
+The reranked column is the headline: the dense leg's top 40 candidates re-scored by `Qwen/Qwen3-Reranker-0.6B` in float16 with a task line per dataset (`GESTALT_RERANK_INSTRUCTION`, recorded per dataset in `results/summary.json`), and the reranker's score blended half and half with the dense score (`GESTALT_RERANK_BLEND=0.5`). The dense column is what a machine without a GPU serves. Under the shipped profile the lexical leg casts no vote (convex fusion at alpha 0 with the tmin floor), so the hybrid system of `beir_bench.py` equals the dense leg and is not shown twice.
 
 Paired sign-flip permutation tests over queries, 20,000 permutations, seed 12345:
 
-| Dataset | Hybrid minus BM25 | Hybrid minus dense | Hybrid + reranker minus hybrid |
+| Dataset | Dense leg minus BM25 | Dense + reranker minus dense leg |
 |---|---|---|---|
-| SciFact | +0.055, p < 0.0001 | +0.044, p = 0.00035 | +0.037, p = 0.0013 |
-| NFCorpus | +0.039, p < 0.0001 | +0.017, p = 0.0066 | +0.021, p = 0.00015 |
+| SciFact | +0.097, p < 0.0001 | +0.014, p = 0.089 |
+| NFCorpus | +0.092, p < 0.0001 | +0.007, p = 0.13 |
+| FiQA | +0.305, p < 0.0001 | +0.019, p < 0.0001 |
 
 The smallest p-value this test can report is 1 in 20,001, which is 0.00005.
 
@@ -26,8 +28,8 @@ The smallest p-value this test can report is 1 in 20,001, which is 0.00005.
 
 Every harness scores retrieval. It asks how high the relevant documents rank. No model reads a document and answers a question. A retrieval score is therefore not a question-answering accuracy, and you must never set it beside a vendor's QA number.
 
-1. `beir_bench.py` scores nDCG@10 on public BEIR datasets with gestalt's own search function. It claims that the pipeline is sound and that fusion improves on either leg. It does not claim that gestalt beats a stronger retriever.
-2. `mteb_bench.py` runs the same pipeline through the `mteb` library as a search model. It produces MTEB retrieval task scores for the entrant `phbui/gestalt-hybrid`. It trains nothing, so `training_datasets` is empty. That statement rests on the nomic model card. The embedding model may have seen text from the benchmark sets.
+1. `beir_bench.py` scores nDCG@10 on public BEIR datasets with gestalt's own search function. It claims that the pipeline is sound, that the dense leg beats BM25 on every set, and on which sets the reranker's gain is real. It does not claim that gestalt beats a stronger retriever.
+2. `mteb_bench.py` runs the same pipeline through the `mteb` library as a search model. It produces MTEB retrieval task scores for the entrant `phbui/gestalt-hybrid`. It trains nothing, so `training_datasets` is empty. That statement rests on the stella model card. The embedding model may have seen text from the benchmark sets.
 3. `evals/memory/longmemeval_bench.py` and `locomo_bench.py` score retrieval over long chat histories. They report recall of the evidence sessions or turns. They never report whether a model answered correctly.
 4. `run_retrieval_evals.py` scores a golden set of questions about your own notes. It is a regression gate for one corpus. Its numbers do not transfer to any other corpus.
 
@@ -40,17 +42,17 @@ Scores are the MTEB results repository's per-task numbers at commit `b64a5db`, 2
 | System | Open, licence | Parameters | Memory at fp16, or price | SciFact | NFCorpus | Source |
 |---|---|---|---|---|---|---|
 | NV-Embed-v2 | open, CC BY-NC 4.0 | 7.8B | 7.9B, 15.7 GB fp16 | 0.801 | 0.450 | MTEB results |
+| **gestalt dense + Qwen3-Reranker-0.6B** | open, MIT + Apache-2.0 | 435M + 0.6B | 435M + 0.6B, about 2 GB fp16, one laptop GPU | **0.794** | **0.422** | measured here |
 | Qwen3-Embedding-4B | open, Apache-2.0 | 4.0B | 4.0B, 8.0 GB fp16 | 0.783 | 0.411 | MTEB results |
 | stella_en_400M_v5 | open, MIT | 435M | 435M, 0.9 GB fp16 | 0.782 | 0.415 | results file imported from the model card (revision external) |
+| **gestalt dense leg, stella_en_400M_v5 served here** | open, MIT | 435M | 435M, 0.9 GB fp16, runs on a CPU | **0.780** | **0.414** | measured here |
 | OpenAI text-embedding-3-large | closed API | $0.13/M | $0.13/M | 0.778 | 0.421 | MTEB results |
-| **gestalt hybrid + Qwen3-Reranker-0.6B** | open, Apache-2.0 | 137M + 0.6B | 137M + 0.6B, 1.5 GB fp16, one laptop GPU | **0.775** | **0.382** | measured here |
 | gte-base-en-v1.5 | open, Apache-2.0 | 137M | 137M, 0.3 GB fp16 | 0.768 | 0.359 | results file imported from the model card (revision external) |
 | gte-modernbert-base | open, Apache-2.0 | 149M | 149M, 0.3 GB fp16 | 0.764 | 0.343 | MTEB results |
 | bge-large-en-v1.5 | open, MIT | 335M | 335M, 0.7 GB fp16 | 0.746 | 0.381 | MTEB results |
 | bge-base-en-v1.5 | open, MIT | 109M | 109M, 0.2 GB fp16 | 0.743 | 0.374 | MTEB results |
-| **gestalt hybrid** | open, Apache-2.0 | 137M | 137M, 0.3 GB fp16, runs on a CPU | **0.737** | **0.361** | measured here |
 | OpenAI text-embedding-3-small | closed API | $0.02/M | $0.02/M | 0.734 | 0.383 | MTEB results |
-| nomic-embed-text-v1.5, gestalt's dense leg alone | open, Apache-2.0 | 137M | 137M, 0.3 GB fp16 | 0.703 | 0.347 | MTEB's run of the same model with cosine ranking |
+| nomic-embed-text-v1.5 | open, Apache-2.0 | 137M | 137M, 0.3 GB fp16 | 0.703 | 0.347 | MTEB's run of the same model with cosine ranking |
 | BM25 + cross-encoder, BEIR paper | open | 110M | BM25 + 110M | 0.688 | 0.350 | BEIR paper, Table 2 |
 | Contriever | open | 110M | 110M | 0.677 | 0.328 | Pyserini BEIR reproductions |
 | ColBERT, BEIR paper | open | 110M | 110M | 0.671 | 0.305 | BEIR paper, Table 2 |
@@ -59,13 +61,13 @@ Scores are the MTEB results repository's per-task numbers at commit `b64a5db`, 2
 | TAS-B | open | 66M | 66M | 0.643 | 0.319 | BEIR paper, Table 2 |
 | DPR | open | 220M | 2 x 110M | 0.318 | 0.189 | BEIR paper, Table 2 |
 
-![Score against size for released retrieval systems](../../docs/score-vs-cost.png)
+![Search quality against model size for released retrieval systems, two panels](../../docs/score-vs-cost.png)
 
-Reading the chart. The vertical axis is broken into two labelled bands, SciFact above and NFCorpus below, and each system appears once in each at its parameter count, so the two scores stay apart as they do in the table. Eight systems carry labels in each band and the rest are small grey dots. The dashed line marks one billion parameters.
+Reading the chart. Two panels, SciFact above and NFCorpus below, each with its own vertical scale, and each open model appears once in each at its parameter count. Five systems carry labels in each panel and the rest are grey dots. Closed APIs have no parameter count, so they are not on the axis; their scores and prices are the line under the chart.
 
-Where gestalt lands, stated with its limits. On SciFact the reranked pipeline scores 0.7 points under stella_en_400M_v5, which has 435M parameters, so it is not the best sub-billion system. A scan of the 705 entries in the results repository found stella to be the only model under a billion parameters with a results file that scores higher on SciFact, and gte-large-en-v1.5 claims a higher score on its own model card. A few entries carry no parameter count and could not be sized. The pipeline is 0.3 points under OpenAI's text-embedding-3-large there, and above gte-base v1.5, gte-modernbert, bge-large and the paper baselines. On NFCorpus several sub-billion embedders score higher than the reranked pipeline, among them stella at 0.415, SearchMap_Preview at 0.409, jina-embeddings-v5-text-small at 0.398 and DenseOn at 0.390, and so do the 7B models and the large APIs. The unreranked hybrid sits under bge-base and gte-modernbert on SciFact.
+Where gestalt lands, stated with its limits. On SciFact the reranked pipeline scores above Qwen3-Embedding-4B, above stella alone and above OpenAI's text-embedding-3-large, and under NV-Embed-v2 at 7.8B parameters; gte-large-en-v1.5 claims a higher score on its own model card, with no results file in the repository. On NFCorpus the pipeline is level with OpenAI's text-embedding-3-large and Linq-Embed-Mistral, under NV-Embed-v2, and above every sub-billion embedder in the repository. The dense leg alone, stella_en_400M_v5 served through this pipeline, lands within a point of MTEB's own run of the model on both sets, which is the check that the pipeline adds no loss. A few entries carry no parameter count and could not be sized.
 
-What the comparison is for. It places a 0.74B-parameter pipeline that fits a laptop GPU, or a 137M one that fits a CPU, among models ten times larger and among paid APIs. It does not claim that gestalt beats them. The chart is drawn by `docs/make_score_cost_chart.py` from `docs/released-systems.json`. A reader who wants another system in it adds a row with its source.
+What the comparison is for. It places a pipeline of about a billion parameters that fits a laptop GPU, or a 435M embedder that fits a CPU, among models eight times larger and among paid APIs. It does not claim that gestalt beats them. The chart is drawn by `docs/make_score_cost_chart.py` from `docs/released-systems.json`. A reader who wants another system in it adds a row with its source.
 
 ## Published numbers for comparison
 
@@ -73,9 +75,9 @@ These come from other people's runs. They were not rerun here. The table is sort
 
 | System | Type | Parameters | SciFact | NFCorpus | Source |
 |---|---|---|---|---|---|
-| **gestalt hybrid + Qwen3-Reranker-0.6B** | lexical + dense, RRF, cross-encoder | 137M + 0.6B | **0.775** | **0.382** | this page |
+| **gestalt dense + Qwen3-Reranker-0.6B** | dense, cross-encoder blend | 435M + 0.6B | **0.794** | **0.422** | this page |
 | BGE-base-en-v1.5 | dense | 109M | 0.741 | 0.373 | Pyserini |
-| **gestalt hybrid** | lexical + dense, RRF | 137M | **0.737** | **0.361** | this page |
+| **gestalt dense leg, stella_en_400M_v5** | dense | 435M | **0.780** | **0.414** | this page |
 | BM25 + cross-encoder | two stage | BERT-base class, 110M | 0.688 | 0.350 | BEIR paper, Table 2 |
 | BM25 flat | lexical | none | 0.679 | 0.322 | Pyserini |
 | Contriever | dense | 110M | 0.677 | 0.328 | Pyserini |
@@ -91,15 +93,15 @@ Sources: Thakur et al., BEIR, https://arxiv.org/abs/2104.08663, and the Pyserini
 
 ## What the numbers say
 
-The BM25 leg lands where published BM25 does on both datasets. On SciFact the hybrid is 5.5 points over the BM25 leg and 4.4 points over the dense leg. On NFCorpus it is 3.9 points over BM25 and 1.7 over dense. The permutation tests reject a zero difference in all four comparisons. The tests were not corrected one by one. The largest p-value of the six is 0.0066, and the Bonferroni threshold for six tests at 0.05 is 0.008333, so all four also pass that correction. On SciFact the whole hybrid interval lies above the published BM25 plus cross-encoder score of 0.688, because its lower bound is 0.696. On NFCorpus the hybrid point score is above the published 0.350, but the interval from 0.325 to 0.396 contains it, so the score is within the interval of that reference and the data do not separate them. The published number has no interval of its own and comes from another implementation. It sits close to the published BGE-base score on SciFact and below it on NFCorpus. The two tables above give the exact scores.
+The BM25 leg lands where published BM25 does on all three sets. The dense leg is about ten points over BM25 on SciFact, nine on NFCorpus and thirty on FiQA, and the permutation tests reject a zero difference on all three at p below 0.001. The reranker adds about a point and a half on SciFact and under a point on NFCorpus, and neither gain clears p 0.05 here (0.09 and 0.13): on these two sets the data do not separate the reranked system from the dense leg. On FiQA it adds 1.9 points at p 0.0001, which is why it ships on a GPU host. On SciFact and NFCorpus the whole interval of the dense leg lies above the published BM25 plus cross-encoder scores of 0.688 and 0.350, whose lower bounds here are 0.742 and 0.378. Those published numbers have no interval of their own and come from another implementation. The two tables above give the exact scores.
 
 They do not say gestalt is better than a stronger retriever, a reranked pipeline, or a bigger embedding model. They do not say anything about retrieval over your own notes.
 
 ## How it was run
 
-`beir_bench.py` builds an index with gestalt's own schema. FTS5 uses the `porter unicode61` tokenizer. Vectors sit in a `vec0` table. The engine in `bench_engine.py` runs the queries. It does not call `gestalt_rank.hybrid_search`. It builds the FTS query with `gestalt_rank.fts_match`, sets the leg depth with `gestalt_rank.pool_size`, and fuses the legs with `fuse_pools`, which calls `gestalt_rank.fuse`, the fusion step the server runs. Its arithmetic lives in `evals/retrieval/fusion.py`, and `tests/test_beir_bench.py` checks the rankings against the in-memory path. The reranker is off for the three base systems. The FTS query quotes each token and joins them with OR. Each leg gives its top 20, and reciprocal rank fusion at K=60 joins them. The FTS5 table in the engine is contentless (`content=''`) because the texts already live in the docs table. A check on 20,000 paragraphs found identical ids and BM25 scores against a table with content. Dense search uses the sqlite-vec table up to 300,000 documents and exact search by blocked matrix products above that. Both datasets here are far below the limit, so they use sqlite-vec. The dense-only row queries the same vector table with the same query vector. Every row is cut to the top 10 before scoring.
+`beir_bench.py` builds an index with gestalt's own schema. FTS5 uses the `porter unicode61` tokenizer. Vectors sit in a `vec0` table. The engine in `bench_engine.py` runs the queries. It does not call `gestalt_rank.hybrid_search`. It builds the FTS query with `gestalt_rank.fts_match`, sets the leg depth with `gestalt_rank.pool_size`, and fuses the legs with `fuse_pools`, which calls `gestalt_rank.fuse`, the fusion step the server runs. Its arithmetic lives in `evals/retrieval/fusion.py`, and `tests/test_beir_bench.py` checks the rankings against the in-memory path. The reranker is off for the three base systems. The FTS query quotes each token and joins them with OR. Each leg gives its top 20, and the profile's fusion joins them: under `stella-400m` the dense order stands and a lexical-only hit goes last, under `nomic` reciprocal rank fusion at K=60. The FTS5 table in the engine is contentless (`content=''`) because the texts already live in the docs table. A check on 20,000 paragraphs found identical ids and BM25 scores against a table with content. Dense search uses the sqlite-vec table up to 300,000 documents and exact search by blocked matrix products above that. All three sets here are far below the limit, so they use sqlite-vec. The dense-only row queries the same vector table with the same query vector. Every row is cut to the top 10 before scoring.
 
-The embedding model is `nomic-ai/nomic-embed-text-v1.5` at revision `e9b6763023c676ca8431644204f50c2b100d9aab`, with the `search_document: ` and `search_query: ` prefixes from `tools/gestalt_embed_config.py`. Vectors are not normalised. The vec0 table ranks by L2 distance.
+The embedding model is `NovaSearch/stella_en_400M_v5` at revision `ffeb2b7ee715c226d4ffe5e4619f7dbb48624c20`, with its instruct prefix on the query and no prefix on documents, from `tools/gestalt_embed_config.py`. Vectors are L2-normalised, so the vec0 table's L2 distance ranks by cosine. The `nomic` profile keeps the earlier model, `nomic-ai/nomic-embed-text-v1.5` at `e9b6763023c676ca8431644204f50c2b100d9aab`, with its two prefixes and raw vectors.
 
 Each BEIR document is one unit. The title and the abstract are joined and indexed whole. Gestalt's production index splits notes into sections, so this benchmark does not exercise the chunker.
 
@@ -107,18 +109,18 @@ No default was chosen on these datasets. The choices of K=60 and the embedding m
 
 ## Fusion
 
-`hybrid` is plain reciprocal rank fusion at K=60 with equal weights. It stays that way, so the headline is comparable with every earlier run. Equal weights cost something when one leg is much stronger. With Qwen3-Embedding-4B the dense leg alone beats the RRF hybrid on SciFact and NFCorpus, because the weak BM25 leg gets as much say as the strong dense leg. Bruch et al. (2022, arXiv 2210.11934) found that a convex combination of normalised scores beats RRF and needs only a few labelled queries to tune its one weight.
+Under the `stella-400m` profile `hybrid` is convex fusion at alpha 0 with the tmin floor, which keeps the dense order and puts lexical-only hits last, so it equals the dense leg. Under the `nomic` profile it is plain reciprocal rank fusion at K=60 with equal weights, as in every run before 2026-10. Equal weights cost something when one leg is much stronger: with stella, and with Qwen3-Embedding-4B, the dense leg alone beat the RRF hybrid on SciFact, NFCorpus and FiQA, because the weak BM25 leg got as much say as the strong dense leg. Bruch et al. (2022, arXiv 2210.11934) found that a convex combination of normalised scores beats RRF and needs only a few labelled queries to tune its one weight.
 
 `evals/retrieval/fusion.py` holds the one fusion implementation. The server, the golden-set runner and the benchmark engine all reach it through `gestalt_rank.fuse`. It has four methods.
 
-- `rrf` sums 1/(60 + rank + 1) over the legs. It is the default.
+- `rrf` sums 1/(60 + rank + 1) over the legs. It is the `nomic` profile's default.
 - `wrrf` is weighted RRF. The lexical leg gets weight 2w and the dense leg 2(1 - w). At w = 0.5 the scores equal plain RRF. At w = 0 the order is the dense order.
 - `convex` scores alpha times the normalised lexical score plus 1 - alpha times the normalised dense score. alpha weighs the lexical leg, which is the first leg everywhere.
 - `rescue` keeps the dense order. It inserts up to two lexical hits from the BM25 top 3 that score at least 0.5 after normalisation and sit outside the dense top 20. They go in at position 5, so the dense top 5 never moves.
 
 Every normaliser gives 0.5 to each item of a pool with one distinct score. Before this change min-max gave full credit to every item of such a pool. A NaN score counts as missing and gets 0.
 
-The knobs are environment variables read at call time. `GESTALT_FUSION` picks the method (`rrf`, `wrrf`, `convex` or `rescue`). `GESTALT_FUSION_W_BM25` is the wrrf lexical weight, default 0.5. `GESTALT_FUSION_ALPHA` is the convex lexical weight, default 0.5. `GESTALT_FUSION_NORM` is `minmax`, `zscore` or `tmin`, default `minmax`. `tmin` divides by the pool's best score over a declared floor: 0 for BM25 and -2 for the negated distance of unit vectors. `GESTALT_FUSION_MISSING` is `zero` or `leg_min`, the convex score of an id that a leg lacks. `GESTALT_RESCUE_RANK`, `GESTALT_RESCUE_MIN`, `GESTALT_RESCUE_WINDOW`, `GESTALT_RESCUE_AT` and `GESTALT_RESCUE_MAX` set the rescue, with defaults 3, 0.5, 20, 5 and 2. A bad value for any of these newer knobs raises an error that names the variable. `environment.fusion.resolved` in each summary records the settings in force.
+The knobs are environment variables read at call time. `GESTALT_FUSION` picks the method (`rrf`, `wrrf`, `convex` or `rescue`). `GESTALT_FUSION_W_BM25` is the wrrf lexical weight, default 0.5. `GESTALT_FUSION_ALPHA` is the convex lexical weight, default 0.5. `GESTALT_FUSION_NORM` is `minmax`, `zscore` or `tmin`, default `minmax`. `tmin` divides by the pool's best score over a declared floor: 0 for BM25 and -2 for the negated distance of unit vectors. The `stella-400m` profile sets `convex`, alpha 0 and `tmin` unless a variable overrides it. `GESTALT_FUSION_MISSING` is `zero` or `leg_min`, the convex score of an id that a leg lacks. `GESTALT_RESCUE_RANK`, `GESTALT_RESCUE_MIN`, `GESTALT_RESCUE_WINDOW`, `GESTALT_RESCUE_AT` and `GESTALT_RESCUE_MAX` set the rescue, with defaults 3, 0.5, 20, 5 and 2. A bad value for any of these newer knobs raises an error that names the variable. `environment.fusion.resolved` in each summary records the settings in force.
 
 To tune a weight, run the benchmark with a grid. Each setting becomes its own system, fused from the same two pools as `hybrid`, so nothing is embedded or searched twice:
 
@@ -188,36 +190,39 @@ python3 evals/retrieval/choose_config.py report-test --decision decision.json --
 
 ## Recommended configuration
 
-The shipped defaults produce the headline table above: nomic-embed-text-v1.5 in float32, BM25 through FTS5, plain RRF at K=60, and Qwen3-Reranker-0.6B in float16 at depth 40. Three studies on the public sets changed nothing and settled three questions.
+The shipped defaults produce the headline table above: stella_en_400M_v5 in float32 with unit vectors, BM25 through FTS5 as the lexical leg with no vote, and Qwen3-Reranker-0.6B in float16 at depth 40 blended half and half with the dense score. The profile was chosen on three BEIR sets, SciFact, NFCorpus and FiQA, by paired tests against every candidate, and no default was chosen on a personal corpus. Three studies on the public sets settled three questions.
 
 **Half precision costs nothing you can measure.** With `GESTALT_EMBED_DTYPE=float16` every public number moves by at most 0.0003 nDCG@10, the embedder runs about three times faster, and the model takes half the memory. The reranker already runs in float16. In bfloat16 it loses several points on both sets, and float32 adds nothing. So the fast configuration is the shipped one plus the float16 embedder, and `reproduce.py --fast` runs it.
 
-**Normalising the vectors does not help the pipeline.** `GESTALT_EMBED_NORMALIZE=1` makes the L2 search rank by cosine. Paired per query on SciFact, NFCorpus and FiQA, the dense leg alone gains about a point on SciFact with an interval above zero and a fraction of a point within noise elsewhere. The hybrid and the reranked system move by less than half a point on every set, all within noise. The default stays raw. The knob is there for anyone who serves the dense leg alone.
+**Normalising the vectors is a per-model choice.** `GESTALT_EMBED_NORMALIZE=1` makes the L2 search rank by cosine. Under the `nomic` profile, paired per query on SciFact, NFCorpus and FiQA, the dense leg alone gained about a point on SciFact with an interval above zero and a fraction of a point within noise elsewhere, and the hybrid and the reranked system moved by less than half a point on every set, so that profile keeps raw vectors. stella_en_400M_v5 is served as its model card prescribes, with unit vectors, so the `stella-400m` profile normalises by default.
 
-**A stronger embedder helps the dense leg, and fusion must not drown it.** With Qwen3-Embedding-4B the dense leg alone beats the RRF hybrid, and the dev-only tuner then picks weights that defer to it. Fusion is kept for the shipped embedder because it earns its place there, as the permutation tests above show.
+**A stronger embedder helps the dense leg, and fusion must not drown it.** With stella, as with Qwen3-Embedding-4B, the dense leg alone beat the RRF hybrid on every set, so the shipped profile gives the lexical leg no vote. Under the `nomic` profile the fusion earns its place, which is why that profile keeps RRF.
 
 ### The same queries against other retrievers
 
-`evals/zoo/` runs other systems on the same documents, queries and qrels, scored by this harness, under one result schema with a cost block. These are the float16 runs of 2026-10-09 on an RTX 4090 Laptop. The query latency is the median over 100 single queries at k=10.
+`evals/zoo/` runs other systems on the same documents, queries and qrels, scored by this harness, under one result schema with a cost block. The rows below are the newest full run of each system on an RTX 4090 Laptop GPU in float16, from `docs/measured-systems.json`, which `evals/zoo/collect_costs.py` writes from the zoo result files. The query latency is the median over 100 single queries at k=10. Every run paused after each model call under `GESTALT_GPU_DUTY`, and the duty is in the last column: a reranked row at duty 0.3 runs about three times faster on an unthrottled card, and a dense row, which is mostly search time, barely moves.
 
-| System | SciFact | NFCorpus | Query p50 ms |
-|---|---|---|---|
-| BM25 (FTS5) | 0.682 | 0.322 | 7 |
-| nomic-embed-text-v1.5, the dense leg | 0.694 | 0.344 | 17 |
-| bge-base-en-v1.5 | 0.742 | 0.374 | 15 |
-| Qwen3-Embedding-0.6B | 0.701 | 0.358 | 47 |
-| Qwen3-Embedding-4B | see note | 0.407 | 69 |
-| gte-modernbert-base | 0.767 | 0.342 | 23 |
-| granite-embedding-r2 | 0.758 | 0.374 | 23 |
-| nomic + BM25, RRF, the shipped hybrid | 0.737 | 0.360 | 25 |
-| bge-base + BM25, RRF | 0.748 | 0.373 | 25 |
-| Qwen3-4B + BM25, RRF | see note | 0.391 | 84 |
-| shipped hybrid + Qwen3-Reranker-0.6B | 0.773 | 0.384 | 2208 |
-| shipped hybrid + bge-reranker | 0.754 | 0.357 | 874 |
+| System | SciFact | NFCorpus | FiQA | Query p50 ms, SciFact |
+|---|---|---|---|---|
+| BM25 (FTS5) | 0.682 | 0.322 | 0.248 | 7 at duty 0.3 |
+| stella_en_400M_v5, the dense leg | 0.780 | 0.414 | 0.553 | 38 at duty 0.3 |
+| nomic-embed-text-v1.5 | 0.694 | 0.344 | 0.372 | 20 at duty 0.3 |
+| bge-base-en-v1.5 | 0.742 | 0.374 | not run | 15 at duty unrecorded |
+| gte-base-en-v1.5 | 0.768 | 0.359 | 0.488 | 17 at duty 0.5 |
+| gte-modernbert-base | 0.764 | 0.345 | 0.522 | 24 at duty 0.5 |
+| granite-embedding-r2 | 0.757 | 0.377 | 0.463 | 27 at duty 0.5 |
+| DenseOn | 0.762 | 0.392 | 0.540 | 25 at duty 0.3 |
+| Qwen3-Embedding-0.6B | 0.701 | 0.358 | 0.468 | 52 at duty 0.5 |
+| Qwen3-Embedding-4B | not run | 0.407 | not run | 69 on NFCorpus at duty 0.5 |
+| stella + BM25, RRF | 0.760 | 0.396 | 0.449 | 41 at duty 0.3 |
+| nomic + BM25, RRF, + Qwen3-Reranker-0.6B | 0.772 | 0.384 | 0.443 | 3039 at duty 0.3 |
+| stella + ettin 150M reranker, blended | 0.789 | 0.411 | 0.561 | 598 at duty 0.3 |
+| stella + Qwen3-Reranker-0.6B, blended, the shipped pipeline | 0.792 | 0.419 | 0.574 | 2865 at duty 0.3 |
+| stella + Qwen3-Reranker-4B at depth 20, blended, the opt-in | 0.806 | 0.437 | 0.588 | 7180 at duty 0.3 |
 
-The zoo's nomic row equals the bench's dense leg and its fused row equals the bench's hybrid to four decimals on both sets. The reranked row differs from the bench by 0.002, within one query's worth of nDCG. Qwen3-Embedding-4B on SciFact at float16 was not obtained: its embed power-clamped the laptop GPU five times at three duty settings, so the 4B cells are NFCorpus only. Its SciFact dense score from the bfloat16 bench run is 0.779.
+![Search quality against query time for every system the zoo measured, three panels, one per set](../../docs/score-vs-latency.png)
 
-Read it as a map, not a ranking of gestalt. On SciFact two newer base-size embedders beat the shipped hybrid with no lexical leg and no reranker. On NFCorpus the order flips and only the 4B embedder and the reranked pipeline clear 0.38. What gestalt ships is the pipeline and the measurement, not the embedder, so a stronger embedder served through the same pipeline keeps its gain.
+The zoo's stella row equals the bench's dense leg to four decimals on SciFact and within 0.0002 on NFCorpus and FiQA, and its shipped-pipeline row sits within 0.003 of the bench's reranked system on every set, about one query's worth of nDCG. Read the table as a map, not a ranking of gestalt. Among the embedders, stella is on the latency frontier of every set. The 0.6B reranker adds a point or two on each set for two to three seconds a query at this duty cycle, and the 4B reranker adds another point and a half for two to three times that. What gestalt ships is the pipeline and the measurement, not the embedder, so a stronger embedder served through the same pipeline keeps its gain.
 
 ### Guards proven in these runs
 
@@ -402,7 +407,7 @@ Four environment knobs choose the numeric precision. With all of them unset, eve
 
 | Knob | Values | Default |
 |---|---|---|
-| `GESTALT_EMBED_DTYPE` | float32, float16, bfloat16 | the profile's own: float32 for nomic, bfloat16 for qwen3-4b |
+| `GESTALT_EMBED_DTYPE` | float32, float16, bfloat16 | the profile's own: float32 for stella-400m and nomic, bfloat16 for qwen3-4b |
 | `GESTALT_RERANK_DTYPE` | float16, bfloat16, float32 | float16 on CUDA |
 | `GESTALT_TF32` | 0, 1 | 0 |
 | `GESTALT_ATTN_IMPL` | sdpa, eager, flash_attention_2 | the library's choice |
@@ -454,7 +459,7 @@ Each of these happened on a real machine while the stored numbers were produced.
 
 ## Limits
 
-Two datasets are a small sample. Both are scientific or biomedical text, and gestalt is built for engineering notes.
+Three datasets are a small sample. Two are scientific or biomedical text and one is finance forum answers, and gestalt is built for engineering notes.
 
 The embedding model may have seen text from these datasets during training. That was not checked.
 

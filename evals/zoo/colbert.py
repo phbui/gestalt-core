@@ -41,6 +41,9 @@ def load_model(model_id: str, revision: str | None, dtype: str, max_doc_tokens: 
 
 def _unit(x) -> np.ndarray:
     x = np.asarray(x, dtype=np.float32)
+    bad = ~np.isfinite(x).all(axis=-1)
+    if bad.any():  # a silent zero row ranks nowhere, as dense_hf._unit says; the late-interaction leg had no such guard until 2026-10-11
+        raise RuntimeError(f"{int(bad.sum())} of {bad.size} token vectors are not finite; the model overflowed at this dtype")
     n = np.linalg.norm(x, axis=-1, keepdims=True)
     return np.divide(x, n, out=np.zeros_like(x), where=n > 0)
 

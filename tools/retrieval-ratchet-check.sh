@@ -26,9 +26,18 @@ python3 -c "import sqlite3,sys; sys.exit(0 if sqlite3.connect('.search/gestalt.d
 # transformers<5: nomic-embed-text-v1.5's remote code calls get_extended_attention_mask,
 # which transformers 5 removed (HF nomic-ai/nomic-bert-2048 discussion #23, open 2026-09);
 # unpinned, the ratchet SKIPs on every hub run and measures nothing.
+command -v uv >/dev/null 2>&1 || { echo "gestalt: retrieval ratchet SKIPPED (uv not installed, not a regression)"; rlog SKIP no-uv; exit 0; }
 RETR_OUT=$(uv run --quiet --with pyyaml --with sqlite-vec --with sentence-transformers --with einops --with "transformers<5" python3 evals/retrieval/run_retrieval_evals.py --baseline check 2>&1)
 RETR_RC=$?
 [ $RETR_RC -eq 0 ] && { rlog PASS; exit 0; }
+# The runner refuses an index built for another embedding profile (2026-10-10). That is a setup error, not a quality regression,
+# and it must not pass silently either: the push is stopped with the runner's own message.
+if echo "$RETR_OUT" | grep -q "built for another embedding setup"; then
+  echo "$RETR_OUT" | tail -2 >&2
+  echo "gestalt: retrieval ratchet cannot run: the index and GESTALT_EMBED_PROFILE disagree. Rebuild the index under the profile, then push." >&2
+  rlog FAIL index-profile-mismatch
+  exit 1
+fi
 if echo "$RETR_OUT" | grep -q Traceback; then
   echo "gestalt: retrieval ratchet SKIPPED (harness error, not a regression):"
   echo "$RETR_OUT" | tail -2

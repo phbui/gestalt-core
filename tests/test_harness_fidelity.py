@@ -26,6 +26,28 @@ RANK = REPO / "tools" / "gestalt_rank.py"
 INDEXER = REPO / "tools" / "gestalt-index-builder.py"
 
 
+@pytest.fixture(scope="module", autouse=True)
+def classic_profile():
+    """These tests were written against the nomic pipeline: RRF at K=60, the bge reranker, the search_ prefixes. The default profile is
+    stella since 2026-10-11, so the module names nomic before its module-scoped fixtures load the server and the runner, and a test
+    about the shipped default deletes the variable itself."""
+    mp = pytest.MonkeyPatch()
+    mp.setenv("GESTALT_EMBED_PROFILE", "nomic")
+    yield
+    mp.undo()
+
+
+def _shipped_config(monkeypatch):
+    """A fresh gestalt_embed_config under the shipped default profile, the one a lone copy of each tool must match."""
+    import importlib.util
+
+    monkeypatch.delenv("GESTALT_EMBED_PROFILE", raising=False)
+    spec = importlib.util.spec_from_file_location("ec_fid_default", REPO / "tools" / "gestalt_embed_config.py")
+    ec = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(ec)
+    return ec
+
+
 @pytest.fixture(scope="module")
 def sources() -> dict[str, str]:
     for p in (SERVER, RUNNER, INDEXER):
@@ -55,25 +77,30 @@ def test_rrf_fuse_sums_reciprocal_ranks():
     assert scores[3] == pytest.approx(1 / (k + 2))
 
 
-def test_query_prefix_present_in_both(sources):
+def test_query_prefix_present_in_both(sources, monkeypatch):
+    """Both lone-copy fallbacks carry the default profile's query prefix (stella's instruct line since 2026-10-11)."""
+    ec = _shipped_config(monkeypatch)
+    needle = f'QUERY_PREFIX = "{ec.QUERY_PREFIX}"'.replace("\n", "\\n")
     for name in ("server", "runner"):
-        assert '"search_query: "' in sources[name], (
+        assert needle in sources[name], (
             f"{name} is missing the asymmetric query prefix; "
             "query and document embeddings would land in different spaces"
         )
 
 
-def test_document_prefix_used_at_index_time(sources):
-    assert 'DOC_PREFIX = "search_document: "' in sources["indexer"]
+def test_document_prefix_used_at_index_time(sources, monkeypatch):
+    ec = _shipped_config(monkeypatch)
+    assert f'DOC_PREFIX = "{ec.DOC_PREFIX}"' in sources["indexer"], "the builder's lone-copy fallback drifted from the shipped profile"
     # Tolerate line wrapping: the prefix is concatenated across lines.
     assert re.search(r"DOC_PREFIX\s*\+", sources["indexer"]), (
         "DOC_PREFIX is defined but never prepended to the embedded text"
     )
 
 
-def test_prefixes_are_the_matched_pair(sources):
-    """search_query must pair with search_document, not another task prefix."""
-    assert 'QUERY_PREFIX = "search_query: "' in sources["indexer"]
+def test_prefixes_are_the_matched_pair(sources, monkeypatch):
+    """The query prefix must pair with the document prefix of the same profile, not another task's."""
+    ec = _shipped_config(monkeypatch)
+    assert f'QUERY_PREFIX = "{ec.QUERY_PREFIX}"'.replace("\n", "\\n") in sources["indexer"]
 
 
 def test_runner_reads_the_shared_embed_config(sources):
@@ -86,16 +113,12 @@ def test_runner_reads_the_shared_embed_config(sources):
     assert not re.search(r'SentenceTransformer\("nomic', r), "runner hard-codes the model name again"
 
 
-def test_runner_fallback_matches_the_shared_config(sources):
+def test_runner_fallback_matches_the_shared_config(sources, monkeypatch):
     """The inline fallback must carry the same values as the config module, or a lone copy embeds differently."""
-    import importlib.util
-
-    spec = importlib.util.spec_from_file_location("ec_fid", REPO / "tools" / "gestalt_embed_config.py")
-    ec = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(ec)
+    ec = _shipped_config(monkeypatch)
     r = sources["runner"]
     assert f'MODEL_NAME = "{ec.MODEL_NAME}"' in r
-    assert f'QUERY_PREFIX = "{ec.QUERY_PREFIX}"' in r
+    assert f'QUERY_PREFIX = "{ec.QUERY_PREFIX}"'.replace("\n", "\\n") in r  # the source spells the newline as an escape
     assert f'DOC_PREFIX = "{ec.DOC_PREFIX}"' in r
 
 
@@ -406,7 +429,7 @@ def _expected_rrf_score(mcp_server, query: str, target_id: int, limit: int, k: i
             for rank, row in enumerate(rows):
                 if row["rowid"] == target_id:
                     score += 1.0 / (k + rank + 1)
-        query_emb = _stub_vector("search_query: " + query)
+        query_emb = _stub_vector(mcp_server._ec.QUERY_PREFIX + query)  # the server's own prefix: nomic's search_query, stella's instruct line
         post = getattr(mcp_server._ec, "postprocess", None)  # the profile's post-processing, if the config has one
         if post:
             query_emb = post(query_emb)
@@ -425,9 +448,10 @@ def _expected_rrf_score(mcp_server, query: str, target_id: int, limit: int, k: i
 @pytest.mark.parametrize(
     "query", ["how does reciprocal rank fusion combine bm25 and vector scores", "tokenisation"]
 )
-def test_gestalt_search_score_matches_closed_form_rrf(fixture_index, mcp_server, query):
+def test_gestalt_search_score_matches_closed_form_rrf(fixture_index, mcp_server, query, monkeypatch):
     """gestalt_search's reported `score` must equal 1/(K+rank+1) summed over
-    legs, within float tolerance -- not merely be present and sorted."""
+    legs, within float tolerance -- not merely be present and sorted.
+    The check is of the RRF arithmetic, which the module's nomic profile runs."""
     results = mcp_server.gestalt_search(query, limit=5)
     assert results, f"expected hits for {query!r}"
     for r in results:
@@ -667,8 +691,9 @@ def test_server_and_harness_agree_under_each_knob(dup_index, mcp_server, retriev
     assert server_order == harness_order
 
 
-def test_knobs_unset_leave_the_ranking_alone(dup_index, mcp_server, retrieval_harness):
-    """With every knob unset, no row carries a new field and the pool is the old limit * 2."""
+def test_knobs_unset_leave_the_ranking_alone(dup_index, mcp_server, retrieval_harness, monkeypatch):
+    """With every knob unset, no row carries a new field and the pool is the old limit * 2.
+    The expected table is nomic's, the module's profile."""
     rows = mcp_server.gestalt_search(_DUP_QUERIES[0], limit=3)
     assert rows and not any("rerank_score" in r for r in rows)
     assert gestalt_rank.config() == {
@@ -676,6 +701,9 @@ def test_knobs_unset_leave_the_ranking_alone(dup_index, mcp_server, retrieval_ha
         "rerank_instruction": gestalt_rank.DEFAULT_QWEN_INSTRUCTION,
         "dedup": 1.0, "stopwords": False, "fusion": "rrf", "alpha": 0.5,
         "w_bm25": 0.5, "norm": "minmax", "missing": "zero", "abstain": False, "link_expand": False, "freshness": False,
+        # recorded since 2026-10-11, because each changes a result: the blend, the link-expand sizes, the rescue rule, the reranker precision
+        "rerank_blend": 0.0, "link_expand_k": 3, "link_expand_max": 10, "rescue": gestalt_rank.rescue_params(),
+        "rerank_dtype": "default", "attn_impl": None, "tf32": False,
     }
 
 
@@ -771,8 +799,9 @@ def test_config_diff_gates_only_on_a_changed_knob(retrieval_harness):
     assert retrieval_harness.config_diff(cfg, {}) == []
     assert retrieval_harness.config_diff(retrieval_harness.run_config({**opts, "decay": 0.5}), None) == ["dedup"]
     assert "rerank" in retrieval_harness.config_diff(retrieval_harness.run_config({**opts, "rerank": True}), None)
-    convex = retrieval_harness.run_config({**opts, "fusion": "convex", "alpha": 0.4})
-    assert retrieval_harness.config_diff(convex, None) == ["fusion", "alpha"] or set(retrieval_harness.config_diff(convex, None)) == {"fusion", "alpha"}
+    # the other fusion: convex at 0.4 against an RRF default, RRF against the convex default the stella profile ships
+    other = {"fusion": "rrf", "alpha": None} if cfg["fusion"] == "convex" else {"fusion": "convex", "alpha": 0.4}
+    assert set(retrieval_harness.config_diff(retrieval_harness.run_config({**opts, **other}), None)) == {"fusion", "alpha"}
 
 
 def _gate_fixture(retrieval_harness, **cfg_over):

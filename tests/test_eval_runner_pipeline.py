@@ -14,6 +14,7 @@ import sys
 from pathlib import Path
 
 import pytest
+from test_matryoshka import fresh_config
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from conftest import _load  # noqa: E402
@@ -168,7 +169,10 @@ def test_runner_reports_the_same_numbers_as_before_the_refactor(tmp_path, monkey
 
 
 def test_the_hybrid_default_numbers_are_pinned(monkeypatch, index, new_runner):
-    """Holds without git history too: the numbers the pre-refactor runner reported on this fixture."""
+    """Holds without git history too: the numbers the pre-refactor runner reported on this fixture, under the nomic profile's RRF
+    (the default profile is stella since 2026-10-11, whose fusion gives the lexical leg no vote)."""
+    monkeypatch.setenv("GESTALT_EMBED_PROFILE", "nomic")
+    monkeypatch.setattr(new_runner, "_ec", fresh_config(monkeypatch, GESTALT_EMBED_PROFILE="nomic"))  # the cached config may be stella's
     db, golden = index
     _point(new_runner, monkeypatch, db, golden)
     s = new_runner.evaluate("hybrid")["summary"]
@@ -331,3 +335,19 @@ def test_query_timeout_knob_parses_and_refuses_junk(monkeypatch):
     monkeypatch.setenv("GESTALT_EVAL_QUERY_TIMEOUT", "abc")
     with pytest.raises(SystemExit):
         R.query_timeout()
+
+
+def test_index_meta_mismatch_names_every_disagreeing_key(new_runner):
+    """The runner refuses an index built for another embedding setup instead of scoring one model's queries against another's vectors."""
+    import sqlite3
+
+    ec = new_runner._ec
+    db = sqlite3.connect(":memory:")
+    assert new_runner.index_meta_mismatch(db) == {}  # no index_meta table: an older index makes no claim
+    db.execute("CREATE TABLE index_meta (key TEXT PRIMARY KEY, value TEXT)")
+    db.executemany("INSERT INTO index_meta VALUES (?, ?)", [("model_name", ec.MODEL_NAME), ("embed_dim", str(ec.EMBED_DIM))])
+    assert new_runner.index_meta_mismatch(db) == {}
+    db.execute("UPDATE index_meta SET value = 'other-org/another-embedder' WHERE key = 'model_name'")
+    db.execute("UPDATE index_meta SET value = '1' WHERE key = 'embed_dim'")
+    bad = new_runner.index_meta_mismatch(db)
+    assert set(bad) == {"model_name", "embed_dim"} and bad["model_name"] == ("other-org/another-embedder", ec.MODEL_NAME)

@@ -279,6 +279,26 @@ def test_fill_from_hybrid_keeps_the_whole_reranked_head(tmp_path, monkeypatch):
     assert head[15:] == [d for d in hyb if d not in head[:15]][:10]
 
 
+def test_the_rerank_blend_mixes_the_fused_order_back_in_and_is_recorded_in_the_header(tmp_path, monkeypatch):
+    fts, dense, embed = _engine(tmp_path, DOCS)
+    monkeypatch.setattr(E.gestalt_rank, "rerank_rows",
+                        lambda q, rows, alias: (list(reversed(rows)), [float(len(rows) - k) for k in range(len(rows))], {"fallback": "none"}))
+    systems = ["hybrid", "hybrid_rerank"]
+    rerank = {"model": "bge", "depth": 10}
+    runs = {}
+    for blend in ("0", "0.95"):
+        monkeypatch.setenv("GESTALT_RERANK_BLEND", blend)
+        hdr = E.query_log_header(fingerprint="f", systems=systems, limit=10, rerank=rerank, fusion="rrf", alpha=0.5, fill_from_hybrid=False)
+        assert hdr["rerank"].get("blend") == (None if blend == "0" else 0.95)
+        with QueryLog(tmp_path / f"q{blend}.jsonl", hdr) as log:
+            E.retrieve(QUERIES[:1], fts=fts, dense=dense, embed=embed, log=log, systems=systems, limit=10, rerank=rerank)
+            runs[blend], _ = E.runs_from_log(log, systems, ["q0"])
+    head = runs["0"]["hybrid_rerank"]["q0"]
+    blended = runs["0.95"]["hybrid_rerank"]["q0"]
+    assert sorted(head) == sorted(blended) and blended != head
+    assert blended[0] == runs["0.95"]["hybrid"]["q0"][0]
+
+
 # --- QAL-007 and QAL-010: the documentation says what the code does ------------------------------------------------------------------------
 
 
@@ -351,3 +371,38 @@ def test_fts_counts_a_match_the_tokenizer_refuses_and_raises_any_other_database_
     finally:
         fts.db = real
     assert fts.match_failures == 1
+
+
+def test_the_bench_blend_is_blend_scores_over_the_reranked_head_and_the_hybrid_scores(tmp_path, monkeypatch):
+    """2026-10-11 review: the earlier blend test proved only that the blend changed the order. This one recomputes the expected
+    order with gestalt_rank.blend_scores from the logged hybrid scores and the stub reranker's scores, so a blend fed the wrong
+    dictionary, or a different mixing rule, fails."""
+    import gestalt_rank as gr
+    fts, dense, embed = _engine(tmp_path, DOCS)
+
+    def stub(q, rows, alias):  # the reranker's favourite is the hybrid leg's last row
+        return list(reversed(rows)), [float(len(rows) - k) for k in range(len(rows))], {"fallback": "none"}
+    monkeypatch.setattr(E.gestalt_rank, "rerank_rows", stub)
+    monkeypatch.setenv("GESTALT_RERANK_BLEND", "0.5")
+    systems, rerank = ["hybrid", "hybrid_rerank"], {"model": "bge", "depth": 10}
+    hdr = E.query_log_header(fingerprint="f", systems=systems, limit=10, rerank=rerank, fusion="rrf", alpha=0.5, fill_from_hybrid=False)
+    with QueryLog(tmp_path / "q.jsonl", hdr) as log:
+        E.retrieve(QUERIES[:1], fts=fts, dense=dense, embed=embed, log=log, systems=systems, limit=10, rerank=rerank)
+        hyb, rr = log.entries[("hybrid", "q0")], log.entries[("hybrid_rerank", "q0")]
+    head_ids, head_scores = hyb["ids"][:10], hyb["scores"][:10]
+    reranked_ids = list(reversed(head_ids))
+    rr_scores = {i: float(len(reranked_ids) - k) for k, i in enumerate(reranked_ids)}
+    expected = [i for i, _ in gr.blend_scores(reranked_ids, rr_scores, dict(zip(head_ids, head_scores)), 0.5)]
+    assert rr["ids"][:10] == expected and expected != reranked_ids and expected != head_ids
+
+
+def test_a_rerank_fallback_with_a_blend_on_leaves_the_hybrid_order_untouched(tmp_path, monkeypatch):
+    fts, dense, embed = _engine(tmp_path, DOCS)
+    monkeypatch.setattr(E.gestalt_rank, "rerank_rows", lambda q, rows, alias: (list(rows), None, {"fallback": "RuntimeError"}))
+    monkeypatch.setenv("GESTALT_RERANK_BLEND", "0.5")
+    systems, rerank = ["hybrid", "hybrid_rerank"], {"model": "bge", "depth": 10}
+    hdr = E.query_log_header(fingerprint="f", systems=systems, limit=10, rerank=rerank, fusion="rrf", alpha=0.5, fill_from_hybrid=False)
+    with QueryLog(tmp_path / "q.jsonl", hdr) as log:
+        E.retrieve(QUERIES[:1], fts=fts, dense=dense, embed=embed, log=log, systems=systems, limit=10, rerank=rerank)
+        runs, fallbacks = E.runs_from_log(log, systems, ["q0"])
+    assert runs["hybrid_rerank"]["q0"] == runs["hybrid"]["q0"] and fallbacks == 1

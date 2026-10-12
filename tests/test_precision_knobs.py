@@ -146,7 +146,9 @@ def test_environment_records_the_precision_keys(monkeypatch):
 
 
 def test_embed_normalize_knob_unit_normalises_at_full_width_and_defaults_off(monkeypatch):
-    """GESTALT_EMBED_NORMALIZE=1 makes postprocess return unit vectors at the full width. Off, vectors come back untouched."""
+    """GESTALT_EMBED_NORMALIZE=1 makes postprocess return unit vectors at the full width. Off, vectors come back untouched.
+    The knob's default is the profile's: off under nomic, which this test names, and on under the stella default since 2026-10-11."""
+    monkeypatch.setenv("GESTALT_EMBED_PROFILE", "nomic")
     import importlib
     import sys
 

@@ -239,8 +239,8 @@ def run_skill(skill: str, output_file: str) -> None:
 
     print(f"\nRunning deterministic assertions for /{skill} against {out_path}")
     if not results:
-        print("  (no output_assertions defined in config)")
-        return
+        print("  ERROR: no output_assertions defined in config; nothing was checked (2026-10-11: this used to pass)")
+        sys.exit(1)
 
     fail_count = 0
     skip_count = 0
@@ -262,6 +262,9 @@ def run_skill(skill: str, output_file: str) -> None:
     print(summary)
 
     if fail_count:
+        sys.exit(1)
+    if passed == 0:
+        print("  ERROR: every assertion was skipped (unknown types?); nothing was checked")
         sys.exit(1)
 
 
@@ -640,6 +643,7 @@ def main() -> None:
             sys.exit(1)
         return
 
+    print(f"ERROR: unknown subcommand {args[0]!r}" if args else "", file=sys.stderr)
     print("Usage:")
     print("  python run_evals.py list                    — list available configs")
     print("  python run_evals.py validate [skill]         — validate config(s) (60% tier, CI hard gate)")
@@ -650,6 +654,7 @@ def main() -> None:
     print("  python run_evals.py baseline save             — write evals/baseline.json from current trigger + deterministic results")
     print("  python run_evals.py baseline check             — exit 1 if any skill regressed below its stored baseline")
     print("  (see README.md for the full 60/30/10 pipeline and the capture workflow)")
+    sys.exit(1)  # a typo in a CI step must not pass (2026-10-11)
 
 
 if __name__ == "__main__":

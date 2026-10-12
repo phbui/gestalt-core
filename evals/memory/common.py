@@ -474,8 +474,8 @@ def add_common_args(ap) -> None:
     ap.add_argument("--data", default=None, help="path to the dataset JSON (default: download into ~/.cache/gestalt-bench)")
     ap.add_argument("--embed-profile", choices=sorted(ec.PROFILES), default=None, help="embedding profile (read from argv before the imports)")
     ap.add_argument("--rerank", choices=["off", "on"], default="off", help="add the hybrid_rerank system. Required to rerank on any host that is not the maintainer's hub")
-    ap.add_argument("--rerank-model", default=os.environ.get("GESTALT_RERANK_MODEL", "bge"), help="reranker alias: bge, qwen3-4b or qwen3-0.6b")
-    ap.add_argument("--rerank-depth", type=int, default=40, help="hybrid hits handed to the reranker")
+    ap.add_argument("--rerank-model", default=None, help="reranker alias: bge, qwen3-4b or qwen3-0.6b. Default: GESTALT_RERANK_MODEL, else the embed profile's reranker")
+    ap.add_argument("--rerank-depth", type=int, default=None, help="hybrid hits handed to the reranker. Default: GESTALT_RERANK_DEPTH, else the profile's depth")
     ap.add_argument("--fusion", choices=["rrf", "convex"], default=None, help="hybrid fusion (sets GESTALT_FUSION)")
     ap.add_argument("--alpha", type=float, default=None, help="convex fusion weight on the lexical leg (sets GESTALT_FUSION_ALPHA)")
 
@@ -484,14 +484,20 @@ def resolve_run(args) -> tuple[list[str], dict | None, object]:
     """Check the flags took effect and return (systems, rerank config, the model to index with)."""
     if args.embed_profile and args.embed_profile != ec.PROFILE:
         raise SystemExit(f"--embed-profile {args.embed_profile} did not take effect (module loaded profile {ec.PROFILE})")
+    import gestalt_rank  # noqa: F401  fail now, not after an hour of embedding
+    # The modules read GESTALT_FUSION and GESTALT_FUSION_ALPHA at import, and only beir_bench exports its flags into the environment, and
+    # only as __main__. Until 2026-10-11 `--fusion convex --alpha 0.4` here ran RRF and exited 0.
+    if getattr(args, "fusion", None) and args.fusion != gestalt_rank.fusion_mode():
+        raise SystemExit(f"--fusion {args.fusion} did not take effect: export GESTALT_FUSION={args.fusion} before the run")
+    if getattr(args, "alpha", None) is not None and (gestalt_rank.fusion_mode() != "convex" or abs(gestalt_rank.fusion_alpha() - args.alpha) > 1e-9):
+        raise SystemExit(f"--alpha {args.alpha} did not take effect: export GESTALT_FUSION=convex GESTALT_FUSION_ALPHA={args.alpha} before the run")
     systems = [s.strip() for s in args.systems.split(",") if s.strip()]
     bad = [s for s in systems if s not in ("bm25", "dense", "hybrid")]
     if bad:
         raise SystemExit(f"unknown systems {bad}")
-    rerank = {"model": args.rerank_model, "depth": args.rerank_depth} if args.rerank == "on" else None
+    # the flags when given, else the knobs the served path reads (environment, then embed profile), as beir_bench.rerank_spec does
+    rerank = {"model": args.rerank_model or gestalt_rank.rerank_alias(), "depth": args.rerank_depth or gestalt_rank.rerank_depth()} if args.rerank == "on" else None
     if rerank:
-        import gestalt_rank  # noqa: F401  fail now, not after an hour of embedding
-
         systems.append("hybrid_rerank")
         if "hybrid" not in systems:
             systems.insert(0, "hybrid")

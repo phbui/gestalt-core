@@ -19,6 +19,12 @@ from pathlib import Path
 
 import pytest
 
+# The suite's ranking and prefix expectations were written against the nomic pipeline (RRF at K=60, the bge reranker, the search_
+# prefixes). The shipped default profile is stella-400m since 2026-10-11, so the session names nomic here, before any test module
+# imports gestalt_embed_config, and every test about the shipped default deletes the variable itself (test_rank_default_profile,
+# test_embed_profiles' fresh_config, test_harness_fidelity's _shipped_config, the public-docs and release-gate tests read results).
+os.environ.setdefault("GESTALT_EMBED_PROFILE", "nomic")
+
 REPO = Path(__file__).resolve().parent.parent
 
 # The MCP server relays semantic searches to the fleet hub and keeps the embedding model off laptops
@@ -46,6 +52,38 @@ def _load(name: str, relpath: str):
         sys.modules.pop(name, None)
         pytest.skip(f"{relpath} not importable here: {exc}")
     return mod
+
+
+@pytest.fixture(autouse=True)
+def _config_module_is_restored():
+    """The shared config module is put back after each test: the same object under its name in sys.modules, with the attributes it
+    had. Tests pop it and re-import it under another environment (test_precision_knobs) or reload it (test_embed_profiles), and
+    whichever test imported it next cached that environment's profile for every later test (2026-10-12: the zoo parity and the
+    builder meta tests saw a stella config beside a nomic builder, in the full suite only)."""
+    name = "gestalt_embed_config"
+    mod = sys.modules.get(name)
+    state = dict(vars(mod)) if mod is not None else None
+    yield
+    if mod is None:
+        sys.modules.pop(name, None)
+    else:
+        sys.modules[name] = mod
+        if dict(vars(mod)) != state:
+            mod.__dict__.clear()
+            mod.__dict__.update(state)
+
+
+@pytest.fixture(autouse=True)
+def _gestalt_env_is_restored():
+    """Every GESTALT_* variable is put back after each test. The code under test writes some without monkeypatch (beir_bench exports
+    --embed-profile, --fusion and --alpha into os.environ, as it must when run as __main__), and a leaked profile made three later test
+    files compare a stella config with a nomic one (2026-10-12, found when the default profile flipped)."""
+    before = {k: v for k, v in os.environ.items() if k.startswith("GESTALT_")}
+    yield
+    for k in [k for k in os.environ if k.startswith("GESTALT_")]:
+        if k not in before:
+            del os.environ[k]
+    os.environ.update(before)
 
 
 @pytest.fixture(scope="session")

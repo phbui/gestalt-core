@@ -21,14 +21,14 @@ def _db(rows=None):
 
 
 def test_config_shared(srv, indexer):
-    import gestalt_embed_config as ec
-    assert indexer.MODEL_NAME == srv.MODEL_NAME == ec.MODEL_NAME
+    ec = indexer._ec  # the builder's own config object; a cached import may carry another profile from an earlier test
+    assert indexer.MODEL_NAME == srv._ec.MODEL_NAME == ec.MODEL_NAME
     assert indexer.MODEL_REVISION == ec.MODEL_REVISION
     assert indexer.DOC_PREFIX == ec.DOC_PREFIX and indexer.QUERY_PREFIX == ec.QUERY_PREFIX
 
 
 def test_builder_writes_meta(indexer):
-    import gestalt_embed_config as ec
+    ec = indexer._ec
     db = sqlite3.connect(":memory:")
     indexer.write_index_meta(db, True)
     meta = dict(db.execute("SELECT key, value FROM index_meta").fetchall())
@@ -191,7 +191,7 @@ def test_profile_switch_changes_the_meta_and_the_other_profile_disables_the_vect
     qwen_db = sqlite3.connect(":memory:")
     indexer.write_index_meta(qwen_db, True)
     qwen_meta = dict(qwen_db.execute("SELECT key, value FROM index_meta").fetchall())
-    for key in ("embed_profile", "model_name", "model_revision", "embed_dim", "doc_prefix", "query_prefix"):
+    for key in ("embed_profile", "model_name", "model_revision", "embed_dim"):  # the prefixes may coincide (stella and qwen both use an instruct prefix and no document prefix)
         assert nomic_meta[key] != qwen_meta[key], key
 
     # The server running on nomic reads the qwen index and refuses it. The reverse holds too.
@@ -212,7 +212,8 @@ def test_missing_table_proceeds_and_logs_once(srv, capsys):
     assert capsys.readouterr().err.count("no index_meta") == 1
 
 
-def test_matching_table_ok(srv, indexer):
+def test_matching_table_ok(srv, indexer, monkeypatch):
+    monkeypatch.setattr(srv, "_ec", indexer._ec)  # one config for the builder and the server
     db = sqlite3.connect(":memory:")
     indexer.write_index_meta(db, True)
     db.row_factory = sqlite3.Row
@@ -253,3 +254,46 @@ def test_load_path_never_makes_an_index_stale(db_file, indexer, monkeypatch):
     os.remove(indexer.DB_PATH)
     db_file(_current(indexer))  # an index built before the key existed
     assert indexer.needs_rebuild(expect_vectors=True)[0] is False
+
+
+def test_needs_rebuild_notices_a_normalisation_or_dtype_change(db_file, indexer):
+    """Two indexes of one model differ when one stores unit vectors and the other raw ones, or when the weights' dtype differs (2026-10-11)."""
+    import os
+    import gestalt_embed_config as ec
+    current = sqlite3.connect(":memory:")
+    indexer.write_index_meta(current, True)
+    meta = dict(current.execute("SELECT key, value FROM index_meta").fetchall())
+    db_file(meta)
+    assert indexer.needs_rebuild(expect_vectors=True)[0] is False
+    os.remove(indexer.DB_PATH)
+    db_file(dict(meta, embed_normalize="0" if ec.EMBED_NORMALIZE else "1"))
+    assert indexer.needs_rebuild(expect_vectors=True)[0] is True
+    os.remove(indexer.DB_PATH)
+    db_file(dict(meta, embed_dtype="not-this-dtype"))
+    assert indexer.needs_rebuild(expect_vectors=True)[0] is True
+    os.remove(indexer.DB_PATH)
+    older = dict(meta)
+    del older["embed_normalize"], older["embed_dtype"]
+    db_file(older)  # an index from before the keys existed makes no claim about them
+    assert indexer.needs_rebuild(expect_vectors=True)[0] is False
+
+
+def test_needs_rebuild_notices_a_model_revision_or_prefix_change(db_file, indexer):
+    """The staleness check compared the profile, width and pooling but not the model, its revision or the prefixes (2026-10-11)."""
+    import os
+    current = sqlite3.connect(":memory:")
+    indexer.write_index_meta(current, True)
+    meta = dict(current.execute("SELECT key, value FROM index_meta").fetchall())
+    for key in ("model_revision", "model_name", "doc_prefix", "query_prefix"):
+        db_file(dict(meta, **{key: meta[key] + "-changed"}))
+        assert indexer.needs_rebuild(expect_vectors=True)[0] is True, key
+        os.remove(indexer.DB_PATH)
+
+
+def test_a_missing_vector_dependency_refuses_to_downgrade_a_vector_index(db_file, indexer):
+    """Under a python without sqlite_vec the builder continued FTS-only and published over a live vector index with exit 0."""
+    current = sqlite3.connect(":memory:")
+    indexer.write_index_meta(current, True)
+    db_file(dict(current.execute("SELECT key, value FROM index_meta").fetchall()))  # the fixture db carries a sections_vec table
+    with pytest.raises(SystemExit):
+        indexer.refuse_vector_downgrade()

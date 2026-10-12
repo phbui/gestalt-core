@@ -59,8 +59,8 @@ flowchart TD
   C --> D["write sections_fts<br/>FTS5, porter unicode61"]
   C --> E{"--fts-only?"}
   E -->|yes| F["skip vectors"]
-  E -->|no| G["embed each section<br/>nomic-embed-text-v1.5, search_document: prefix"]
-  G --> H["write sections_vec<br/>vec0, 768 floats"]
+  E -->|no| G["embed each section<br/>stella_en_400M_v5, no document prefix"]
+  G --> H["write sections_vec<br/>vec0, 1024 unit floats"]
   D --> I["write sections_meta<br/>slug, heading, block id, path"]
   F --> I
   H --> I
@@ -80,14 +80,14 @@ flowchart TD
   H --> E{"GESTALT_HUB_MCP_URL set?"}
   E -->|yes| X["relay the query to that URL"]
   E -->|no| L["load the model locally<br/>unload after 600 s idle"]
-  F --> R["reciprocal rank fusion, K=60"]
+  F --> R["the profile's fusion<br/>stella: dense order, lexical-only hits last"]
   L --> R
   X --> R
   R --> S["filter restricted entries"]
   S --> O["results with snippet and anchors"]
 ```
 
-The server runs as a stdio process per Claude Code session, or as one HTTP process on `127.0.0.1:8300`. The Cursor configuration in `.cursor/mcp.json` starts its own copy on port 8100, so a Cursor session and a shared process never collide. Each session that runs a hybrid search would otherwise hold a 750 MB model, so the default mode is lexical and the model unloads after ten idle minutes.
+The server runs as a stdio process per Claude Code session, or as one HTTP process on `127.0.0.1:8300`. The Cursor configuration in `.cursor/mcp.json` starts its own copy on port 8100, so a Cursor session and a shared process never collide. Each session that runs a hybrid search would otherwise hold a 1.7 GB model in float32, so the default mode is lexical and the model unloads after ten idle minutes.
 
 The server does not rank anything itself. Every search the server answers itself, in either mode, calls `gestalt_rank.hybrid_search`. That one function runs the lexical leg, the dense leg, the fusion, the optional rerank and the dedup of repeated entries. The golden-set evaluation runner calls the same function. The BEIR benchmark engine does not. It builds the query with the same helpers, `gestalt_rank.fts_match` and `gestalt_rank.pool_size`, and fuses the legs with `fuse_pools` in `evals/retrieval/bench_engine.py`. That function calls `gestalt_rank.fuse`, the fusion step the server runs, whose arithmetic lives in `evals/retrieval/fusion.py`. A test checks its rankings against the in-memory path. Its FTS table is contentless, and it switches from sqlite-vec to exact dense search above 300,000 documents. Every knob that changes the ranking is an environment variable read by that module, and the README lists them with their defaults.
 

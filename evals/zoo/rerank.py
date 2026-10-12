@@ -1,7 +1,11 @@
 """A cross-encoder reranker over any Searcher, through gestalt_rank.rerank_rows.
 
 A query whose reranker did not run keeps the inner order and is counted in `fallbacks`. The runner voids the run on any fallback,
-as beir_bench does: that row would be the inner system under another name."""
+as beir_bench does: that row would be the inner system under another name.
+
+`blend` (wave 2, 2026-10-09) mixes the reranker's score with the inner system's fused score over the reranked head instead of
+replacing the order: final = (1 - blend) * z(reranker) + blend * z(inner), both z-scored within the head. blend 0 is the shipped
+behaviour. The papers only test this on MS MARCO, where interpolation with BM25 hurt (arXiv 2301.09728); BEIR is untested."""
 from __future__ import annotations
 
 from pathlib import Path
@@ -16,8 +20,10 @@ from evals.zoo.cost import dir_bytes, param_count
 class Rerank:
     needs_work_dir = True
 
-    def __init__(self, name: str, inner, model: str, work_dir: str | Path, depth: int = 40):
-        self.name, self.inner, self.model, self.depth, self.dir = name, inner, model, depth, Path(work_dir)
+    def __init__(self, name: str, inner, model: str, work_dir: str | Path, depth: int = 40, blend: float = 0.0):
+        if not 0.0 <= blend < 1.0:
+            raise ValueError(f"blend must be in [0, 1), not {blend!r}")
+        self.name, self.inner, self.model, self.depth, self.dir, self.blend = name, inner, model, depth, Path(work_dir), float(blend)
         self.parts = (inner,)
         self.indexed = False
         self.fallback_qids: set[str] = set()
@@ -49,7 +55,10 @@ class Rerank:
                 scores = [inner_score[r["id"]] for r in ranked]
             elif not self._model_info:
                 self._read_model()
-            out[qid] = ([(r["id"], s) for r, s in zip(ranked, scores)] + tail)[:k]
+            head_scores = [(r["id"], s) for r, s in zip(ranked, scores)]
+            if self.blend and scores is not None and not rerank_failed(info):
+                head_scores = blend_scores(head_scores, dict(head), self.blend)
+            out[qid] = (head_scores + tail)[:k]
         return out
 
     def _read_model(self) -> None:
@@ -63,6 +72,7 @@ class Rerank:
     def close(self) -> None:
         if hasattr(self, "docs"):
             self.docs.close()
+        gestalt_rank.unload_reranker(force=True)  # the next system's VRAM baseline must not include this one's reranker (2026-10-11)
 
     def describe(self) -> dict:
         hub_id, revision = gestalt_rank.RERANK_REVISIONS.get(self.model, (self.model, None))
@@ -70,4 +80,14 @@ class Rerank:
                               index_bytes=dir_bytes(self.dir) if self.dir.exists() else None)
         out = combine_describe(own, self.parts)
         out["revision"] = revision
+        if self.blend:
+            out["blend"] = self.blend
         return out
+
+
+def blend_scores(reranked: list[tuple[str, float]], inner_score: dict[str, float], blend: float) -> list[tuple[str, float]]:
+    """Reorder the reranked head by (1 - blend) * z(reranker score) + blend * z(inner fused score); ties keep the reranker order.
+
+    The arithmetic is gestalt_rank.blend_scores, the product's own, so the zoo measures what ships."""
+    ids = [d for d, _ in reranked]
+    return [(i, float(s)) for i, s in gestalt_rank.blend_scores(ids, dict(reranked), inner_score, blend)]

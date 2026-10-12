@@ -233,6 +233,8 @@ def test_rules_file_without_frontmatter_stays_untitled(tmp_path, monkeypatch, in
     chunks = indexer.parse_entry(path)
     assert {c["title"] for c in chunks} == {""}
     chunk = next(c for c in chunks if c["heading"] == "Rule")
+    from test_matryoshka import fresh_config
+    ec = fresh_config(monkeypatch, GESTALT_EMBED_PROFILE="nomic")  # the nomic layout; the default profile carries no document prefix
     assert ec.chunk_text(chunk["slug"], chunk["title"], chunk["heading"], chunk["content"]) == (
         "search_document: agent autonomy — Rule\n\nDo it yourself."
     )
@@ -251,6 +253,8 @@ def test_titled_chunk_embed_text_and_fts_row(tmp_path, monkeypatch, indexer):
                       ("LOCK_PATH", search / "build.lock"), ("RULES_DIR", tmp_path / ".claude" / "rules")):
         monkeypatch.setattr(indexer, name, val, raising=False)
     chunk = indexer.parse_entry(kd / "fleet-mesh.md")[0]
+    from test_matryoshka import fresh_config
+    ec = fresh_config(monkeypatch, GESTALT_EMBED_PROFILE="nomic")  # the nomic layout
     assert ec.chunk_text(chunk["slug"], chunk["title"], chunk["heading"], chunk["content"]) == (
         "search_document: Tailnet topology (fleet mesh) — Hub\n\nthe hub is the hub"
     )
@@ -276,16 +280,61 @@ def test_title_keeps_its_own_apostrophes_and_loses_only_a_matching_pair(write_en
     assert write_entry("---\ntitle: 'Quoted one'\n---\n\n## A ^a\n\nx\n")[0]["title"] == "Quoted one"
 
 
-def test_default_embed_text_and_cache_key_are_pinned(indexer):
-    """Values captured before the late-chunking fixes. A default build must keep both.
-
-    The two hashes are the SHA-256 of the exact strings asserted just above them. They pin the embedding-cache key, so a changed prefix or separator would invalidate every cached vector. Change them only when that is intended."""
-    import gestalt_embed_config as ec
-
-    text = ec.chunk_text("alpha-doc", "Alpha doc", "One", "body text")
+def test_default_embed_text_and_cache_key_are_pinned(indexer, monkeypatch):
+    """The embed text of the nomic layout is pinned by value. The cache key is the identity (model, revision, normalisation, dtype)
+    plus the text, computed here from the builder's own config rather than pinned, because it follows the default profile."""
+    import hashlib
+    from test_matryoshka import fresh_config
+    nomic = fresh_config(monkeypatch, GESTALT_EMBED_PROFILE="nomic")
+    text = nomic.chunk_text("alpha-doc", "Alpha doc", "One", "body text")
     assert text == "search_document: Alpha doc (alpha doc) \u2014 One\n\nbody text"
-    assert indexer.chunk_hash(text) == "bd1f4c5302ff24a3062af14cee35a9dac6094fb10658ea67273cc3a065bcaa0c"
-    plain = ec.chunk_text("beta", "", "H", "c")
+    plain = nomic.chunk_text("beta", "", "H", "c")
     assert plain == "search_document: beta \u2014 H\n\nc"
-    assert indexer.chunk_hash(plain) == "8553ad3a80b9c67d9c36e765a244e253cd46df56dded3c7e06c944805499da25"
+    ec = indexer._ec
+    ident = f"{indexer.MODEL_NAME}\x00rev={indexer.MODEL_REVISION or ''}\x00norm={int(bool(ec.EMBED_NORMALIZE))}\x00dtype={ec.EMBED_DTYPE}"
+    assert indexer.chunk_hash(text) == hashlib.sha256(f"{ident}\x00{text}".encode("utf-8")).hexdigest()
+    assert indexer.chunk_hash(plain) == hashlib.sha256(f"{ident}\x00{plain}".encode("utf-8")).hexdigest()
     assert indexer.cache_salt(False, None) == ""
+
+
+# --- 2026-10-11 line review -----------------------------------------------------------------------
+
+
+def test_a_caret_inside_a_heading_is_not_an_anchor(write_entry):
+    """`## Energy E=mc^2 notes` was split on the first `^`, so the heading lost its tail and the block id became "2 notes"."""
+    chunks = write_entry(FRONT + "## Energy E=mc^2 notes\n\nbody\n")
+    assert chunks[0]["heading"] == "Energy E=mc^2 notes" and chunks[0]["block_id"] == "energy-e=mc^2-notes"
+    chunks = write_entry(FRONT + "## Alpha ^my-anchor\n\nbody\n")
+    assert chunks[0]["block_id"] == "my-anchor" and chunks[0]["heading"] == "Alpha"
+
+
+def test_three_dashes_inside_a_frontmatter_value_do_not_end_the_frontmatter(write_entry):
+    chunks = write_entry("---\ntitle: a --- b\ntype: note\n---\n\n## H\n\nbody\n")
+    assert chunks and "type: note" not in chunks[0]["content"] and chunks[0]["heading"] == "H"
+
+
+def test_two_sections_with_the_same_heading_get_distinct_block_ids(write_entry):
+    chunks = write_entry(FRONT + "## Notes\n\nfirst\n\n## Notes\n\nsecond\n")
+    assert [c["block_id"] for c in chunks] == ["notes", "notes-2"]
+
+
+def test_the_embedding_cache_key_carries_revision_normalisation_and_dtype(indexer, monkeypatch):
+    """A rebuild under GESTALT_EMBED_NORMALIZE=1 reused the raw vectors of the old index because the key was sha256(model, text)."""
+    ec = indexer._ec  # the builder's own config object, which the key reads
+    before = indexer.chunk_hash("same text")
+    monkeypatch.setattr(ec, "EMBED_NORMALIZE", not ec.EMBED_NORMALIZE)
+    assert indexer.chunk_hash("same text") != before
+    monkeypatch.setattr(ec, "EMBED_NORMALIZE", not ec.EMBED_NORMALIZE)
+    monkeypatch.setattr(ec, "EMBED_DTYPE", "not-this-dtype")
+    assert indexer.chunk_hash("same text") != before
+    monkeypatch.setattr(ec, "EMBED_DTYPE", getattr(ec, "EMBED_DTYPE", "float32"))
+    monkeypatch.setattr(indexer, "MODEL_REVISION", "another-revision")
+    assert indexer.chunk_hash("same text") != before
+
+
+def test_an_exported_but_empty_fleet_variable_falls_through_to_fleet_env(indexer, monkeypatch, tmp_path):
+    (tmp_path / ".fleet").mkdir()
+    (tmp_path / ".fleet" / "fleet.env").write_text('GESTALT_INDEX_BUILD_ROLE="hub"\n')
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("GESTALT_INDEX_BUILD_ROLE", "")
+    assert indexer._fleet_env("GESTALT_INDEX_BUILD_ROLE") == "hub"

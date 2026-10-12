@@ -154,7 +154,7 @@ class BlockStore:
             if self.readonly:
                 raise FingerprintMismatch(f"{self.dir} has no readable manifest for {fingerprint[:12]} and this store is read-only.")
             if wipe:  # --rebuild over a manifest of another configuration. A lost manifest wipes nothing.
-                for p in self.dir.glob("emb-*"):
+                for p in list(self.dir.glob("emb-*")) + list(self.dir.glob(".emb-*.tmp")):  # the dot-prefixed files are a kill's leftovers
                     p.unlink()
             atomic_write_json(manifest, want)
 
@@ -334,6 +334,14 @@ class QueryLog:
             except ValueError:
                 break
             pos = good_end = nl + 1
+        # The header is judged before anything is truncated: a log refused without --rebuild must come through untouched (2026-10-11).
+        if not lines or not isinstance(lines[0], dict) or "header" not in lines[0]:
+            raise FingerprintMismatch(f"{self.path} has no header line. Remove it or pass --rebuild.")
+        if lines[0]["header"] != self.header:
+            diff = sorted(k for k in set(lines[0]["header"]) | set(self.header) if lines[0]["header"].get(k) != self.header.get(k))
+            raise FingerprintMismatch(
+                f"{self.path} was written by another configuration (differs in {', '.join(diff)}). "
+                "Pass --rebuild to discard it, or point --work-dir elsewhere.")
         if good_end < len(raw):
             rest = raw[good_end:]
             n_lost = rest.count(b"\n") + (0 if rest.endswith(b"\n") else 1)
@@ -344,13 +352,6 @@ class QueryLog:
                 fh.truncate(good_end)
                 fh.flush()
                 os.fsync(fh.fileno())
-        if not lines or "header" not in lines[0]:
-            raise FingerprintMismatch(f"{self.path} has no header line. Remove it or pass --rebuild.")
-        if lines[0]["header"] != self.header:
-            diff = sorted(k for k in set(lines[0]["header"]) | set(self.header) if lines[0]["header"].get(k) != self.header.get(k))
-            raise FingerprintMismatch(
-                f"{self.path} was written by another configuration (differs in {', '.join(diff)}). "
-                "Pass --rebuild to discard it, or point --work-dir elsewhere.")
         for e in lines[1:]:
             self.entries[(e["system"], e["qid"])] = e
 

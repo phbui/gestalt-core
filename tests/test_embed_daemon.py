@@ -187,3 +187,53 @@ def test_a_deep_state_dir_still_gets_a_usable_socket_path(tmp_path):
         stop.set()
         th.join(5)
     assert not sock.exists()
+
+
+def test_the_query_cache_embeds_each_text_once_and_keeps_order():
+    calls = []
+
+    def embed(texts):
+        calls.append(list(texts))
+        return [[float(len(t)), 1.0] for t in texts]
+
+    c = daemon.QueryCache(embed, size=2)
+    assert c(["ab", "c", "ab"]) == [[2.0, 1.0], [1.0, 1.0], [2.0, 1.0]]
+    assert calls == [["ab", "c"]]
+    assert c(["c"]) == [[1.0, 1.0]] and calls == [["ab", "c"]] and c.hits == 2
+    c(["xyz"])  # evicts the least recently used entry, "ab"
+    c(["ab"])
+    assert calls[-1] == ["ab"]
+
+
+def test_identity_mismatch_raises_and_an_unchecked_call_still_works(tmp_path):
+    import threading
+    import time
+
+    st = tmp_path / "st"
+    st.mkdir()
+    stop = threading.Event()
+    ident = {"profile": "nomic", "model_name": "m", "model_revision": "", "embed_dim": 2, "query_prefix": ""}
+    t = threading.Thread(target=daemon.serve, args=(st, lambda xs: [[1.0, 0.0] for _ in xs], 30.0, stop, ident), daemon=True)
+    t.start()
+    end = time.monotonic() + 5
+    while time.monotonic() < end:
+        try:
+            daemon.encode([], st, 0.2)
+            break
+        except OSError:
+            time.sleep(0.01)
+    try:
+        assert daemon.encode(["q"], st, 2.0, expect=ident) == [[1.0, 0.0]]
+        assert daemon.encode(["q"], st, 2.0) == [[1.0, 0.0]]
+        with pytest.raises(daemon.IdentityMismatch):
+            daemon.encode(["q"], st, 2.0, expect={**ident, "embed_dim": 1024})
+    finally:
+        stop.set()
+        t.join(5)
+
+
+def test_spawn_flag_returns_at_once_and_issues_one_start(tmp_path, monkeypatch):
+    calls = []
+    monkeypatch.setattr(daemon, "spawn", lambda sd: calls.append(sd) or True)
+    assert daemon.main(["--spawn", "--state-dir", str(tmp_path)]) == 0
+    assert calls == [tmp_path]

@@ -124,10 +124,14 @@ def test_on_never_reorders_or_drops_rows(db, monkeypatch):
     assert on.abstain is True and ids(on) == ids(off) and on.scores == off.scores
 
 
-def test_no_rerank_gives_none_and_false(db, monkeypatch):
+def test_no_rerank_gives_the_dense_confidence_and_never_abstains_without_a_floor(db, monkeypatch):
+    """Since 2026-10-10 a search without the reranker reports the top dense cosine as its confidence (confidence_source "dense"),
+    so abstention works with the reranker off. With GESTALT_ABSTAIN_DENSE_MIN unset it never abstains: there is no built-in floor."""
     monkeypatch.setenv("GESTALT_ABSTAIN", "on")
+    monkeypatch.delenv("GESTALT_ABSTAIN_DENSE_MIN", raising=False)
     got = search(db, limit=5, rerank=False)
-    assert got.rows and got.confidence is None and got.abstain is False
+    assert got.rows and got.abstain is False
+    assert got.confidence is None or (got.confidence_source == "dense" and got.confidence == got.dense_top)
 
 
 def test_a_rerank_fallback_gives_none_and_false(db, monkeypatch):

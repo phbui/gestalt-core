@@ -1,0 +1,71 @@
+# Wave 3, 2026-10-10: the pipeline shape around stella_en_400M_v5, the candidate that scores highest. On FiQA and NFCorpus stella
+# alone (0.5534, 0.4140) beat its own BM25-RRF-reranked pipeline (0.4842, 0.3973), so the shipped shape, tuned around nomic, is
+# tested here with stella in every position: alone, straight into the reranker, fused with a low BM25 weight, and blended.
+# The baseline rows are stella alone and the shipped pipeline. Pinned as in zoo-candidates.yaml.
+systems:
+  bm25:
+    adapter: bm25
+
+  nomic:
+    adapter: dense_hf
+    args:
+      model: nomic-ai/nomic-embed-text-v1.5
+      revision: e9b6763023c676ca8431644204f50c2b100d9aab
+      trust_remote_code: true
+      doc_prefix: "search_document: "
+      query_prefix: "search_query: "
+      dtype: float16
+      licence: apache-2.0
+
+  stella-400m:
+    adapter: dense_hf
+    args:
+      model: NovaSearch/stella_en_400M_v5
+      revision: ffeb2b7ee715c226d4ffe5e4619f7dbb48624c20
+      trust_remote_code: true
+      config_kwargs: {use_memory_efficient_attention: false, unpad_inputs: false}
+      query_prefix: "Instruct: Given a web search query, retrieve relevant passages that answer the query.\nQuery: "
+      max_seq_length: 512
+      normalize: true
+      dtype: float16
+      licence: mit
+
+  nomic-bm25-rrf:
+    adapter: fused
+    args: {a: bm25, b: nomic, fusion: rrf}
+  stella-400m-bm25-rrf:
+    adapter: fused
+    args: {a: bm25, b: stella-400m, fusion: rrf}
+  # convex puts alpha on the lexical leg (part a); 0.2 and 0.1 keep BM25 as a minor vote
+  stella-400m-bm25-convex0.2:
+    adapter: fused
+    args: {a: bm25, b: stella-400m, fusion: convex, alpha: 0.2}
+  stella-400m-bm25-convex0.1:
+    adapter: fused
+    args: {a: bm25, b: stella-400m, fusion: convex, alpha: 0.1}
+
+  # the shipped pipeline, for the pair tests
+  nomic-bm25-rrf-rerank-qwen3-0.6b:
+    adapter: rerank
+    args: {inner: nomic-bm25-rrf, model: qwen3-0.6b, depth: 40}
+  # stella straight into the reranker, no BM25
+  stella-400m-rerank-qwen3-0.6b:
+    adapter: rerank
+    args: {inner: stella-400m, model: qwen3-0.6b, depth: 40}
+  stella-400m-rerank-qwen3-0.6b-d20:
+    adapter: rerank
+    args: {inner: stella-400m, model: qwen3-0.6b, depth: 20}
+  stella-400m-rerank-qwen3-0.6b-blend0.5:
+    adapter: rerank
+    args: {inner: stella-400m, model: qwen3-0.6b, depth: 40, blend: 0.5}
+  # stella with a minor BM25 vote, then the reranker
+  stella-400m-bm25-convex0.2-rerank-qwen3-0.6b:
+    adapter: rerank
+    args: {inner: stella-400m-bm25-convex0.2, model: qwen3-0.6b, depth: 40}
+  # the wave-1 shape with the reranker's verdict blended against the fused order
+  stella-400m-bm25-rrf-rerank-qwen3-0.6b:
+    adapter: rerank
+    args: {inner: stella-400m-bm25-rrf, model: qwen3-0.6b, depth: 40}
+  stella-400m-bm25-rrf-rerank-qwen3-0.6b-blend0.5:
+    adapter: rerank
+    args: {inner: stella-400m-bm25-rrf, model: qwen3-0.6b, depth: 40, blend: 0.5}

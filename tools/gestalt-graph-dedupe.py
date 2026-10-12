@@ -59,10 +59,16 @@ def query_scalar(cypher: str) -> str:
 def queue_is_flat(window_min: int = 5) -> tuple[bool, str]:
     """Flat means graphiti issued no completions recently. Checked over a window longer than
     a typical episode so a mid-episode lull is not mistaken for an idle queue."""
-    out = subprocess.run(["docker", "logs", "gestalt-graphiti", "--since", f"{window_min}m"],
-                         capture_output=True, text=True, timeout=60)
+    # --tail, not --since: a forward read stops at the first torn frame and returns nothing, which read as FLAT (the drain runner
+    # saw this on 2026-09-01). A docker failure is not flat either; it is unknown, and unknown never authorises a delete (2026-10-11).
+    try:
+        out = subprocess.run(["docker", "logs", "gestalt-graphiti", "--tail", "4000"], capture_output=True, text=True, timeout=60)
+    except (OSError, subprocess.TimeoutExpired) as e:
+        return False, f"docker logs did not answer ({type(e).__name__}); the queue state is unknown"
+    if out.returncode != 0:
+        return False, f"docker logs exited {out.returncode}; the queue state is unknown"
     hits = (out.stdout + out.stderr).replace("\x00", "").count("chat/completions")
-    return hits == 0, f"{hits} completions in the last {window_min}m"
+    return hits == 0, f"{hits} completions in the last {len((out.stdout + out.stderr).splitlines())} log lines"
 
 
 def count_episodes() -> int:

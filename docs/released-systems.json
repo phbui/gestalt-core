@@ -96,15 +96,15 @@
   "in_table": false
  },
  {
-  "name": "gestalt hybrid + Qwen3-Reranker-0.6B",
+  "name": "gestalt dense + Qwen3-Reranker-0.6B",
   "open": true,
-  "params_m": 737,
-  "scifact": 0.7748,
-  "nfcorpus": 0.382,
-  "cost": "137M + 0.6B, 1.5 GB fp16, one laptop GPU",
-  "licence": "Apache-2.0",
+  "params_m": 1035,
+  "scifact": 0.7936,
+  "nfcorpus": 0.4217,
+  "cost": "435M + 0.6B, about 2 GB fp16, one laptop GPU",
+  "licence": "MIT + Apache-2.0",
   "note": "measured here",
-  "short": "gestalt hybrid + reranker",
+  "short": "gestalt dense + reranker",
   "in_table": true
  },
  {
@@ -180,15 +180,15 @@
   "in_table": false
  },
  {
-  "name": "gestalt hybrid",
+  "name": "gestalt dense leg, stella_en_400M_v5 served here",
   "open": true,
-  "params_m": 137,
-  "scifact": 0.7373,
-  "nfcorpus": 0.3606,
-  "cost": "137M, 0.3 GB fp16, runs on a CPU",
-  "licence": "Apache-2.0",
+  "params_m": 435,
+  "scifact": 0.7796,
+  "nfcorpus": 0.4142,
+  "cost": "435M, 0.9 GB fp16, runs on a CPU",
+  "licence": "MIT",
   "note": "measured here",
-  "short": "gestalt hybrid",
+  "short": "gestalt dense leg (stella)",
   "in_table": true
  },
  {
@@ -264,7 +264,7 @@
   "in_table": false
  },
  {
-  "name": "nomic-embed-text-v1.5, gestalt's dense leg alone",
+  "name": "nomic-embed-text-v1.5",
   "open": true,
   "params_m": 137,
   "scifact": 0.7028,
@@ -272,7 +272,7 @@
   "cost": "137M, 0.3 GB fp16",
   "licence": "Apache-2.0",
   "note": "MTEB's run of the same model with cosine ranking",
-  "short": "nomic v1.5 (gestalt's embedder)",
+  "short": "nomic v1.5",
   "in_table": true
  },
  {

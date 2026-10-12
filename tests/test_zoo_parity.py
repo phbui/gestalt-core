@@ -69,6 +69,7 @@ def both(monkeypatch, tmp_path):
     docs, queries, qrels = corpus()
     monkeypatch.setitem(sys.modules, "ir_datasets", make_fake_ir_datasets(docs, queries, qrels))
     monkeypatch.delenv("GESTALT_FUSION", raising=False)
+    monkeypatch.setenv("GESTALT_EMBED_PROFILE", "nomic")  # the parity is of the classic RRF pipeline over raw vectors; the default profile fuses convex since 2026-10-11
     enc = Raw()
     monkeypatch.setattr(dense_hf, "load_model", lambda *a, **k: enc)
     monkeypatch.setattr(bb.harness, "_model", enc)

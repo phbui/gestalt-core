@@ -171,6 +171,7 @@ class Deps:
     http_post: Callable[[str, dict, float], dict]             # (url, json payload, timeout) -> json reply
     clock: Callable[[], float] = time.perf_counter
     search_fts: Callable[[str, int], list] | None = None      # (query, limit) -> gestalt_search_fts rows, the hook path
+    graphiti_health: Callable[[str, float], bool] | None = None  # (url, timeout) -> True when Graphiti answers; None skips the probe (tests)
 
 
 _MODULES: dict[str, object] = {}
@@ -210,6 +211,16 @@ def _real_graphiti(prompt: str, url: str, timeout: float, limit: int) -> list:
     return asyncio.run(hook().retrieve_graphiti(prompt, url, timeout, limit))
 
 
+def _real_graphiti_health(url: str, timeout: float) -> bool:
+    """True when Graphiti's /health answers 200. The hook returns no facts on any failure, so without this probe a dead Graphiti
+    scored as "no context" and was judged (2026-10-11)."""
+    try:
+        with urllib.request.urlopen(f"{url.rstrip('/')}/health", timeout=timeout) as resp:
+            return resp.status == 200
+    except Exception:
+        return False
+
+
 def _real_run_claude(argv: list, prompt: str, timeout: float) -> str:
     proc = subprocess.run(argv, input=prompt, capture_output=True, text=True, timeout=timeout)
     if proc.returncode != 0:
@@ -225,7 +236,7 @@ def _real_http_post(url: str, payload: dict, timeout: float) -> dict:
 
 def default_deps() -> Deps:
     return Deps(search=_real_search, graphiti=_real_graphiti, run_claude=_real_run_claude, http_post=_real_http_post,
-                search_fts=_real_search_fts)
+                search_fts=_real_search_fts, graphiti_health=_real_graphiti_health)
 
 
 # ----------------------------------------------------------------------------- contexts
@@ -318,6 +329,9 @@ def context_is_current(row: dict | None, retriever: str, budget: int, case_hash:
 
 def cmd_contexts(args, deps: Deps) -> int:
     cases = load_cases(args.cases)
+    if deps.graphiti_health is not None and any(a in ("A2", "A3") for a in args.arms):
+        if not deps.graphiti_health(args.graphiti_url, args.graphiti_timeout):
+            raise SystemExit("refusing to build contexts: graphiti is not healthy, and an empty graph context would be cached and judged as an answer")
     path = args.out / "contexts.jsonl"
     rows = read_jsonl(path)
     for c in cases:
@@ -749,6 +763,18 @@ def format_report(rep: dict) -> str:
     return "\n".join(out)
 
 
+def require_complete(cases: list[dict], answers: list[dict], reps: int) -> None:
+    """Every case must hold every arm present in the answers for every rep below `reps`, else the report refuses.
+
+    A run that died halfway used to yield a verdict over whatever rows existed (2026-10-11)."""
+    arms = sorted({r["arm"] for r in answers})
+    expected = {(c["id"], a, r) for c in cases for a in arms for r in range(reps)}
+    have = {(r["id"], r["arm"], r["rep"]) for r in answers if r["rep"] < reps}
+    missing = sorted(expected - have)
+    if missing:
+        raise SystemExit(f"refusing to report: {len(missing)} missing cell(s) of the case x arm x rep grid, first {missing[:3]}")
+
+
 def cmd_report(args, deps: Deps) -> int:
     cases = load_cases(args.cases)
     require_gold(cases)
@@ -762,6 +788,7 @@ def cmd_report(args, deps: Deps) -> int:
     stale_sha = [r for r in answers if r["judge"]["judge_prompt_sha"] != judge_prompt_sha()]
     if stale_sha:
         raise SystemExit(f"refusing to report: {len(stale_sha)} row(s) were judged under another judge_prompt_sha")
+    require_complete(cases, answers, args.reps)
     cal = json.loads((args.out / "calibration.json").read_text())
     rep = build_report(cases, answers, args.reps, cal.get("judge_model"), args.answerer)
     if len(rep["retrievers"]) > 1:

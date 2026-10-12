@@ -69,9 +69,10 @@ def test_a_vector_narrower_than_the_width_is_an_error(ec, monkeypatch):
 
 
 def test_env_width_is_validated(monkeypatch, capsys):
-    assert fresh_config(monkeypatch, GESTALT_EMBED_DIM="256").EMBED_DIM == 256
-    assert fresh_config(monkeypatch).EMBED_DIM == 768
-    bad = fresh_config(monkeypatch, GESTALT_EMBED_DIM="100")
+    assert fresh_config(monkeypatch).EMBED_DIM == 1024  # the default, stella
+    assert fresh_config(monkeypatch, GESTALT_EMBED_PROFILE="nomic", GESTALT_EMBED_DIM="256").EMBED_DIM == 256
+    assert fresh_config(monkeypatch, GESTALT_EMBED_PROFILE="nomic").EMBED_DIM == 768
+    bad = fresh_config(monkeypatch, GESTALT_EMBED_PROFILE="nomic", GESTALT_EMBED_DIM="100")
     assert bad.EMBED_DIM == 768 and "not a Matryoshka width" in capsys.readouterr().err
     assert fresh_config(monkeypatch, GESTALT_EMBED_PROFILE="qwen3-4b", GESTALT_EMBED_DIM="1024").EMBED_DIM == 1024
 
@@ -86,7 +87,9 @@ def test_qwen_width_skips_layer_norm(monkeypatch):
 def test_cache_key_is_salted_with_the_width(indexer, ec, monkeypatch):
     monkeypatch.setattr(ec, "EMBED_DIM", ec.FULL_DIM)
     assert indexer.cache_salt(False, None) == ""
-    assert indexer.chunk_hash("t") == hashlib.sha256(f"{indexer.MODEL_NAME}\x00t".encode()).hexdigest()
+    import gestalt_embed_config as ec  # since 2026-10-11 the unsalted key carries the revision, normalisation and dtype on purpose
+    ident = f"{indexer.MODEL_NAME}\x00rev={indexer.MODEL_REVISION or ''}\x00norm={int(bool(ec.EMBED_NORMALIZE))}\x00dtype={ec.EMBED_DTYPE}"
+    assert indexer.chunk_hash("t") == hashlib.sha256(f"{ident}\x00t".encode()).hexdigest()
     monkeypatch.setattr(ec, "EMBED_DIM", 256)
     assert indexer.cache_salt(False, None) == "dim=256"
     assert indexer.chunk_hash("t", indexer.cache_salt(False, None)) != indexer.chunk_hash("t")

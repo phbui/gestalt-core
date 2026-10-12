@@ -174,3 +174,17 @@ def test_the_shim_accepts_the_nomic_profile(shim, monkeypatch):
 
 def test_the_shim_reports_the_configured_model(shim):
     assert shim.MODEL_NAME == shim.ec.MODEL_NAME
+
+
+def test_the_shim_pins_nomic_even_under_a_global_stella_profile(monkeypatch):
+    """The search index may move to stella; Graphiti's vectors are nomic, so the shim must not follow a global profile switch."""
+    import importlib.util
+
+    monkeypatch.setenv("GESTALT_EMBED_PROFILE", "stella-400m")
+    # Load the shim against a fresh config module, then put the shared one back: other tests patch the module object the builder holds.
+    monkeypatch.delitem(sys.modules, "gestalt_embed_config", raising=False)
+    spec = importlib.util.spec_from_file_location("shim_pinned", Path(__file__).resolve().parent.parent / "tools" / "embedding-shim.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    assert mod.ec.PROFILE == "nomic" and mod.MODEL_NAME == "nomic-ai/nomic-embed-text-v1.5"
+    mod.require_nomic()

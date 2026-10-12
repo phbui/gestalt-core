@@ -41,13 +41,13 @@ except ImportError:  # a lone copy of this file: the freshness columns are creat
 try:
     import gestalt_embed_config as _ec
 except ImportError:  # a lone copy of this file (a test fixture, a stale install): behave as before X14, unpinned
-    class _ec:
-        PROFILE = "nomic"
-        MODEL_NAME = "nomic-ai/nomic-embed-text-v1.5"
-        MODEL_REVISION = None
-        EMBED_DIM = FULL_DIM = 768
-        DOC_PREFIX = "search_document: "
-        QUERY_PREFIX = "search_query: "
+    class _ec:  # the shipped default since 2026-10-11, stella_en_400M_v5, so a lone copy embeds the same way
+        PROFILE = "stella-400m"
+        MODEL_NAME = "NovaSearch/stella_en_400M_v5"
+        MODEL_REVISION = "ffeb2b7ee715c226d4ffe5e4619f7dbb48624c20"
+        EMBED_DIM = FULL_DIM = 1024
+        DOC_PREFIX = ""
+        QUERY_PREFIX = "Instruct: Given a web search query, retrieve relevant passages that answer the query.\nQuery: "
         TRUST_REMOTE_CODE = True
         MODEL_KWARGS: dict = {}
         TOKENIZER_KWARGS: dict = {}
@@ -252,6 +252,15 @@ def _index_meta_stale(expect_vectors: bool) -> bool:
     if not expect_vectors:
         return False
     if meta.get("embed_profile", _ec.PROFILE) != _ec.PROFILE or meta.get("embed_dim", str(_ec.EMBED_DIM)) != str(_ec.EMBED_DIM):
+        return True
+    # the model identity the builder writes: a bumped revision or a changed prefix moves no mtime (2026-10-11)
+    for key, want in (("model_name", MODEL_NAME), ("model_revision", MODEL_REVISION or ""), ("doc_prefix", DOC_PREFIX), ("query_prefix", QUERY_PREFIX)):
+        if key in meta and meta[key] != want:
+            return True
+    want_norm = "1" if getattr(_ec, "EMBED_NORMALIZE", False) else "0"
+    if "embed_normalize" in meta and meta["embed_normalize"] != want_norm:  # unit against raw vectors: another space (2026-10-11)
+        return True
+    if "embed_dtype" in meta and meta["embed_dtype"] != str(getattr(_ec, "EMBED_DTYPE", "float32")):
         return True
     pooling = "late" if _late_chunking_on() else "standard"
     if "pooling" in meta and meta["pooling"] != pooling:
@@ -531,9 +540,9 @@ def parse_entry(path: Path) -> list[dict]:
     # Strip YAML frontmatter
     if text.startswith("---"):
         try:
-            end = text.index("---", 3)
+            end = text.index("\n---", 3)  # the closing fence is a line of its own; "---" inside a value does not end the frontmatter (2026-10-11)
             title = _frontmatter_title(text[3:end])
-            text = text[end + 3 :].strip()
+            text = text[end + 4 :].strip()
         except ValueError:
             pass
     if not title and path.parent.name != "rules":
@@ -568,10 +577,10 @@ def parse_entry(path: Path) -> list[dict]:
                     )
             # Start new chunk
             heading_text = line.lstrip("# ").strip()
-            if "^" in heading_text:
-                parts = heading_text.split("^")
-                current_heading = parts[0].strip()
-                current_block_id = parts[1].strip()
+            anchor = re.match(r"^(.*?)\s+\^(\S+)$", heading_text)  # only a trailing ` ^id` is an anchor; `E=mc^2` stays in the heading (2026-10-11)
+            if anchor:
+                current_heading = anchor.group(1).strip()
+                current_block_id = anchor.group(2)
             else:
                 current_heading = heading_text
                 current_block_id = (
@@ -781,7 +790,10 @@ def _split_oversized(chunks: list[dict]) -> list[dict]:
             # `[[wikilink]]`, so the wikilink-stripping in
             # _anchor_paragraph_groups does not catch it) gets suffixed to
             # "hemingway-target-2" instead of colliding with the real one.
-            used_ids[c["block_id"]] = used_ids.get(c["block_id"], 0) + 1
+            n = used_ids.get(c["block_id"], 0) + 1
+            used_ids[c["block_id"]] = n
+            if n > 1:  # a second section with the same heading had the same id, so [[slug#^id]] reached only the first (2026-10-11)
+                c = {**c, "block_id": f"{c['block_id']}-{n}"}
             out.append(c)
             continue
 
@@ -847,6 +859,7 @@ def build_index(force_fts_only: bool = False):
                 f"Missing dependency: {e.name or e} — install: pip install sqlite-vec "
                 "sentence-transformers — continuing FTS-only (vector search disabled)."
             )
+            refuse_vector_downgrade()
 
     SEARCH_DIR.mkdir(parents=True, exist_ok=True)
     lock_file = open(LOCK_PATH, "w")
@@ -949,6 +962,15 @@ def index_skills(db, model=None) -> int:
     return n
 
 
+def refuse_vector_downgrade() -> None:
+    """Stop a build that would replace a live vector index with an FTS-only one because a dependency is missing.
+
+    Until 2026-10-11 the build continued, published over the vector index and exited 0, so the hub served full text until someone
+    noticed. A deliberate --fts-only build never reaches this, and a fresh or already FTS-only index is left to the old behaviour."""
+    if DB_PATH.exists() and not _vector_leg_missing():
+        raise SystemExit(3, f"{DB_PATH} carries vectors and this python lacks the embedding dependencies; refusing to replace it with an FTS-only index. Run under the gestalt venv or pass --fts-only on purpose.")
+
+
 def load_embedding_cache(sqlite_vec) -> dict[str, bytes]:
     """Map content_hash -> embedding bytes from the CURRENT live index.
 
@@ -996,9 +1018,12 @@ def chunk_hash(t: str, salt: str = "") -> str:
     With no salt it is sha256(model name, NUL, text), the key this builder has always used. A salt is added only
     when the vector depends on something the text does not carry: a Matryoshka width or late-chunking pooling
     plus the sha of the whole document. Default builds therefore keep every cached vector."""
+    # Since 2026-10-11 the key also carries the pinned revision, the normalisation and the dtype: a rebuild under another of them
+    # must not reuse the old index's vectors (a NORMALIZE flip did, and the new index was then stamped as normalised).
+    ident = f"{MODEL_NAME}\x00rev={MODEL_REVISION or ''}\x00norm={int(bool(getattr(_ec, 'EMBED_NORMALIZE', False)))}\x00dtype={getattr(_ec, 'EMBED_DTYPE', 'float32')}"
     if salt:
-        return hashlib.sha256(f"{MODEL_NAME}\x00{salt}\x00{t}".encode("utf-8")).hexdigest()  # noqa: UP012  the explicit encoding is part of the cache-key contract a test pins
-    return hashlib.sha256(f"{MODEL_NAME}\x00{t}".encode("utf-8")).hexdigest()  # noqa: UP012
+        return hashlib.sha256(f"{ident}\x00{salt}\x00{t}".encode("utf-8")).hexdigest()  # noqa: UP012  the explicit encoding is part of the cache-key contract a test pins
+    return hashlib.sha256(f"{ident}\x00{t}".encode("utf-8")).hexdigest()  # noqa: UP012
 
 
 def cache_salt(late: bool, doc_sha: str | None, fallback: bool = False) -> str:
@@ -1029,6 +1054,8 @@ def model_init_kwargs() -> dict:
         kw["model_kwargs"] = dict(_ec.MODEL_KWARGS)
     if _ec.TOKENIZER_KWARGS:
         kw["tokenizer_kwargs"] = dict(_ec.TOKENIZER_KWARGS)
+    if getattr(_ec, "CONFIG_KWARGS", None):
+        kw["config_kwargs"] = dict(_ec.CONFIG_KWARGS)
     return kw
 
 
@@ -1156,7 +1183,7 @@ def _wait_for_gpu_quiet(n_chunks: int) -> None:
         return
     if not shutil.which("nvidia-smi"):
         return
-    deadline = time.time() + int(os.environ.get("GESTALT_GPU_WAIT_S", "900"))
+    deadline = time.time() + int(os.environ.get("GESTALT_GPU_WAIT_S") or 900)
     quiet_streak = 0
     warned = False
     while time.time() < deadline:
@@ -1250,6 +1277,9 @@ def write_index_meta(db, vec_available: bool, pooling: str = "standard") -> None
             "model_revision": MODEL_REVISION or "",
             "doc_prefix": DOC_PREFIX,
             "query_prefix": QUERY_PREFIX,
+            # unit against raw vectors, and the weights' dtype: two indexes of one model can still differ in both (2026-10-11)
+            "embed_normalize": "1" if getattr(_ec, "EMBED_NORMALIZE", False) else "0",
+            "embed_dtype": str(getattr(_ec, "EMBED_DTYPE", "float32")),
             "pooling": pooling,
             **({"normalized": "1"} if pooling == "late" else {}),
             "built_at": str(int(time.time())),
@@ -1386,7 +1416,11 @@ def _load_embedding_model(SentenceTransformer, n_chunks):
     _wait_for_gpu_quiet(n_chunks)
     device = os.environ.get("GESTALT_EMBED_DEVICE", "").strip() or "auto"
     print(f"Loading model: {MODEL_NAME} (profile={_ec.PROFILE} dim={_ec.EMBED_DIM} device={device})")
+    if hasattr(_ec, "before_load"):
+        _ec.before_load()
     model = SentenceTransformer(MODEL_NAME, **model_init_kwargs())
+    if hasattr(_ec, "after_load"):
+        _ec.after_load(model)
     # The GPU duty cycle (GESTALT_GPU_DUTY, gestalt_rank.throttle_calls) paces sustained embedding the same way it paces the
     # reranker. A build is minutes of draw at the card's ceiling, which is what trips the firmware clamp (2026-10-08: the
     # seventh clamp of the day hit seven minutes into the late-chunking build). A no-op at the default duty of 1.0.
@@ -1689,7 +1723,7 @@ def report_graphiti_entries(db_mtime_before: float | None):
 def _fleet_env(key: str) -> str:
     """One variable from the environment, else from ~/.fleet/fleet.env (hooks source it; a manual run does not)."""
     v = os.environ.get(key)
-    if v is not None:
+    if v:  # an exported but empty variable is unset, so the fleet.env value still applies (2026-10-11)
         return v
     try:
         for line in Path("~/.fleet/fleet.env").expanduser().read_text().splitlines():

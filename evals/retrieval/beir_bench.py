@@ -2,7 +2,7 @@
 """Score gestalt's retrieval stack on public BEIR datasets.
 
 The corpus is stored by bench_engine.py: a file-backed, contentless FTS5 table (porter unicode61 tokenizer, the columns of build_db below)
-and float32 embedding blocks of EMBED_DIM floats (768 for the default nomic profile). Dense search uses sqlite-vec up to 300,000 documents
+and float32 embedding blocks of EMBED_DIM floats (1024 for the default stella-400m profile, 768 for nomic). Dense search uses sqlite-vec up to 300,000 documents
 and exact blocked search above. The query builder (gestalt_rank.fts_match) and the leg depths (gestalt_rank.pool_size) are gestalt's own.
 The fusion is NOT a call into gestalt_rank.hybrid_search. bench_engine.fuse_pools calls gestalt_rank.fuse, the fusion step the server runs,
 whose arithmetic lives in evals/retrieval/fusion.py. hybrid is reciprocal rank fusion at K=60 unless --fusion says otherwise. tests/test_beir_bench.py
@@ -270,7 +270,7 @@ def default_work_dir(out: Path) -> Path:
 def dataset_key(name: str, limit_docs: int | None, max_docs: int | None, profile: str | None = None) -> str:
     """The work subdirectory of one dataset under one subset setting and one embedding profile.
 
-    A capped corpus is another corpus. So is a corpus embedded by another profile: the nomic default keeps the bare name, and any
+    A capped corpus is another corpus. So is a corpus embedded by another profile: the nomic profile keeps the bare name it had as the default, and any
     other profile gets its own directory, so two profiles under one --work-dir never collide. On 2026-10-08 the 4B runs shared the
     nomic work directory and were refused for a fingerprint mismatch twice before anyone pointed --work-dir elsewhere."""
     profile = ec.PROFILE if profile is None else profile
@@ -537,6 +537,15 @@ def run_cqadupstack(out: Path, limit_docs: int | None, batch_size: int, model, r
     return result
 
 
+def rerank_spec(model: str | None, depth: int | None) -> dict:
+    """The reranker the bench runs: the flags when given, else the knobs the served path reads (environment, then embed profile).
+
+    Until 2026-10-11 the flag defaults were the raw environment or "bge" and 40, so a stella run with no flags reranked with bge while
+    tools/gestalt_rank.hybrid_search used the profile's qwen3-0.6b."""
+    import gestalt_rank
+    return {"model": model or gestalt_rank.rerank_alias(), "depth": depth or gestalt_rank.rerank_depth()}
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--datasets", nargs="+", default=["beir/scifact", "beir/nfcorpus"])
@@ -549,8 +558,8 @@ def main() -> int:
     ap.add_argument("--embed-profile", choices=sorted(ec.PROFILES), default=None,
                     help="embedding profile (read before the imports above, so it applies to the whole run)")
     ap.add_argument("--rerank", choices=["off", "on"], default="off", help="add the hybrid_rerank system (needs tools/gestalt_rank.py)")
-    ap.add_argument("--rerank-model", default=os.environ.get("GESTALT_RERANK_MODEL", "bge"), help="reranker alias: bge, qwen3-4b or qwen3-0.6b")
-    ap.add_argument("--rerank-depth", type=int, default=40, help="hybrid hits handed to the reranker")
+    ap.add_argument("--rerank-model", default=None, help="reranker alias: bge, qwen3-4b or qwen3-0.6b. Default: GESTALT_RERANK_MODEL, else the embed profile's reranker")
+    ap.add_argument("--rerank-depth", type=int, default=None, help="hybrid hits handed to the reranker. Default: GESTALT_RERANK_DEPTH, else the profile's depth, else 40")
     ap.add_argument("--fusion", choices=["rrf", "convex"], default=None, help="hybrid fusion (sets GESTALT_FUSION)")
     ap.add_argument("--alpha", type=float, default=None, help="convex fusion weight on the lexical leg (sets GESTALT_FUSION_ALPHA)")
     ap.add_argument("--fusion-grid", nargs="+", default=None, metavar="SPEC",
@@ -568,9 +577,9 @@ def main() -> int:
     args = ap.parse_args()
     if args.embed_profile and args.embed_profile != ec.PROFILE:
         raise SystemExit(f"--embed-profile {args.embed_profile} did not take effect (module loaded profile {ec.PROFILE})")
-    rerank = {"model": args.rerank_model, "depth": args.rerank_depth} if args.rerank == "on" else None
     grid = parse_fusion_grid(args.fusion_grid)
     import gestalt_rank  # fail now, not after an hour of embedding; the engine and the environment record need it with or without a reranker
+    rerank = rerank_spec(args.rerank_model, args.rerank_depth) if args.rerank == "on" else None
 
     print(f"beir_bench: profile={ec.PROFILE} dim={ec.EMBED_DIM} rerank={args.rerank} fusion={gestalt_rank.fusion_settings()['method']}", file=sys.stderr)
     engine.cap_gpu_memory()

@@ -859,3 +859,26 @@ def test_a_small_n_cannot_lower_the_calibration_gate(e2e, tmp_path):
     rc = e2e.main(["--cases", str(cases), "--out", str(out), "calibrate", "--labels", str(labels), "--n", "1"], Spy(e2e).deps)
     cal = json.loads((out / "calibration.json").read_text())
     assert rc == 1 and cal["n"] == 1 and cal["passed"] is False, "one perfect label must not pass at --n 1"
+
+
+# ----------------------------------------------------------------------------- 2026-10-11 line review
+
+
+def test_contexts_refuse_to_run_the_graphiti_arms_when_graphiti_is_down(e2e, tmp_path):
+    """A dead Graphiti used to return no facts, the empty context was cached and judged, and the verdict read DEMOTE from an outage."""
+    cases = _write_cases(tmp_path, CASES[:1])
+    spy = Spy(e2e, ROWS, FACTS)
+    deps = e2e.Deps(**{**vars(spy.deps), "graphiti_health": lambda url, timeout: False})
+    out = tmp_path / "out"
+    with pytest.raises(SystemExit, match="graphiti"):
+        e2e.main(["--cases", str(cases), "--out", str(out), "contexts", "--arms", "A0,A2"], deps)
+    assert not (out / "contexts.jsonl").exists() or not [r for r in e2e.read_jsonl(out / "contexts.jsonl") if r["arm"] == "A2"]
+    assert e2e.main(["--cases", str(cases), "--out", str(out), "contexts", "--arms", "A0,A1"], deps) == 0  # arms without Graphiti do not ask
+
+
+def test_a_report_refuses_a_grid_with_a_missing_cell(e2e):
+    cases = [{"id": "t1"}, {"id": "k1"}]
+    full = [{"id": c, "arm": a, "rep": r} for c in ("t1", "k1") for a in ("A1", "A3") for r in range(2)]
+    e2e.require_complete(cases, full, reps=2)  # complete: no error
+    with pytest.raises(SystemExit, match="missing"):
+        e2e.require_complete(cases, full[:-1], reps=2)

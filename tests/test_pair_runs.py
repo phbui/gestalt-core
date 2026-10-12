@@ -98,3 +98,24 @@ def test_scores_recomputed_from_run_files_when_json_has_none(tmp_path, monkeypat
     res = json.loads(out.read_text())
     assert code == 0 and res["score_source"] == {"a": "run-files", "b": "run-files"}
     assert res["mean_a"] == 1.0 and res["mean_b"] == 0.5
+
+
+def test_identity_records_the_blend_and_the_fusion_so_two_shapes_of_one_model_do_not_look_alike():
+    """2026-10-11 audit: runs that differed only in GESTALT_RERANK_BLEND or the fusion printed identical identities."""
+    r = {"model": {"embed_profile": "stella-400m"},
+         "query_log_header": {"fusion": "convex", "alpha": 0.0, "fusion_params": {"norm": "tmin"},
+                              "rerank": {"model": "qwen3-0.6b", "depth": 40, "blend": 0.5}}}
+    ident = pr.identity(r)
+    assert ident["rerank_blend"] == 0.5 and ident["fusion"] == "convex" and ident["fusion_alpha"] == 0.0 and ident["fusion_norm"] == "tmin"
+    assert pr.identity({**r, "query_log_header": {**r["query_log_header"], "rerank": {"model": "qwen3-0.6b", "depth": 40}}}) != ident
+
+
+def test_queries_are_paired_by_id_not_by_position(tmp_path):
+    """2026-10-11 review: the missing-query test removed only trailing ids, so a positional zip would have passed it."""
+    ids = [f"q{i}" for i in range(10)]
+    scores = {q: 0.1 * i for i, q in enumerate(ids)}
+    a = result([scores[q] for q in ids], ids=ids)
+    perm = list(reversed(ids))
+    b = result([scores[q] for q in perm], ids=perm)
+    out = pr.pair(write(tmp_path, "a.json", a), write(tmp_path, "b.json", b), "dense", "dense")
+    assert out["paired_queries"] == 10 and out["mean_difference"] == 0.0 and out["dropped_from_a"] == 0 == out["dropped_from_b"]

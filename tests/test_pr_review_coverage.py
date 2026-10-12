@@ -164,7 +164,7 @@ def _summary():
                 "tests": {"hybrid_vs_bm25": {"mean_difference": 0.2, "p_value": 0.00001},
                           "hybrid_vs_dense": {"mean_difference": 0.1, "p_value": 0.03},
                           "rerank_vs_hybrid": {"mean_difference": 0.05, "p_value": 0.002}}}
-    return {"results": {"beir/scifact": dataset(0.5), "beir/nfcorpus": dataset(0.3)}}
+    return {"results": {"beir/scifact": dataset(0.5), "beir/nfcorpus": dataset(0.3), "beir/fiqa": dataset(0.2)}}  # three sets since 2026-10-12: a summary without FiQA stops the export
 
 
 def _export(tmp_path: Path, readme: str, bench: str = "plain text") -> Path:
@@ -190,6 +190,16 @@ def test_fill_results_replaces_tokens_from_the_summary(tmp_path):
     assert "0.400 [0.390, 0.410]" in bench
     assert "+0.100, p = 0.03" in bench
     assert "RESULT_" not in readme + bench
+
+
+def test_fill_results_stops_on_a_summary_that_lacks_a_published_set(tmp_path):
+    """The pages name three sets, so a summary with two must stop the export rather than ship a page with a token left in."""
+    dest = _export(tmp_path, "RESULT_SCIFACT_BM25_POINT")
+    s = json.loads((dest / "evals" / "retrieval" / "results" / "summary.json").read_text())
+    del s["results"]["beir/fiqa"]
+    (dest / "evals" / "retrieval" / "results" / "summary.json").write_text(json.dumps(s))
+    with pytest.raises(KeyError, match="beir/fiqa"):
+        pp.fill_results(dest)
 
 
 def test_fill_results_refuses_an_unknown_token(tmp_path):

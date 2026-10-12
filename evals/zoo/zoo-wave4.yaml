@@ -1,0 +1,96 @@
+# Wave 4, 2026-10-10 (knowledge/gestalt-improvement-plan-2026-10.md, Tier 1). Two questions over the stella first stage:
+#   rerankers: does any reranker add to stella once it cannot swap (211c9f6 fixed the silent 4B-to-bge swap) and is blended (wave 3)?
+#   embedders: do the 2026 encoders (harrier, pplx-embed) beat stella on the sets the 2026 leaderboard dropped?
+# The shipped pipeline and stella alone are the baseline rows for the pair tests. Every model is pinned.
+systems:
+  bm25:
+    adapter: bm25
+
+  nomic:
+    adapter: dense_hf
+    args:
+      model: nomic-ai/nomic-embed-text-v1.5
+      revision: e9b6763023c676ca8431644204f50c2b100d9aab
+      trust_remote_code: true
+      doc_prefix: "search_document: "
+      query_prefix: "search_query: "
+      dtype: float16
+      licence: apache-2.0
+
+  stella-400m:
+    adapter: dense_hf
+    args:
+      model: NovaSearch/stella_en_400M_v5
+      revision: ffeb2b7ee715c226d4ffe5e4619f7dbb48624c20
+      trust_remote_code: true
+      config_kwargs: {use_memory_efficient_attention: false, unpad_inputs: false}
+      query_prefix: "Instruct: Given a web search query, retrieve relevant passages that answer the query.\nQuery: "
+      max_seq_length: 512
+      normalize: true
+      dtype: float16
+      licence: mit
+
+  # 268M, MIT, Gemma3 backbone, last-token pooling from its sentence-transformers config, query instruction only.
+  harrier-270m:
+    adapter: dense_hf
+    args:
+      model: microsoft/harrier-oss-v1-270m
+      revision: 31de22b673913c7d658c0f03f792d77c2dcf8ebd
+      query_prefix: "Instruct: Given a web search query, retrieve relevant passages that answer the query\nQuery: "
+      normalize: true
+      dtype: bfloat16
+      licence: mit
+
+  # 596M, MIT, Qwen3 backbone, same recipe.
+  harrier-0.6b:
+    adapter: dense_hf
+    args:
+      model: microsoft/harrier-oss-v1-0.6b
+      revision: f9b9dc8d367d443f2479d27aa5d8d2850c0774ee
+      query_prefix: "Instruct: Given a web search query, retrieve relevant passages that answer the query\nQuery: "
+      normalize: true
+      dtype: bfloat16
+      licence: mit
+
+  # 596M, MIT, remote code in the pinned model repo, no prefixes, unnormalised output so cosine is applied here.
+  pplx-0.6b:
+    adapter: dense_hf
+    args:
+      model: perplexity-ai/pplx-embed-v1-0.6b
+      revision: 2c4d510dd4a732063c31a0f70193e35067b51fd8
+      trust_remote_code: true
+      normalize: true
+      dtype: bfloat16
+      licence: mit
+
+  nomic-bm25-rrf:
+    adapter: fused
+    args: {a: bm25, b: nomic, fusion: rrf}
+
+  # the shipped pipeline, for the pair tests
+  nomic-bm25-rrf-rerank-qwen3-0.6b:
+    adapter: rerank
+    args: {inner: nomic-bm25-rrf, model: qwen3-0.6b, depth: 40}
+
+  # rerankers over stella alone, blended 0.5 (the wave-3 SciFact winner) and, for the strongest, also replacing the order
+  stella-rr-qwen3-0.6b-b05:
+    adapter: rerank
+    args: {inner: stella-400m, model: qwen3-0.6b, depth: 40, blend: 0.5}
+  stella-rr-qwen3-4b-d20-b05:
+    adapter: rerank
+    args: {inner: stella-400m, model: qwen3-4b, depth: 20, blend: 0.5}
+  stella-rr-qwen3-4b-d20:
+    adapter: rerank
+    args: {inner: stella-400m, model: qwen3-4b, depth: 20}
+  stella-rr-mxbai-large-v2-d20-b05:
+    adapter: rerank
+    args: {inner: stella-400m, model: mxbai-large-v2, depth: 20, blend: 0.5}
+  stella-rr-mxbai-base-v2-d40-b05:
+    adapter: rerank
+    args: {inner: stella-400m, model: mxbai-base-v2, depth: 40, blend: 0.5}
+  stella-rr-ettin-150m-d40-b05:
+    adapter: rerank
+    args: {inner: stella-400m, model: ettin-150m, depth: 40, blend: 0.5}
+  stella-rr-ettin-150m-d40:
+    adapter: rerank
+    args: {inner: stella-400m, model: ettin-150m, depth: 40}

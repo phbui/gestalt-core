@@ -63,9 +63,12 @@ def test_builder_stores_sensitivity_per_section(built) -> None:
 
 
 def test_embedding_cache_key_unchanged(indexer) -> None:
-    """The cache key is sha256(model name, NUL, prefixed text). L7 must not touch it."""
-    src = open(indexer.__file__, encoding="utf-8").read()
-    assert 'hashlib.sha256(f"{MODEL_NAME}\\x00{t}".encode("utf-8")).hexdigest()' in src
+    """The cache key is sha256(model identity, NUL, prefixed text). L7 must not touch it. Checked by calling the function, not by
+    reading the source (2026-10-11); the identity carries the revision, the normalisation and the dtype since that day."""
+    import hashlib
+    ec = indexer._ec  # the builder's own config object, which the key reads
+    ident = f"{indexer.MODEL_NAME}\x00rev={indexer.MODEL_REVISION or ''}\x00norm={int(bool(ec.EMBED_NORMALIZE))}\x00dtype={ec.EMBED_DTYPE}"
+    assert indexer.chunk_hash("search_document: x") == hashlib.sha256(f"{ident}\x00search_document: x".encode("utf-8")).hexdigest()
 
 
 def test_fts_withholds_restricted_and_says_so(srv) -> None:
@@ -130,3 +133,22 @@ def test_hook_never_injects_restricted(built, monkeypatch) -> None:
         {"slug": "withheld-note", "withheld": "restricted"},
         {"slug": "open-note", "heading": "h", "block_id": "b"}])
     assert [r["slug"] for r in hook.retrieve_gestalt_sync("zebrafish", str(built), 10)] == ["open-note"]
+
+
+# --- 2026-10-11 line review -----------------------------------------------------------------------
+
+
+def test_an_unreadable_or_escaping_file_path_is_restricted_not_unpublished(srv, built) -> None:
+    """The fallback for an index without the column and for relay rows failed open: a git-crypt blob read as "unpublished" and
+    passed the filter, and an absolute or dotted path left the knowledge directory."""
+    (built / "knowledge" / "locked.md").write_bytes(b"\x00GITCRYPT\x00\xa7\xe7c+")
+    assert srv._file_sensitivity("knowledge/locked.md") == "restricted"
+    assert srv._file_sensitivity("knowledge/does-not-exist.md") == "unpublished"  # a moved note keeps the old reading
+    assert srv._file_sensitivity("/etc/hostname") == "restricted" and srv._file_sensitivity("../outside.md") == "restricted"
+    assert srv._file_sensitivity("knowledge/plain-note.md") in ("public", "unpublished")
+
+
+def test_a_search_limit_is_clamped_to_one_through_one_hundred(srv) -> None:
+    """SQLite reads LIMIT -1 as no limit, so a negative limit returned the whole corpus."""
+    assert srv._clamp_limit(-1) == 1 and srv._clamp_limit(0) == 1 and srv._clamp_limit(10**6) == 100 and srv._clamp_limit(7) == 7
+    assert srv._clamp_limit("12") == 12 and srv._clamp_limit("junk") == 10

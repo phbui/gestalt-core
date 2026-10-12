@@ -49,7 +49,7 @@ else
 fi
 
 for f in base ours theirs; do
-  head -c 8 "$TMP/$f.md" | grep -q GITCRYPT && { echo "ERROR: $f side is still ciphertext — is this clone unlocked? (git-crypt unlock)" >&2; exit 1; }
+  head -c 10 "$TMP/$f.md" | grep -q GITCRYPT   # the magic is NUL GITCRYPT NUL, ten bytes; eight never matched (2026-10-11) && { echo "ERROR: $f side is still ciphertext — is this clone unlocked? (git-crypt unlock)" >&2; exit 1; }
 done
 
 set +e

@@ -159,6 +159,11 @@ def encode_documents(model, texts: list[str], max_batch: int, doc_prefix: str, p
         done += len(idx)
         if on_subbatch:
             on_subbatch(done, len(texts))
+    bad = ~np.isfinite(out).all(axis=1)
+    if bad.any():
+        # A GPU that drops mid-block can return garbage instead of raising. Before 2026-10-11 the block was then receipted as valid
+        # and reused on every resume. dense_hf._unit has refused such rows since the DenseOn fp16 incident; the bench now does too.
+        raise RuntimeError(f"{int(bad.sum())} of {len(texts)} document vectors are not finite; the model overflowed at this dtype or the GPU faulted mid-block")
     return np.ascontiguousarray(np.asarray(postprocess(out), dtype=np.float32))
 
 
@@ -639,6 +644,11 @@ def retrieve(queries: list[tuple[str, str]], *, fts: FtsIndex, dense, embed: Cal
                     info = {**info, "fallback": f"alias-downgrade:{info['model']}"}
                 ids = [r["id"] for r in ranked]
                 scores = list(rr_scores) if rr_scores is not None else [s for _, s in head]
+                blend = gestalt_rank.rerank_blend()
+                if blend > 0 and rr_scores is not None:
+                    # The served path mixes the z-scored fused score into the reranked head (gestalt_rank.hybrid_search).
+                    order = gestalt_rank.blend_scores(ids, dict(zip(ids, scores)), dict(head), blend)
+                    ids, scores = [i for i, _ in order], [s for _, s in order]
                 if fill_from_hybrid:
                     seen = set(ids)
                     tail = [(i, s) for i, s in hybrid if i not in seen]
@@ -944,6 +954,9 @@ def query_log_header(*, fingerprint: str, systems: Sequence[str], limit: int, re
                                            "depth": rerank["depth"], "maxchars": gestalt_rank.rerank_maxchars(),
                                            "instruction": gestalt_rank.qwen_instruction()},
     }
+    if rerank and gestalt_rank.rerank_blend() > 0:
+        # Recorded only when set, so an unblended run keeps the header it had before the blend existed.
+        header["rerank"]["blend"] = gestalt_rank.rerank_blend()
     if fusion != "rrf" or any(grid_system(s) for s in systems):
         header["fusion_params"] = gestalt_rank.fusion_settings()
     return header

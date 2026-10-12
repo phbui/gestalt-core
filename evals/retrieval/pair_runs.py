@@ -95,7 +95,9 @@ def identity(r: dict) -> dict:
     return {"embed_profile": m.get("embed_profile"), "embedding_revision": m.get("embedding_revision"),
             "embedding_model": m.get("embedding_model"),
             "reranker_alias": m.get("reranker_alias") or rr.get("model"), "rerank_depth": rr.get("depth"),
-            "rerank_instruction": rr.get("instruction")}
+            "rerank_instruction": rr.get("instruction"), "rerank_blend": rr.get("blend"),
+            # two runs of one model can differ only in these, and they must not print as the same run (2026-10-11 audit)
+            "fusion": h.get("fusion"), "fusion_alpha": h.get("alpha"), "fusion_norm": (h.get("fusion_params") or {}).get("norm")}
 
 
 def pair(a_path: str, b_path: str, system_a: str, system_b: str, split: str | None = None) -> dict:

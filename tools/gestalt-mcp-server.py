@@ -32,12 +32,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))  # sibling import works
 try:
     import gestalt_embed_config as _ec
 except ImportError:  # a lone copy of this file (a test fixture, a stale install): behave as before X14, unpinned
-    class _ec:
-        MODEL_NAME = "nomic-ai/nomic-embed-text-v1.5"
-        MODEL_REVISION = None
-        EMBED_DIM = 768
-        DOC_PREFIX = "search_document: "
-        QUERY_PREFIX = "search_query: "
+    class _ec:  # the shipped default since 2026-10-11, stella_en_400M_v5, so a lone copy embeds the same way
+        MODEL_NAME = "NovaSearch/stella_en_400M_v5"
+        MODEL_REVISION = "ffeb2b7ee715c226d4ffe5e4619f7dbb48624c20"
+        EMBED_DIM = 1024
+        DOC_PREFIX = ""
+        QUERY_PREFIX = "Instruct: Given a web search query, retrieve relevant passages that answer the query.\nQuery: "
 
 import gestalt_rank
 
@@ -120,31 +120,40 @@ def _hub_looks_down() -> bool:
         return False
 
 
-def _hub_reachable(url: str) -> bool:
+def _hub_reachable(url: str, connect_s: float | None = None) -> bool:
     """Short TCP connect before the MCP handshake: a hub whose port is closed on the tailnet drops the SYN rather than
-    refusing it, so without this the fallback path paid the full GESTALT_HUB_TIMEOUT_S (measured 20 s, 2026-09-02)."""
+    refusing it, so without this the fallback path paid the full GESTALT_HUB_TIMEOUT_S (measured 20 s, 2026-09-02).
+
+    `connect_s` overrides GESTALT_HUB_CONNECT_S (default 3 s); the per-prompt hook passes about 50 ms."""
     import socket
     from urllib.parse import urlparse
     u = urlparse(url)
+    if not u.hostname:
+        return False  # a malformed URL would otherwise connect to loopback
+    timeout = connect_s if connect_s is not None else float(os.environ.get("GESTALT_HUB_CONNECT_S", "3"))
     try:
-        with socket.create_connection((u.hostname, u.port or 80), timeout=float(os.environ.get("GESTALT_HUB_CONNECT_S", "3"))):
+        with socket.create_connection((u.hostname, u.port or 80), timeout=timeout):
             return True
     except OSError:
         return False
 
 
-def _hub_search(query: str, limit: int) -> list[dict]:
-    """One MCP session on the hub's gestalt server, one gestalt_search(semantic=True) call, rows tagged via=hub."""
+def _hub_search(query: str, limit: int, connect_s: float | None = None, deadline: float | None = None) -> list[dict]:
+    """One MCP session on the hub's gestalt server, one gestalt_search(semantic=True) call, rows tagged via=hub.
+
+    With `deadline` (a time.monotonic() value) every POST gets the time left until it, capped by GESTALT_HUB_TIMEOUT_S, so a caller
+    with a budget (the per-prompt hook, 150 ms) never waits the server default of 20 s per request (2026-10-11)."""
     import urllib.request
     url = _hub_mcp_url()
-    if not _hub_reachable(url):
+    if not _hub_reachable(url, connect_s):
         raise ConnectionError(f"hub port closed or unreachable at {url}")
     timeout = float(os.environ.get("GESTALT_HUB_TIMEOUT_S", "20"))
     hdr = {"Content-Type": "application/json", "Accept": "application/json, text/event-stream"}
 
     def post(payload: dict, extra: dict | None = None) -> tuple[str | None, str]:
+        t = timeout if deadline is None else max(min(timeout, deadline - time.monotonic()), 0.001)
         req = urllib.request.Request(url, data=json.dumps(payload).encode(), headers={**hdr, **(extra or {})}, method="POST")
-        with urllib.request.urlopen(req, timeout=timeout) as r:
+        with urllib.request.urlopen(req, timeout=t) as r:
             return r.headers.get("mcp-session-id"), r.read().decode("utf-8", "replace")
 
     sid, _ = post(_MCP_INIT)
@@ -226,10 +235,16 @@ def get_model():
                 kw["model_kwargs"] = MODEL_KWARGS
             if TOKENIZER_KWARGS:
                 kw["tokenizer_kwargs"] = TOKENIZER_KWARGS
+            if getattr(_ec, "CONFIG_KWARGS", None):
+                kw["config_kwargs"] = _ec.CONFIG_KWARGS
+            if hasattr(_ec, "before_load"):
+                _ec.before_load()
             print(f"gestalt-mcp: Loading model: {MODEL_NAME} (profile={getattr(_ec, 'PROFILE', 'nomic')} dim={_ec.EMBED_DIM} device={EMBED_DEVICE})", file=sys.stderr)
             watchdog = gestalt_rank.load_watchdog("embedding model")  # logs once if the load holds the lock past 120 s
             try:
                 _model = SentenceTransformer(MODEL_NAME, revision=_ec.MODEL_REVISION, trust_remote_code=TRUST_REMOTE_CODE, device=EMBED_DEVICE, **kw)
+                if hasattr(_ec, "after_load"):
+                    _ec.after_load(_model)
             finally:
                 watchdog.cancel()
         _model_last_used = time.monotonic()
@@ -237,8 +252,61 @@ def get_model():
         return _model  # the local read happens under the lock, so a concurrent unload cannot hand back None
 
 
+class DaemonModel:
+    """Query vectors from the resident embed daemon (tools/gestalt-embed-daemon.py) instead of a second model copy in this process.
+
+    The daemon already holds the model for the hook; a server that loaded its own copy cost a second 0.5 to 1.7 GB of RAM per laptop
+    (stella-400m is 435M parameters). The daemon answers with the prefixed, post-processed vector and its identity; a reply from
+    another embedding setup is refused. GESTALT_SERVER_USE_DAEMON=0 turns this off."""
+
+    def __init__(self, daemon, state_dir, expect: dict):
+        self.daemon, self.state_dir, self.expect = daemon, state_dir, expect
+
+    @classmethod
+    def connect(cls, timeout_s: float = 0.5):
+        """A DaemonModel when a daemon with this process's identity is already up and answers, else None. It never starts one."""
+        if os.environ.get("GESTALT_SERVER_USE_DAEMON", "1").strip() == "0":
+            return None
+        try:
+            import importlib.util
+
+            spec = importlib.util.spec_from_file_location("gestalt_embed_daemon", Path(__file__).resolve().with_name("gestalt-embed-daemon.py"))
+            daemon = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(daemon)
+            state_dir = daemon.default_state_dir()
+            expect = daemon.identity(_ec)
+        except (OSError, ImportError, AttributeError, TypeError, ValueError):
+            return None
+        try:
+            daemon.encode([], state_dir, timeout_s, expect=expect)
+            return cls(daemon, state_dir, expect)
+        except (OSError, RuntimeError, ValueError) as e:  # no daemon up, or one from another setup: this process loads its own model, as before
+            key = type(e).__name__
+            if key not in _daemon_logged:  # once per reason, so a leaf that runs no daemon does not log on every search
+                _daemon_logged.add(key)
+                what = "identity differs" if isinstance(e, daemon.IdentityMismatch) else f"not reachable ({key})"
+                print(f"gestalt-mcp: embed daemon {what}; this process encodes with its own model copy. {str(e)[:160]}", file=sys.stderr)
+            return None
+
+    def vector(self, text: str):
+        import numpy as np
+
+        return np.asarray(self.daemon.encode([text], self.state_dir, 5.0, expect=self.expect)[0], dtype=np.float32)
+
+
+_daemon_logged: set = set()  # reasons already logged for a refused daemon (DaemonModel.connect)
+
+
 def _embed_query(model, text: str):
-    """Query vector: the profile's prefix, then the profile's post-processing (truncate and renormalise for a Matryoshka dim)."""
+    """Query vector: the profile's prefix, then the profile's post-processing (truncate and renormalise for a Matryoshka dim).
+
+    A DaemonModel returns the daemon's vector, which went through this same function in the daemon. If the daemon fails mid-search
+    the local model loads and answers, so a search never fails because the daemon went away."""
+    if isinstance(model, DaemonModel):
+        try:
+            return model.vector(text)
+        except (OSError, RuntimeError, ValueError):  # the daemon went away mid-search
+            model = get_model()
     vec = model.encode(_ec.QUERY_PREFIX + text)
     post = getattr(_ec, "postprocess", None)
     return post(vec) if post else vec
@@ -253,6 +321,13 @@ def get_sqlite_vec():
 
 
 _meta_logged: set = set()
+
+
+def _log_once(key: str, line: str) -> None:
+    """One stderr line per key for the life of the process, for a degraded leg that a test can still assert on."""
+    if key not in _meta_logged:
+        _meta_logged.add(key)
+        print(f"gestalt-mcp: {line}", file=sys.stderr)
 
 
 def _vector_leg_ok(db) -> bool:
@@ -275,9 +350,11 @@ def _vector_leg_ok(db) -> bool:
         "query_prefix": _ec.QUERY_PREFIX,
     }
     # Keys the builder writes once the profile and title work lands. The check below skips a key the stored meta lacks.
-    for key, attr in (("text_format", "TEXT_FORMAT"), ("embed_profile", "PROFILE")):
+    for key, attr in (("text_format", "TEXT_FORMAT"), ("embed_profile", "PROFILE"), ("embed_dtype", "EMBED_DTYPE")):
         if getattr(_ec, attr, None) is not None:
             want[key] = str(getattr(_ec, attr))
+    if getattr(_ec, "EMBED_NORMALIZE", None) is not None:  # unit and raw vectors of one model are different spaces (2026-10-11)
+        want["embed_normalize"] = "1" if _ec.EMBED_NORMALIZE else "0"
     if not meta:  # an index with no index_meta rows carries no claim
         return True
     bad = {k: (meta.get(k), v) for k, v in want.items() if k in meta and meta[k] != v}
@@ -476,7 +553,10 @@ def _loggable_slugs(rows: list) -> list[str]:
     for r in rows:
         if not isinstance(r, dict) or not r.get("slug") or r.get("error"):
             continue
-        if not allow and (r.get("withheld") or (r.get("sensitivity") or _file_sensitivity(r.get("file_path") or "")) == "restricted"):
+        # A row without a path cannot be checked on disk; its slug alone goes to the hit log (search discloses slugs by design). A
+        # row with a path is judged by the file, which fails closed (2026-10-11).
+        sens = r.get("sensitivity") or (_file_sensitivity(r["file_path"]) if r.get("file_path") else "unpublished")
+        if not allow and (r.get("withheld") or sens == "restricted"):
             continue
         out.append(r["slug"])
     return list(dict.fromkeys(out))
@@ -561,10 +641,32 @@ def _frontmatter_sensitivity(text: str) -> str:
 
 
 def _file_sensitivity(file_path: str) -> str:
-    try:
-        return _frontmatter_sensitivity((GESTALT_DIR / file_path).read_text(encoding="utf-8"))
-    except (OSError, UnicodeDecodeError):
+    """The entry's own frontmatter sensitivity, read from disk. The fallback for an index without the column and for relay rows.
+
+    Since 2026-10-11 a path that leaves the repository (absolute, or dotted out of it), and a file that is not UTF-8 (a git-crypt
+    blob whose frontmatter cannot be read), are "restricted": the entry's own marker is unreadable, so the safe reading is the
+    closed one. A row with no path, and a missing file, stay "unpublished", as before: an index may name a note that moved, and a
+    synthetic index names notes that never existed on disk. Rules entries live outside knowledge/, so the fence is the repository."""
+    if not file_path:
         return "unpublished"
+    try:
+        target = (GESTALT_DIR / file_path).resolve()
+        if not target.is_relative_to(GESTALT_DIR.resolve()):
+            return "restricted"
+        return _frontmatter_sensitivity(target.read_text(encoding="utf-8"))
+    except UnicodeDecodeError:
+        return "restricted"
+    except (OSError, ValueError):
+        return "unpublished"
+
+
+def _clamp_limit(limit, default: int = 10) -> int:
+    """A result limit from 1 to 100. SQLite reads LIMIT -1 as no limit, and a huge limit is a whole-corpus dump (2026-10-11)."""
+    try:
+        n = int(limit)
+    except (TypeError, ValueError):
+        return default
+    return max(1, min(n, 100))
 
 
 def _withheld_note(slug: str) -> str:
@@ -616,6 +718,7 @@ def _gestalt_search_fts_raw(query: str, limit: int = 10) -> list[dict]:
     measure, exactly as RRF is (see ^rrf-thresholds). Control cost by keeping the
     injected payload small, not by thresholding.
     """
+    limit = _clamp_limit(limit, 10)
     if not DB_PATH.exists():
         return []
 
@@ -634,7 +737,8 @@ def _gestalt_search_fts_raw(query: str, limit: int = 10) -> list[dict]:
             "WHERE sections_fts MATCH ? ORDER BY rank LIMIT ?",
             (fts_query, limit * 3 if decay < 1.0 else limit),
         ).fetchall()
-    except Exception:
+    except Exception as e:
+        _log_once("fts-raw", f"full-text search failed ({type(e).__name__}: {str(e)[:120]}); answering with no rows")  # a locked or mid-rebuild index is not "no matches"
         return []
     finally:
         db.close()
@@ -676,12 +780,23 @@ def _route_dense_leg(request: str) -> list[int]:
     if not _leaf_may_load_model():
         return []
     try:
-        model = get_model()
         db = get_db()
-    except Exception:
+    except Exception as e:
+        _log_once("route-db", f"dense routing leg unavailable ({type(e).__name__}: {str(e)[:120]}); routing without it")
         return []
-    if not _vector_leg_ok(db):
+    try:
+        leg_ok = _vector_leg_ok(db)  # checked before the model loads, so a mismatched index costs no model load (2026-10-11)
+    except Exception:
         db.close()
+        raise
+    if not leg_ok:
+        db.close()
+        return []
+    try:
+        model = get_model()
+    except Exception as e:
+        db.close()
+        _log_once("route-model", f"dense routing leg unavailable ({type(e).__name__}: {str(e)[:120]}); routing without it")
         return []
     try:
         emb = _embed_query(model, request)
@@ -801,6 +916,7 @@ def gestalt_route(request: str, limit: int = 5, semantic: bool | None = None) ->
     references/skill-index.md. Never threshold on `rrf`; it orders candidates and means
     nothing absolute.
     """
+    limit = _clamp_limit(limit, 5)
     if not DB_PATH.exists():
         return []
     fts_query = gestalt_rank.fts_match(request, stopwords=False)  # routing keeps its measured query: the stopword knob is for gestalt_search
@@ -834,6 +950,7 @@ def gestalt_search_fts(query: str, limit: int = 10, include_restricted: bool = F
     For latency-bound callers such as per-prompt hooks. `bm25` is FTS5's relevance score (negative;
     more negative = better). Do not gate on it with a fixed threshold: see _gestalt_search_fts_raw.
     A restricted entry is withheld and reported as a notice row unless include_restricted=true."""
+    limit = _clamp_limit(limit, 10)
     tok = _INCLUDE_RESTRICTED.set(bool(include_restricted))
     try:
         rows = _gestalt_search_fts_raw(query, limit)
@@ -869,6 +986,7 @@ def _open_local_hybrid(query: str, limit: int):
 
     Returns `(db, model, None)` on success. Returns `(None, None, rows)` with FTS rows when the hybrid leg is unavailable.
     """
+    db = None
     try:
         db = get_db()      # cheap import check first — never load the model if sqlite-vec is missing
         has_vec = db.execute(
@@ -884,18 +1002,22 @@ def _open_local_hybrid(query: str, limit: int):
         if not _vector_leg_ok(db):
             db.close()
             return None, None, gestalt_search_fts(query, limit)
-        model = get_model()
+        model = DaemonModel.connect() or get_model()
     except ImportError as e:
         print(
             f"Missing dependency: {e.name or e} — install: pip install sqlite-vec "
             "sentence-transformers — continuing FTS-only (vector search disabled).",
             file=sys.stderr,
         )
-        # get_db() itself can be what raised, leaving db unbound — hence the guard.
-        try:
+        if db is not None:
             db.close()
-        except Exception:
-            pass
+        return None, None, gestalt_search_fts(query, limit)
+    except Exception as e:
+        # Until 2026-10-11 only ImportError was caught: an offline model fetch or a bad dtype left the database open and escaped
+        # gestalt_search. Every failure of the hybrid leg answers from full text, with one line that says why.
+        print(f"gestalt-mcp: hybrid leg unavailable ({type(e).__name__}: {str(e)[:160]}) — answering from full text", file=sys.stderr)
+        if db is not None:
+            db.close()
         return None, None, gestalt_search_fts(query, limit)
     return db, model, None
 

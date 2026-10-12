@@ -1,0 +1,104 @@
+# Wave 2 of the embedder and pipeline study, 2026-10-09 (knowledge/retrieval-paper-techniques-2026-10.md ^paper-techniques-plan).
+# Everything here is pinned to a commit. The baseline row is the shipped pipeline (nomic + BM25 RRF, Qwen3-Reranker-0.6B at depth 40),
+# so every other reranked system pairs against it in the same results file. Dense legs run at float16 as the shipped stack does.
+systems:
+  bm25:
+    adapter: bm25
+
+  nomic:
+    adapter: dense_hf
+    args:
+      model: nomic-ai/nomic-embed-text-v1.5
+      revision: e9b6763023c676ca8431644204f50c2b100d9aab
+      trust_remote_code: true
+      doc_prefix: "search_document: "
+      query_prefix: "search_query: "
+      dtype: float16
+      licence: apache-2.0
+
+  # 149M, Apache-2.0, CLS pooling, no prompts. Measured alone in the float16 zoo, never under the reranker.
+  gte-modernbert:
+    adapter: dense_hf
+    args:
+      model: Alibaba-NLP/gte-modernbert-base
+      revision: e7f32e3c00f91d699e8c43b53106206bcc72bb22
+      normalize: true  # the card scores by cosine and the checkpoint has no Normalize module
+      dtype: bfloat16  # ModernBERT backbone: float16 overflowed for DenseOn on 2026-10-09
+      licence: apache-2.0
+
+  # 149M, Apache-2.0, CLS pooling, no prompts, unnormalised output by design.
+  granite-r2:
+    adapter: dense_hf
+    args:
+      model: ibm-granite/granite-embedding-english-r2
+      revision: 47ea694b257b703fee9253d75c2b1f2985180498
+      normalize: true
+      dtype: bfloat16  # ModernBERT backbone: float16 overflowed for DenseOn on 2026-10-09
+      licence: apache-2.0
+
+  # 596M decoder embedder, Apache-2.0, last-token pooling, the e5-style instruction on the query only (its own ST prompt).
+  qwen3-0.6b:
+    adapter: dense_hf
+    args:
+      model: Qwen/Qwen3-Embedding-0.6B
+      revision: 97b0c614be4d77ee51c0cef4e5f07c00f9eb65b3
+      dtype: bfloat16
+      query_prefix: "Instruct: Given a web search query, retrieve relevant passages that answer the query\nQuery:"
+      batch_size: 32
+      licence: apache-2.0
+
+  # 149M late-interaction model, Apache-2.0. The Sentence Transformers MultiVectorEncoder reads the PyLate files; the document
+  # length comes from the model's own config. Revision read from huggingface.co/api/models/lightonai/LateOn on 2026-10-09.
+  lateon:
+    adapter: colbert
+    args:
+      model: lightonai/LateOn
+      revision: 62911e105059585d244384c7d17826e35f669c17
+      licence: apache-2.0
+
+  nomic-bm25-rrf:
+    adapter: fused
+    args: {a: bm25, b: nomic, fusion: rrf}
+  gte-modernbert-bm25-rrf:
+    adapter: fused
+    args: {a: bm25, b: gte-modernbert, fusion: rrf}
+  granite-r2-bm25-rrf:
+    adapter: fused
+    args: {a: bm25, b: granite-r2, fusion: rrf}
+  qwen3-0.6b-bm25-rrf:
+    adapter: fused
+    args: {a: bm25, b: qwen3-0.6b, fusion: rrf}
+  lateon-bm25-rrf:
+    adapter: fused
+    args: {a: bm25, b: lateon, fusion: rrf}
+
+  # The shipped pipeline, and the depth and blend variants the papers left untested on BEIR.
+  nomic-bm25-rrf-rerank-qwen3-0.6b:
+    adapter: rerank
+    args: {inner: nomic-bm25-rrf, model: qwen3-0.6b, depth: 40}
+  nomic-bm25-rrf-rerank-qwen3-0.6b-d20:
+    adapter: rerank
+    args: {inner: nomic-bm25-rrf, model: qwen3-0.6b, depth: 20}
+  nomic-bm25-rrf-rerank-qwen3-0.6b-d100:
+    adapter: rerank
+    args: {inner: nomic-bm25-rrf, model: qwen3-0.6b, depth: 100}
+  nomic-bm25-rrf-rerank-qwen3-0.6b-blend0.2:
+    adapter: rerank
+    args: {inner: nomic-bm25-rrf, model: qwen3-0.6b, depth: 40, blend: 0.2}
+  nomic-bm25-rrf-rerank-qwen3-0.6b-blend0.4:
+    adapter: rerank
+    args: {inner: nomic-bm25-rrf, model: qwen3-0.6b, depth: 40, blend: 0.4}
+
+  # The other legs under the same reranker.
+  gte-modernbert-bm25-rrf-rerank-qwen3-0.6b:
+    adapter: rerank
+    args: {inner: gte-modernbert-bm25-rrf, model: qwen3-0.6b, depth: 40}
+  granite-r2-bm25-rrf-rerank-qwen3-0.6b:
+    adapter: rerank
+    args: {inner: granite-r2-bm25-rrf, model: qwen3-0.6b, depth: 40}
+  qwen3-0.6b-bm25-rrf-rerank-qwen3-0.6b:
+    adapter: rerank
+    args: {inner: qwen3-0.6b-bm25-rrf, model: qwen3-0.6b, depth: 40}
+  lateon-bm25-rrf-rerank-qwen3-0.6b:
+    adapter: rerank
+    args: {inner: lateon-bm25-rrf, model: qwen3-0.6b, depth: 40}

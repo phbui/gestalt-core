@@ -286,18 +286,51 @@ def _vec_extension_path() -> str:
     return sqlite_vec.loadable_path()
 
 
+def hub_rows(query: str, impl, limit: int, deadline: float):
+    """The hub's hybrid rows for the query, or None when the hub is off, looks down, or does not answer before the deadline.
+
+    Hub first (plan ^laptop-path-decision-2026-10-11): the hub's GPU encodes the query and reranks in tens of milliseconds and the
+    round trip on the tailnet is a few, where this laptop's CPU needs about 190 ms for the stella encode alone. GESTALT_HOOK_HUB=off
+    disables it. GESTALT_HOOK_HUB_CONNECT_S (default 0.05) bounds the TCP connect; the three MCP requests share what is left of the
+    budget. A miss costs at most the budget and falls through to the local leg, then to full text."""
+    if os.environ.get("GESTALT_HOOK_HUB", "on").strip().lower() != "on":
+        return None
+    try:
+        url = impl._hub_mcp_url()
+        if not url or impl._hub_looks_down():
+            return None
+        connect_s = float(os.environ.get("GESTALT_HOOK_HUB_CONNECT_S", "").strip() or 0.05)
+        if deadline - time.monotonic() <= connect_s:
+            return None
+        found = impl._hub_search(query, limit, connect_s=connect_s, deadline=deadline)
+    except Exception:
+        return None
+    rows = [{"slug": r.get("slug"), "heading": r.get("heading"), "block_id": r.get("block_id"), "file_path": r.get("file_path"),
+             "sensitivity": r.get("sensitivity")} for r in found if isinstance(r, dict) and r.get("slug")]
+    return impl._filter_restricted(rows, False)
+
+
 def semantic_rows(prompt: str, impl, limit: int, state_dir: str, tools_dir: str, budget_ms: int):
     """Hybrid rows for the prompt, or None when the dense leg cannot answer inside the budget.
 
-    The query vector comes from the resident embed daemon. A missing socket means a cold daemon: this prompt falls back and a start is requested for the next one. The dense leg and the fusion are gestalt_rank.hybrid_search, with the rerank off. Rows have the shape gestalt_search_fts returns."""
+    The hub answers first when it is reachable (hub_rows). Otherwise the query vector comes from the resident embed daemon. A missing socket means a cold daemon: this prompt falls back and a start is requested for the next one. The dense leg and the fusion are gestalt_rank.hybrid_search, with the rerank off. Rows have the shape gestalt_search_fts returns."""
     deadline = time.monotonic() + budget_ms / 1000.0
     try:
         daemon = _daemon_module(tools_dir)
         query = hook_query(prompt)
+        rows = hub_rows(query, impl, limit, deadline)
+        if rows is not None:
+            return rows
         try:
-            vec = daemon.encode([query], state_dir, deadline - time.monotonic())[0]
+            vec = daemon.encode([query], state_dir, deadline - time.monotonic(), expect=daemon.identity(impl._ec))[0]
         except (FileNotFoundError, ConnectionRefusedError):
             daemon.spawn(state_dir)
+            return None
+        except daemon.IdentityMismatch:
+            # A daemon left over from another embedding profile. Stop it in the background so the next prompt starts a matching one.
+            import threading
+
+            threading.Thread(target=daemon.stop, args=(state_dir,), daemon=True).start()
             return None
         import sqlite3
 

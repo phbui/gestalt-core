@@ -398,4 +398,10 @@ if [ $((COUNT % CONSOLIDATE_INTERVAL)) -eq 0 ] && [ "$COUNT" -gt 0 ]; then
     fi
 fi
 
+# Warm the embed daemon at session start when the hook's semantic leg is on, so the first prompt has a dense leg instead of falling
+# back to full text while a cold model loads (2026-10-10; a 435M model takes 8 to 15 s to load on a laptop CPU). Detached, never waits.
+if [ "${GESTALT_HOOK_SEMANTIC:-off}" = "on" ] && [ -x "$HOME/.claude/gestalt/venv/bin/python3" ]; then
+    "$HOME/.claude/gestalt/venv/bin/python3" "$GESTALT_DIR/tools/gestalt-embed-daemon.py" --spawn --state-dir "$STATE_DIR" >/dev/null 2>&1 &
+fi
+
 exit 0
