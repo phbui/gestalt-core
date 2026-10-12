@@ -7,11 +7,7 @@
 
 ## Always Reference Gestalt
 
-Before answering a question, suggesting an approach, or starting a task, check
-gestalt if there's any chance it holds relevant knowledge — search first (see Lookup),
-then read the entries it points at. Cite what you use: "Per gestalt/knowledge/platform.md,
-the deploy command is…". This applies to ALL tasks, not only when gestalt is
-mentioned. Default to checking, not skipping.
+Before answering, suggesting an approach, or starting a task, search gestalt (see Lookup) and read the entries it points at. Cite what you use: "Per gestalt/knowledge/platform.md, the deploy command is…". This applies to ALL tasks, not only when gestalt is mentioned.
 
 ## Lookup
 
@@ -20,7 +16,7 @@ Search first. Never read an index whole: `MANIFEST.md` is about 200 KB.
 1. **Search** — `gestalt_search` with the question or topic finds the entry. `gestalt_route` finds the skill. Then read the one entry: `gestalt/knowledge/<slug>.md` or `gestalt/.claude/rules/<slug>.md`.
 2. **MANIFEST.md** — slug-level index, for a slug's outgoing `links` and key `^block-ids`. Paper notes (`paper-*`) are indexed in `gestalt/MANIFEST-papers.md`, in the same format. Look up one slug with `gestalt_manifest('<slug>')`, which searches both files, or `grep -A4 '^### <slug>' gestalt/MANIFEST.md gestalt/MANIFEST-papers.md`. `gestalt_manifest('<few words>')` returns the matching entries, and with no argument it returns a short summary. Never read either file whole.
 3. **GRAPH.md** — data-flow index. Read when the question is cross-cutting: "what feeds into X?", "trace data from A to B", "how do these services connect?". **One extra read.**
-4. **SOURCES.md** — external source registry. Read when gestalt lacks context. Maps entries to Notion docs, Linear projects, Slack channels. Query those via MCP tools as fallback.
+4. **SOURCES.md** — external source registry (Notion, Linear, Slack per entry). Read when gestalt lacks context, then query those via MCP.
 
 ### Resolving Links
 
@@ -29,7 +25,7 @@ Search first. Never read an index whole: `MANIFEST.md` is about 200 KB.
 - `slug` → read `gestalt/knowledge/slug.md`, find the line containing `^block-id`
 - `slug` → read `gestalt/knowledge/slug.md`, find the `## heading` section
 
-Knowledge entries can be per-repo (`knowledge/platform.md`) or cross-repo (`knowledge/deployment-pipeline.md`). The repos in this workspace are related — check for cross-repo entries when a task spans multiple repos.
+Entries are per-repo (`knowledge/platform.md`) or cross-repo (`knowledge/deployment-pipeline.md`); check for cross-repo entries when a task spans repos.
 
 ## Scope: Personal Knowledge Base
 
@@ -54,11 +50,9 @@ When the user corrects a mistake, update gestalt proactively. Confirm briefly: "
 
 ### Linking Rules
 
-When writing or updating entries:
-- Use `wikilinks` inline to reference other entries (not frontmatter `relates_to`)
+- Use inline `wikilinks` (not frontmatter `relates_to`), placed next to the sentence that explains *why* they relate
 - Add `^block-id` anchors to key facts, service boundaries, data connection points
-- Include `## Data Flow` sections for entries that describe pipelines or inter-service connections
-- Place links contextually — next to the sentence that explains *why* they're related
+- Include `## Data Flow` sections for pipelines and inter-service connections
 
 Before creating a new entry, check MANIFEST.md. Update existing entries rather than duplicate.
 
@@ -66,12 +60,7 @@ After any write, regenerate all indices per `gestalt-operations.md` §Index Rege
 
 ## Agent Teams
 
-Write-heavy operations (`/learn`, `/review`, `/sync`) fan out to parallel scanner
-agents, each with a focused scope, then you synthesize. Read operations stay
-sequential — the index keeps lookup to 2-3 reads. Ceiling and worker-prompt
-structure: `proactive-parallelism.md` and `references/orchestration.md`. Agent
-definitions: `claude-tree/agents/` (Claude Code, exposed to the harness via the
-`gestalt/.claude` compat symlink — F10), `.cursor/agents/` (Cursor).
+Write-heavy operations (`/learn`, `/review`, `/sync`) fan out to parallel scanner agents with focused scopes, then you synthesize. Reads stay sequential (2-3 index reads). Ceiling and worker-prompt structure: `proactive-parallelism.md`, `references/orchestration.md`. Agent definitions: `claude-tree/agents/` (via the `gestalt/.claude` compat symlink, F10), `.cursor/agents/`.
 
 ## Gestalt Commands: Execution Rules
 
@@ -83,8 +72,8 @@ See `gestalt-operations.md` §Command Execution Rules — every step is mandator
 
 ## Auto-Save
 
-When the conversation is long and context is approaching its limit, run `/save` proactively to capture knowledge before the chat is summarized. Don't wait to be asked.
+When context nears its limit, run `/save` proactively before the chat is summarized. Don't wait to be asked.
 
 ## Commands
 
-For the full current command and skill list, see `references/skill-index.md` (canonical).
+Canonical command and skill list: `references/skill-index.md`.
