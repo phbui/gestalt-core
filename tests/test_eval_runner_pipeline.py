@@ -284,6 +284,7 @@ def test_set_model_installs_the_encoder_and_throttles_it(monkeypatch, new_runner
 
 def test_get_model_throttles_the_model_it_loads(monkeypatch, new_runner):
     import types
+    pytest.importorskip("torch")  # get_model resolves the dtype through gestalt_embed_config, which imports torch; CI has no torch
     built = _CountingModel()
     fake = types.ModuleType("sentence_transformers")
     fake.SentenceTransformer = lambda *a, **k: built

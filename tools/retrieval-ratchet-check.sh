@@ -23,12 +23,26 @@ rlog() { # $1 PASS|FAIL|SKIP, $2 reason (optional)
 # the table name — indexed content lives in the same file as the schema.
 python3 -c "import sqlite3,sys; sys.exit(0 if sqlite3.connect('.search/gestalt.db').execute(\"select 1 from sqlite_master where type='table' and name='sections_vec'\").fetchone() else 1)" 2>/dev/null || { rlog SKIP no-vector-leg; exit 0; }
 
-# transformers<5: nomic-embed-text-v1.5's remote code calls get_extended_attention_mask,
-# which transformers 5 removed (HF nomic-ai/nomic-bert-2048 discussion #23, open 2026-09);
-# unpinned, the ratchet SKIPs on every hub run and measures nothing.
-command -v uv >/dev/null 2>&1 || { echo "gestalt: retrieval ratchet SKIPPED (uv not installed, not a regression)"; rlog SKIP no-uv; exit 0; }
-RETR_OUT=$(uv run --quiet --with pyyaml --with sqlite-vec --with sentence-transformers --with einops --with "transformers<5" python3 evals/retrieval/run_retrieval_evals.py --baseline check 2>&1)
-RETR_RC=$?
+# Leaf guard (2026-10-12): since fleet-sync index-fetch, a laptop carries the hub's vector index but holds no embedding model, and
+# the design keeps it that way (<kb-entry>). The same rule as the MCP server's leaf policy: a node that names a
+# fleet hub, or has ~/.fleet/fleet.env, and is not that hub, skips clean unless GESTALT_LEAF_LOCAL_MODEL=1. A lone install runs it.
+HUB_NAME="${FLEET_HUB_NAME:-}"; [ -z "$HUB_NAME" ] && HUB_NAME="${FLEET_HUB:-}" && HUB_NAME="${HUB_NAME%%.*}"
+if [ -z "$HUB_NAME" ] && [ -f "$HOME/.fleet/fleet.env" ]; then HUB_NAME="$(sed -n 's/^FLEET_HUB_NAME=//p' "$HOME/.fleet/fleet.env" | head -1)"; HUB_NAME="${HUB_NAME:-hub}"; fi
+if [ -n "$HUB_NAME" ] && [ "$(hostname -s 2>/dev/null | tr 'A-Z' 'a-z')" != "$(printf %s "$HUB_NAME" | tr 'A-Z' 'a-z')" ] && [ "${GESTALT_LEAF_LOCAL_MODEL:-}" != "1" ]; then
+  echo "gestalt: retrieval ratchet SKIPPED (fleet leaf: the hub holds the model and runs the ratchet on its own pushes)"
+  rlog SKIP leaf-no-model; exit 0
+fi
+# The interpreter is the gestalt venv when it exists: the pinned environment the baseline was banked in (transformers 5.15 to 5.16,
+# which stella_en_400M_v5's modelling code needs; 5.17 removed the helper it calls, tools/requirements.txt). The old "transformers<5"
+# pin here was the nomic era and cannot load the shipped profile. Without the venv, uv builds the same range.
+if [ -x "$HOME/.claude/gestalt/venv/bin/python3" ]; then
+  RETR_OUT=$("$HOME/.claude/gestalt/venv/bin/python3" evals/retrieval/run_retrieval_evals.py --baseline check 2>&1)
+  RETR_RC=$?
+else
+  command -v uv >/dev/null 2>&1 || { echo "gestalt: retrieval ratchet SKIPPED (no gestalt venv and no uv, not a regression)"; rlog SKIP no-uv; exit 0; }
+  RETR_OUT=$(uv run --quiet --with pyyaml --with sqlite-vec --with sentence-transformers --with einops --with "transformers>=5.5,<5.17" python3 evals/retrieval/run_retrieval_evals.py --baseline check 2>&1)
+  RETR_RC=$?
+fi
 [ $RETR_RC -eq 0 ] && { rlog PASS; exit 0; }
 # The runner refuses an index built for another embedding profile (2026-10-10). That is a setup error, not a quality regression,
 # and it must not pass silently either: the push is stopped with the runner's own message.

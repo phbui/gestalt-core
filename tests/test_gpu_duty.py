@@ -1,5 +1,6 @@
 """GESTALT_GPU_DUTY: a duty cycle that pauses after every model call so the average GPU draw stays under the clamp ceiling."""
 from __future__ import annotations
+import pytest
 
 import sys
 import time
@@ -60,6 +61,7 @@ def test_duty_is_clamped_and_bad_values_fall_back(monkeypatch):
 
 def test_index_builder_paces_its_embedding_model_under_a_duty_cycle(monkeypatch):
     """The builder's model.encode is wrapped by throttle_calls when GESTALT_GPU_DUTY is under 1, and left alone at 1.0."""
+    pytest.importorskip("torch")  # the path under test loads the model libraries; CI installs none
     import importlib.util
     import pathlib
     import sys

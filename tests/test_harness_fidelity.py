@@ -1097,6 +1097,7 @@ def test_vector_leg_checks_text_format_and_profile_only_when_the_index_has_them(
 
 
 def test_get_model_takes_device_remote_code_and_kwargs_from_the_config(mcp_server, monkeypatch):
+    pytest.importorskip("torch")  # the path under test loads the model libraries; CI installs none
     seen = {}
 
     class FakeST:
@@ -1193,6 +1194,7 @@ def test_rerank_instruction_is_configurable_and_reaches_predict(monkeypatch):
 
 def test_runner_model_device_follows_the_env_not_the_server_default(monkeypatch, retrieval_harness):
     """The eval runner passes a device only when GESTALT_EMBED_DEVICE is set, like the index builder. The server's cpu default must not reach the benchmarks."""
+    pytest.importorskip("torch")  # the path under test loads the model libraries; CI installs none
     import sys
 
     seen = {}

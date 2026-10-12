@@ -72,6 +72,7 @@ def test_unknown_alias_is_rejected_unless_allow_any(monkeypatch):
 
 
 def test_get_reranker_passes_the_revision_and_rejects_unknown(monkeypatch):
+    pytest.importorskip("torch")  # the path under test loads the model libraries; CI installs none
     seen = {}
 
     class FakeCE:
