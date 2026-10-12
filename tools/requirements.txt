@@ -1,4 +1,7 @@
 sentence-transformers>=3.0
+# transformers 5.19 removed ModuleUtilsMixin.get_extended_attention_mask, which stella_en_400M_v5's modelling code calls, so the
+# default embedder does not load on it. The stored numbers were produced on 5.15 (evals/retrieval/requirements-bench.lock).
+transformers>=5.5,<5.19
 sqlite-vec>=0.1.0
 # <2: mcp 2.0.0 removed mcp.server.fastmcp, which gestalt-mcp-server.py imports.
 # <1.30: gestalt-mcp-server.py sets mcp.settings.host, which the Settings model dropped after

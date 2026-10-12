@@ -101,7 +101,7 @@
   "params_m": 1035,
   "scifact": 0.7936,
   "nfcorpus": 0.4217,
-  "cost": "435M + 0.6B, about 2 GB fp16, one laptop GPU",
+  "cost": "435M + 0.6B, a measured peak of about 3.5 GB, one laptop GPU",
   "licence": "MIT + Apache-2.0",
   "note": "measured here",
   "short": "gestalt dense + reranker",

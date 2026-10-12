@@ -25,8 +25,10 @@ The exact versions of the benchmark environment are in `evals/retrieval/requirem
 
 | Model | Licence | Note |
 |---|---|---|
+| NovaSearch/stella_en_400M_v5 | MIT | The default embedder. Weights and modelling code pinned to one revision in `tools/gestalt_embed_config.py`. |
 | nomic-ai/nomic-embed-text-v1.5 | Apache-2.0 | Weights pinned to one revision. Its modelling code comes from nomic-ai/nomic-bert-2048 and is pinned to one commit. Both pins are in `tools/gestalt_embed_config.py`. |
 | Qwen/Qwen3-Reranker-0.6B | Apache-2.0 | Optional reranker. |
+| Qwen/Qwen3-Reranker-4B | Apache-2.0 | Optional reranker. |
 | Qwen/Qwen3-Embedding-4B | Apache-2.0 | Optional embedding profile. |
 | BAAI/bge-reranker-v2-m3 | Apache-2.0 | Optional reranker. |
 
@@ -44,6 +46,7 @@ The exact versions of the benchmark environment are in `evals/retrieval/requirem
 | Dataset | Terms | What that means for you |
 |---|---|---|
 | BEIR SciFact | The two primary sources disagree. The BEIR paper (appendix E) lists CC BY-NC 2.0. The SciFact repository states CC BY 4.0 for the annotations and ODC-By 1.0 for the abstracts. Some Hugging Face mirror cards state yet other licences. | Cite the SciFact authors (Wadden et al., 2020). Until the conflict is settled, treat SciFact as non-commercial. |
+| BEIR FiQA-2018 | The BEIR distribution states no licence for it. The questions and answers come from a 2018 financial question-answering challenge. | Evaluation use only. The harness downloads it and nothing from it is stored here. |
 | BEIR NFCorpus | Free for academic use. Other uses need the terms of NutritionFacts.org, from which the documents come. | Academic and research use only unless you obtain other terms. |
 | The other public BEIR sets | The BEIR paper (appendix E) lists MS MARCO as MIT for non-commercial research purposes, FEVER, NQ and DBPedia as CC BY-SA 3.0, ArguAna and Touché-2020 as CC BY 4.0, CQADupStack as Apache-2.0 and SCIDOCS as GPL-3.0. It states no licence for Climate-FEVER. | Check the set you run. |
 | LongMemEval | The code is MIT. The data states no licence. The filler conversations come from ShareGPT and UltraChat. | Link to it and do not redistribute the data. |

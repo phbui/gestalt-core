@@ -1,6 +1,6 @@
 # Held-out sets
 
-The headline BEIR sets (SciFact and NFCorpus) were used during development. Choices were made while looking at them. The held-out sets below were opened once, and the date and reason are in each set's manifest. A number from a set that was tuned on is a development number. A number from a sealed set is the claim.
+The headline BEIR sets (SciFact, NFCorpus and FiQA) were used during development. Choices were made while looking at them. The held-out sets below were opened once, and the date and reason are in each set's manifest. A number from a set that was tuned on is a development number. A number from a sealed set is the claim.
 
 ## The three sets
 

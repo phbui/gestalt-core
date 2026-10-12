@@ -16,7 +16,7 @@ out = sys.argv[2]
 INK, MUTED, GRID = "#000000", "#555555", "#E6E6E6"
 SYSTEMS = ("bm25", "dense", "hybrid_rerank")
 COLORS = {"bm25": "#999999", "dense": "#0072B2", "hybrid_rerank": "#D55E00"}
-LABELS = {"bm25": "keyword search", "dense": "gestalt default", "hybrid_rerank": "gestalt + reranker"}
+LABELS = {"bm25": "keyword search (a fresh install)", "dense": "dense search (model loaded)", "hybrid_rerank": "dense + reranker (GPU)"}
 NAMES = {"beir/scifact": "SciFact", "beir/nfcorpus": "NFCorpus", "beir/fiqa": "FiQA"}
 ORDER = ["beir/scifact", "beir/nfcorpus", "beir/fiqa"]
 
@@ -35,7 +35,7 @@ for gi, ds in enumerate(ORDER):
         ax.text(x, hi + 0.015, f"{s['ndcg10']:.3f}", ha="center", va="bottom", color=INK, fontsize=12.5, fontweight="bold", zorder=5)
         tops.append(hi)
     t = r["tests"]["rerank_vs_hybrid"]
-    ax.text(gi, 0.905, f"reranker adds {t['mean_difference'] * 100:+.1f} points, p {t['p_value']:.2g}", ha="center", va="bottom", color=MUTED, fontsize=11.5)
+    ax.text(gi, 0.905, f"reranker adds {t['mean_difference'] * 100:+.2f} points, p {t['p_value']:.2g}", ha="center", va="bottom", color=MUTED, fontsize=11.5)
 ax.set_xticks(range(len(ORDER)))
 ax.set_xticklabels([f"{NAMES[k]}\n{summary[k]['queries']} queries, {summary[k]['documents']:,} documents" for k in ORDER], color=INK, fontsize=11.5)
 ax.set_xlim(-0.55, len(ORDER) - 1 + 0.55)
@@ -50,7 +50,7 @@ ax.spines["bottom"].set_color(GRID)
 ax.set_ylabel("search quality, nDCG@10", color=MUTED, fontsize=11.5)
 
 fig.text(0.05, 0.945, "gestalt on three public search benchmarks", color=INK, fontsize=20, fontweight="bold", ha="left")
-fig.text(0.05, 0.895, "Higher is better. The middle bar is what runs on a laptop. The right bar adds a reranker, which needs a GPU.", color=MUTED, fontsize=12.5, ha="left")
+fig.text(0.05, 0.895, "Higher is better. Left: a fresh install. Middle: with the embedding model loaded. Right: plus a reranker, GPU only.", color=MUTED, fontsize=12.5, ha="left")
 from matplotlib.patches import Patch
 ax.legend(handles=[Patch(facecolor=COLORS[k], label=LABELS[k]) for k in SYSTEMS], loc="upper left", frameon=False, fontsize=11.5, ncol=3, bbox_to_anchor=(0.0, 1.13), handlelength=1.2)
 fig.text(0.05, 0.03, "Whiskers are 95% bootstrap intervals. stella_en_400M_v5, BM25 in SQLite FTS5, Qwen3-Reranker-0.6B. One command reruns the table.   github.com/phbui/gestalt-core",

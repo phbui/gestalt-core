@@ -6,8 +6,8 @@ This page tells you how to reproduce every retrieval number gestalt reports. It 
 
 nDCG@10 on the BEIR test split. Each cell is the mean over queries with a 95% bootstrap interval.
 
-| Dataset | Docs | Queries | BM25 leg | Dense leg, the default search | Dense + reranker |
-|---|---|---|---|---|---|---|
+| Dataset | Docs | Queries | BM25 leg, a fresh install | Dense leg, `GESTALT_SEARCH_MODE=hybrid` | Dense + reranker, `GESTALT_RERANK=on` |
+|---|---|---|---|---|---|
 | SciFact | 5,183 | 300 | 0.682 [0.638, 0.725] | 0.780 [0.742, 0.815] | **0.794 [0.757, 0.830]** |
 | NFCorpus | 3,633 | 323 | 0.322 [0.287, 0.356] | 0.414 [0.378, 0.450] | **0.422 [0.386, 0.458]** |
 | FiQA | 57,638 | 648 | 0.248 [0.224, 0.273] | 0.554 [0.526, 0.581] | **0.572 [0.545, 0.600]** |
@@ -17,7 +17,7 @@ The reranked column is the headline: the dense leg's top 40 candidates re-scored
 Paired sign-flip permutation tests over queries, 20,000 permutations, seed 12345:
 
 | Dataset | Dense leg minus BM25 | Dense + reranker minus dense leg |
-|---|---|---|---|
+|---|---|---|
 | SciFact | +0.097, p < 0.0001 | +0.014, p = 0.089 |
 | NFCorpus | +0.092, p < 0.0001 | +0.007, p = 0.13 |
 | FiQA | +0.305, p < 0.0001 | +0.019, p < 0.0001 |
@@ -35,14 +35,14 @@ Every harness scores retrieval. It asks how high the relevant documents rank. No
 
 ## Against the systems people use
 
-The table holds three kinds of system: the common baselines people reach for, the systems that compete with gestalt in size or score, and the baselines from the BEIR paper. It is sorted by SciFact score and the gestalt rows are the stored results above, placed where they fall. The other 19 systems that were scored sit in `docs/released-systems.json` with `"in_table": false`. They include the 7B-class open models, five more sub-billion embedders and the other closed APIs.
+The table holds three kinds of system: the common baselines people reach for, the systems that compete with gestalt in size or score, and the baselines from the BEIR paper. It is sorted by SciFact score and the gestalt rows are the stored results above, placed where they fall. The other 21 systems that were scored sit in `docs/released-systems.json` with `"in_table": false`. They include the 7B-class open models, five more sub-billion embedders and the other closed APIs.
 
 Scores are the MTEB results repository's per-task numbers at commit `b64a5db`, 2026-10-09. MTEB's SciFact and NFCorpus tasks are the BEIR test splits scored with nDCG@10, so the columns line up with the headline table, with one caveat: each row is that model's own run with its own prompts and cosine ranking, not a run through this harness. The paper baselines are from the BEIR paper and the Pyserini reproductions. Closed-API prices are the vendors' published per-token prices where an official page states them. Memory is the parameter count at two bytes each.
 
 | System | Open, licence | Parameters | Memory at fp16, or price | SciFact | NFCorpus | Source |
 |---|---|---|---|---|---|---|
-| NV-Embed-v2 | open, CC BY-NC 4.0 | 7.8B | 7.9B, 15.7 GB fp16 | 0.801 | 0.450 | MTEB results |
-| **gestalt dense + Qwen3-Reranker-0.6B** | open, MIT + Apache-2.0 | 435M + 0.6B | 435M + 0.6B, about 2 GB fp16, one laptop GPU | **0.794** | **0.422** | measured here |
+| NV-Embed-v2 | open, CC BY-NC 4.0 | 7.9B | 7.9B, 15.7 GB fp16 | 0.801 | 0.450 | MTEB results |
+| **gestalt dense + Qwen3-Reranker-0.6B** | open, MIT + Apache-2.0 | 435M + 0.6B | 435M + 0.6B, a measured peak of about 3.5 GB, one laptop GPU | **0.794** | **0.422** | measured here |
 | Qwen3-Embedding-4B | open, Apache-2.0 | 4.0B | 4.0B, 8.0 GB fp16 | 0.783 | 0.411 | MTEB results |
 | stella_en_400M_v5 | open, MIT | 435M | 435M, 0.9 GB fp16 | 0.782 | 0.415 | results file imported from the model card (revision external) |
 | **gestalt dense leg, stella_en_400M_v5 served here** | open, MIT | 435M | 435M, 0.9 GB fp16, runs on a CPU | **0.780** | **0.414** | measured here |
@@ -65,7 +65,7 @@ Scores are the MTEB results repository's per-task numbers at commit `b64a5db`, 2
 
 Reading the chart. Two panels, SciFact above and NFCorpus below, each with its own vertical scale, and each open model appears once in each at its parameter count. Five systems carry labels in each panel and the rest are grey dots. Closed APIs have no parameter count, so they are not on the axis; their scores and prices are the line under the chart.
 
-Where gestalt lands, stated with its limits. On SciFact the reranked pipeline scores above Qwen3-Embedding-4B, above stella alone and above OpenAI's text-embedding-3-large, and under NV-Embed-v2 at 7.8B parameters; gte-large-en-v1.5 claims a higher score on its own model card, with no results file in the repository. On NFCorpus the pipeline is level with OpenAI's text-embedding-3-large and Linq-Embed-Mistral, under NV-Embed-v2, and above every sub-billion embedder in the repository. The dense leg alone, stella_en_400M_v5 served through this pipeline, lands within a point of MTEB's own run of the model on both sets, which is the check that the pipeline adds no loss. A few entries carry no parameter count and could not be sized.
+Where gestalt lands, stated with its limits. On SciFact the reranked pipeline scores above Qwen3-Embedding-4B, above stella alone and above OpenAI's text-embedding-3-large, and under NV-Embed-v2 at 7.9B parameters; gte-large-en-v1.5 claims a higher score on its own model card, with no results file in the repository. The gaps to those three are 0.010 to 0.016 and sit inside the 95% interval, so read the four as level. On NFCorpus the pipeline is level with OpenAI's text-embedding-3-large and Linq-Embed-Mistral, under NV-Embed-v2, and above every sub-billion embedder in the repository. The dense leg alone, stella_en_400M_v5 served through this pipeline, lands within a point of MTEB's own run of the model on both sets, which is the check that the pipeline adds no loss. A few entries carry no parameter count and could not be sized.
 
 What the comparison is for. It places a pipeline of about a billion parameters that fits a laptop GPU, or a 435M embedder that fits a CPU, among models eight times larger and among paid APIs. It does not claim that gestalt beats them. The chart is drawn by `docs/make_score_cost_chart.py` from `docs/released-systems.json`. A reader who wants another system in it adds a row with its source.
 
@@ -76,8 +76,8 @@ These come from other people's runs. They were not rerun here. The table is sort
 | System | Type | Parameters | SciFact | NFCorpus | Source |
 |---|---|---|---|---|---|
 | **gestalt dense + Qwen3-Reranker-0.6B** | dense, cross-encoder blend | 435M + 0.6B | **0.794** | **0.422** | this page |
-| BGE-base-en-v1.5 | dense | 109M | 0.741 | 0.373 | Pyserini |
 | **gestalt dense leg, stella_en_400M_v5** | dense | 435M | **0.780** | **0.414** | this page |
+| BGE-base-en-v1.5 | dense | 109M | 0.741 | 0.373 | Pyserini |
 | BM25 + cross-encoder | two stage | BERT-base class, 110M | 0.688 | 0.350 | BEIR paper, Table 2 |
 | BM25 flat | lexical | none | 0.679 | 0.322 | Pyserini |
 | Contriever | dense | 110M | 0.677 | 0.328 | Pyserini |
@@ -105,7 +105,7 @@ The embedding model is `NovaSearch/stella_en_400M_v5` at revision `ffeb2b7ee715c
 
 Each BEIR document is one unit. The title and the abstract are joined and indexed whole. Gestalt's production index splits notes into sections, so this benchmark does not exercise the chunker.
 
-No default was chosen on these datasets. The choices of K=60 and the embedding model were fixed before this benchmark was run, and the tree cannot prove that. The optional fusion weights are different. `tune_fusion.py` picks them on a dev half of the queries only, and the test half stays unread.
+The shipped configuration was chosen on these datasets. The zoo in `evals/zoo/` compared 56 pipeline configurations on the test queries of SciFact, NFCorpus and FiQA, over 14 embedding models and 6 rerankers (`docs/measured-systems.json` holds every row), and the best shape became the default: the embedder, the dropped lexical vote, the reranker, its depth and its blend. So the headline is a development number, optimistic by an amount that was not measured, and no set the zoo never touched has been scored yet. The optional fusion weights are different. `tune_fusion.py` picks them on a dev half of the queries only, and the test half stays unread.
 
 ## Fusion
 
@@ -153,7 +153,7 @@ The first run needs network access. It downloads the datasets and the model weig
 
 ## The dev and test methodology
 
-This section covers the golden set of questions about your own notes. The BEIR runs have no knobs to choose, so they have no dev and test sides.
+This section covers the golden set of questions about your own notes. The BEIR choices did not go through it: the paragraph after the headline table says what was chosen on the BEIR sets.
 
 A knob is any setting that changes what search returns. Rerank on or off, the reranker, its depth, the fusion mode and its alpha, stopword removal, slug dedup and the embedder are all knobs. If you pick a knob by looking at the score on a question, then report the score on that same question, the score is too good. The choice has learned the question.
 
@@ -222,7 +222,7 @@ The shipped defaults produce the headline table above: stella_en_400M_v5 in floa
 
 ![Search quality against query time for every system the zoo measured, three panels, one per set](../../docs/score-vs-latency.png)
 
-The zoo's stella row equals the bench's dense leg to four decimals on SciFact and within 0.0002 on NFCorpus and FiQA, and its shipped-pipeline row sits within 0.003 of the bench's reranked system on every set, about one query's worth of nDCG. Read the table as a map, not a ranking of gestalt. Among the embedders, stella is on the latency frontier of every set. The 0.6B reranker adds a point or two on each set for two to three seconds a query at this duty cycle, and the 4B reranker adds another point and a half for two to three times that. What gestalt ships is the pipeline and the measurement, not the embedder, so a stronger embedder served through the same pipeline keeps its gain.
+The zoo's stella row equals the bench's dense leg to four decimals on SciFact and within 0.0002 on NFCorpus and FiQA, and its shipped-pipeline row sits within 0.003 of the bench's reranked system on every set, about one query's worth of nDCG. Read the table as a map, not a ranking of gestalt. Among the embedders, stella is on the latency frontier of every set. The 0.6B reranker adds half a point to two points on each set for two to three seconds a query at this duty cycle, and the 4B reranker adds another point and a half for two to three times that. What gestalt ships is the pipeline and the measurement, not the embedder, so a stronger embedder served through the same pipeline keeps its gain.
 
 ### Guards proven in these runs
 
@@ -449,7 +449,7 @@ Each of these happened on a real machine while the stored numbers were produced.
 
 1. **A run looks alive and does nothing.** One process sat eighteen minutes with one thread at full CPU, no GPU work and no output, while the same command in a fresh process finished in five. Guard: both evaluators print a progress line every ten items and every sixty seconds, and a watchdog ends the process with exit code 4 when one search runs past `GESTALT_EVAL_QUERY_TIMEOUT` seconds (default 300, 0 turns it off). A driver that retries the command gets a fresh process. The first search of a run also loads the models, so raise the knob for a first run that downloads them.
 2. **The reranker fell back and nobody noticed.** CUDA errors made 273 of 300 queries keep the fusion order, and the result read "no gain". Guard: every reranked result records its fallback count, and a run with any fallback exits 3 and is never scored.
-3. **A library version broke the embedding model.** A clean clone resolved transformers 5.19, where nomic's remote code fails. Guard: `requirements-bench.txt` pins the versions, and `python evals/retrieval/check_env.py` compares what is installed with the pins before you spend GPU hours. It also reports CUDA, free VRAM and every knob, and ends with GO or NO-GO.
+3. **A library version broke the embedding model.** A clean clone resolved transformers 5.19, where nomic's remote code fails and stella's modelling code calls a helper that 5.19 removed, so `tools/requirements.txt` caps transformers below 5.19. Guard: `requirements-bench.txt` pins the versions, and `python evals/retrieval/check_env.py` compares what is installed with the pins before you spend GPU hours. It also reports CUDA, free VRAM and every knob, and ends with GO or NO-GO.
 4. **The card was oversubscribed and the run crawled.** Batch 64 at 1,943 tokens needed 11.6 GB and spilled into system memory, five times slower, with no error. Guard: the embedding batch defaults to 16 with token-aware sub-batching, and `GESTALT_BENCH_VRAM_FRACTION` caps the allocator so a run fails fast instead of spilling. `check_env.py` suggests a value under 12 GB free.
 5. **The GPU went away mid-run.** Laptop GPUs can drop out under sustained load, and the driver then reports the device as gone. Guard: every phase resumes from the work directory, and `GESTALT_GPU_DUTY` paces sustained load so the average draw stays lower. A resumed run loses at most one block of embeddings or the queries since the last log line.
 6. **A result from another configuration was reused.** Guard: a finished dataset file carries its full identity (reranker, depth, instruction, fusion, alpha, embedding model and revision) and is reused only when every field matches the run that asks for it.
@@ -461,7 +461,7 @@ Each of these happened on a real machine while the stored numbers were produced.
 
 Three datasets are a small sample. Two are scientific or biomedical text and one is finance forum answers, and gestalt is built for engineering notes.
 
-The embedding model may have seen text from these datasets during training. That was not checked.
+The embedding model may have seen text from these datasets during training. That was not checked, and neither was it for the reranker. The p-values are raw, with no correction for the number of comparisons, and the reranker comparisons were chosen after the zoo had seen these sets.
 
 The seeds are fixed and the library versions are in `summary.json`. A different GPU or library build can still move the fourth decimal. One run was made, and it has not been repeated on other hardware.
 

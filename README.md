@@ -29,7 +29,7 @@ A coding agent forgets what it learned when the session ends. A memory file carr
 - **Optional reranking** with Qwen3-Reranker-0.6B at depth 40, blended half and half with the dense order, the headline configuration: 0.794 nDCG@10 on SciFact, 0.422 on NFCorpus and 0.572 on FiQA.
 - **Agent integration**: an MCP server (`gestalt_search`), session-start and per-prompt hooks, slash commands such as `/save` and `/learn`, for Claude Code and Cursor.
 - **Honest measurement**: bootstrap intervals, paired permutation tests, sealed held-out sets, a release gate that ties every published number to the hashes of the code that produced it, and `reproduce.py`, which rebuilds the headline table and checks every cell.
-- **Runs on a laptop**: the lexical leg on a CPU in about 25 ms a query, the dense leg in about 190 ms, and the reranked pipeline on one consumer GPU in half precision at about 2 GB.
+- **Runs on a laptop**: the lexical leg needs no model. The dense leg runs on a CPU, and on one laptop GPU it answers in under 130 ms a query. The reranked pipeline needs that GPU and peaks at about 3.5 GB of VRAM.
 - **Knobs for the long tail**: abstention from a calibrated reranker score, wikilink expansion, supersession and freshness demotion, all off by default.
 
 ```mermaid
@@ -53,6 +53,7 @@ Python 3.11 or newer is required. Lexical search needs neither a model nor a GPU
 git clone https://github.com/phbui/gestalt-core
 cd gestalt-core
 python3 -m venv .venv && . .venv/bin/activate
+pip install --index-url https://download.pytorch.org/whl/cpu torch   # drop this line on a machine with a CUDA GPU
 pip install -r tools/requirements.txt pytest
 export GESTALT_PYTHON="$(which python3)"
 python3 tools/gestalt-index-builder.py --fts-only
@@ -63,20 +64,20 @@ python3 -m pytest tests -q
 
 The search prints `sample-rank-fusion` sections. The golden-set run prints recall and MRR over the sample notes and says that lexical-only numbers are never banked. The test run passes, and some tests skip on a fresh clone.
 
-- **No GPU.** Install torch from the CPU index first, so pip does not pull the CUDA wheels: `pip install --index-url https://download.pytorch.org/whl/cpu torch`.
+- **GPU.** The torch line above installs the CPU build so pip does not pull the CUDA wheels. On a machine with a CUDA GPU drop that line, and the requirements file pulls the CUDA build.
 - **Benchmarks.** Install `evals/retrieval/requirements-bench.lock` instead of the requirements file. It holds the exact versions that produced the stored numbers. See BENCHMARKS.md, Install.
 - **Skipped harness tests.** The bench tests skip until those requirements are installed, and a green run that skipped them has not checked the harnesses.
 
 The five `sample-*.md` files in `knowledge/` are synthetic and exist so that the index, the search and the golden set run on a fresh clone. Delete them and add your own notes. Omitting `--fts-only` builds the dense vectors as well, which downloads the embedding model and benefits from a GPU.
 
-Claude Code reads `.claude/` in the directory it is launched from. To install the hooks, link that directory's entries to `claude-tree/`. Read `claude-tree/settings.json` first, because it replaces the settings that directory had.
+Claude Code reads `.claude/` in the directory it is launched from. This repository ships `.claude` as a link to `claude-tree/`, so Claude Code launched from the repository root finds the hooks, rules, skills and `settings.json` with no further step. Read `claude-tree/settings.json` first, because it is the settings Claude Code will run with. To use the hooks from another project, link that project's `.claude` entries to this checkout:
 
 ```
 mkdir -p .claude
-ln -s ../claude-tree/hooks .claude/hooks
-ln -s ../claude-tree/rules .claude/rules
-ln -s ../claude-tree/skills .claude/skills
-ln -s ../claude-tree/settings.json .claude/settings.json
+ln -s /path/to/gestalt-core/claude-tree/hooks .claude/hooks
+ln -s /path/to/gestalt-core/claude-tree/rules .claude/rules
+ln -s /path/to/gestalt-core/claude-tree/skills .claude/skills
+ln -s /path/to/gestalt-core/claude-tree/settings.json .claude/settings.json
 ```
 
 The optional memory services are defined in `docker-compose.yml` and `graphiti/`. The compose file binds their ports to `127.0.0.1`. None of the services authenticates requests, so their ports must stay off the network.
@@ -84,21 +85,21 @@ The optional memory services are defined in `docker-compose.yml` and `graphiti/`
 ## Benchmarks
 
 
-Retrieval quality was measured on three public benchmarks from the BEIR collection. A benchmark supplies a fixed corpus and a set of queries with known relevant documents, and scores how high the relevant documents rank. No default of gestalt was chosen on any of them. The optional fusion weights are tuned on a dev half of the queries and reported apart from the headline.
+Retrieval quality was measured on three public benchmarks from the BEIR collection. A benchmark supplies a fixed corpus and a set of queries with known relevant documents, and scores how high the relevant documents rank. The shipped configuration was chosen on these same three sets. A model zoo compared 56 pipeline configurations on their test queries, over 14 embedding models and 6 rerankers, and the best became the default. So the headline numbers are development numbers, and they are optimistic by an amount that was not measured. No set the zoo never touched has been scored yet. The optional fusion weights are tuned on a dev half of the queries and reported apart from the headline.
 
 **The datasets.** SciFact contains 5,183 scientific abstracts and 300 test claims, each supported or refuted by one or two abstracts. NFCorpus contains 3,633 medical abstracts and 323 questions phrased in everyday language, each with many relevant abstracts graded by relevance. FiQA-2018 contains 57,638 answers from financial discussion forums and 648 questions, each answered by a few of them. Every published system scores lower on NFCorpus than on SciFact, because its questions and abstracts share few words. FiQA sits between the two for most systems, and it is where BM25 falls furthest behind, at 0.248 against 0.554 for the dense leg.
 
-**The metric.** nDCG@10 scores the first ten results. A relevant document in first place earns full credit, and the same document in tenth place earns roughly one third. The sum is divided by the credit of a perfect ranking, so 1.000 means every relevant document sits at the top in the right order, and 0.000 means none appears in the first ten. A score of 0.780 therefore captures that fraction of the credit a perfect ranking would earn, averaged over the 300 queries.
+**The metric.** nDCG@10 scores the first ten results. A relevant document in first place earns full credit, and the same document in tenth place earns about 0.29. The sum is divided by the credit of a perfect ranking, so 1.000 means every relevant document sits at the top in the right order, and 0.000 means none appears in the first ten. A score of 0.780 therefore captures that fraction of the credit a perfect ranking would earn, averaged over the 300 queries.
 
 **Gestalt's systems.** The BM25 leg is the full-text search alone. The dense leg is the vector search alone, and under the shipped profile it is also what `gestalt_search` returns without a reranker: the fusion is convex at alpha 0, so the dense order stands and a lexical-only hit scores below every dense hit. The lexical leg had lowered every strong dense leg on three BEIR sets, so it casts no vote. The reranked system re-scores the top 40 dense hits with the cross-encoder and blends that score half and half with the dense score. Each cell reports the mean over queries with a 95% bootstrap interval, the range the mean would cover under repeated draws of the query set.
 
-| Dataset | BM25 leg | Dense leg, the default search | Dense + reranker |
+| Dataset | BM25 leg, a fresh install | Dense leg, `GESTALT_SEARCH_MODE=hybrid` | Dense + reranker, `GESTALT_RERANK=on` |
 |---|---|---|---|
 | SciFact, 300 queries | 0.682 [0.638, 0.725] | 0.780 [0.742, 0.815] | **0.794 [0.757, 0.830]** |
 | NFCorpus, 323 queries | 0.322 [0.287, 0.356] | 0.414 [0.378, 0.450] | **0.422 [0.386, 0.458]** |
 | FiQA, 648 queries | 0.248 [0.224, 0.273] | 0.554 [0.526, 0.581] | **0.572 [0.545, 0.600]** |
 
-The reranked row is the headline. It is what `--rerank on` gives you: the hybrid's top 40 candidates re-scored by `Qwen/Qwen3-Reranker-0.6B` with a task line per dataset, recorded in `results/summary.json`. The hybrid row is the default on a machine without a GPU.
+The reranked row is the headline. It is what `--rerank on` gives you: the top 40 dense candidates re-scored by `Qwen/Qwen3-Reranker-0.6B` with a task line per dataset, recorded in `results/summary.json`. The dense row is what a machine without a GPU gets once `GESTALT_SEARCH_MODE=hybrid` has loaded the model. The BM25 row is what a fresh install runs until then.
 
 **Which gains the tests confirm.** A paired permutation test compares two systems on the same queries and reports how often a random relabelling of the paired differences produces a gap at least as large as the observed one.
 
@@ -109,11 +110,11 @@ The reranked row is the headline. It is what `--rerank on` gives you: the hybrid
 
 The conventional threshold is p < 0.05. The dense leg's gain over BM25 clears it on all three sets by a wide margin. The reranker's gain over the dense leg clears it on FiQA, 1.9 points at p 0.0001, and does not on SciFact, 1.4 points at p 0.09, or on NFCorpus, under a point at p 0.13. So the two scientific sets do not separate the reranked system from the dense leg, and FiQA, where BM25 trails the dense leg by thirty points, is where the reranker earns its place.
 
-**Comparison with released systems.** The table lists the systems most people use, the ones that compete with gestalt in size or score, and the baselines from the BEIR paper. It is sorted by SciFact score. Scores are the MTEB results repository's own per-task numbers from 2026-10-09. Those are the BEIR test splits at nDCG@10, each model's own run with its own prompts. The gestalt rows are measured here. FiQA is not in this table: the published rows were collected for the two sets the comparison began with. The full data file, with 40 systems and their licences, memory and prices, is `docs/released-systems.json`, and the method page has the longer table.
+**Comparison with released systems.** The table lists the systems most people use, the ones that compete with gestalt in size or score, and the baselines from the BEIR paper. It is sorted by SciFact score. Scores are the MTEB results repository's own per-task numbers from 2026-10-09, except the stella_en_400M_v5 and gte-base-en-v1.5 rows, which are the results files their model cards publish, marked as such in the data file. Those are the BEIR test splits at nDCG@10, each model's own run with its own prompts. The gestalt rows are measured here. FiQA is not in this table: the published rows were collected for the two sets the comparison began with. The full data file, with 40 systems and their licences, memory and prices, is `docs/released-systems.json`, and the method page has the longer table.
 
 | System | Type | Parameters, or price | SciFact | NFCorpus |
 |---|---|---|---|---|
-| NV-Embed-v2 | dense | 7.8B | 0.801 | 0.450 |
+| NV-Embed-v2 | dense | 7.9B | 0.801 | 0.450 |
 | **gestalt dense + Qwen3-Reranker-0.6B** | dense, cross-encoder blend | 435M + 0.6B | **0.794** | **0.422** |
 | Qwen3-Embedding-4B | dense | 4.0B | 0.783 | 0.411 |
 | stella_en_400M_v5 | dense | 435M | 0.782 | 0.415 |
@@ -135,13 +136,13 @@ The conventional threshold is p < 0.05. The dense leg's gain over BM25 clears it
 
 ![Search quality against model size on SciFact and NFCorpus. Two panels, each system at its parameter count on a log axis. Stars are gestalt, measured here. Dots are published scores.](docs/score-vs-cost.png)
 
-On SciFact the reranked pipeline scores above Qwen3-Embedding-4B, above stella alone and above OpenAI's text-embedding-3-large, and under NV-Embed-v2 at 7.8B parameters and the self-reported gte-large score. On NFCorpus it is level with OpenAI's large embedding and under NV-Embed-v2, and above stella alone by the reranker's margin. What gestalt offers is two models of about a billion parameters together, a 435M embedder and a 0.6B reranker, on one laptop GPU, and the dense leg alone runs on a CPU. It does not claim the top of either leaderboard. The 4B reranker adds another point and a half at three times the latency and is an opt-in, and the zoo measures every candidate on the same queries.
+On SciFact the reranked pipeline scores above Qwen3-Embedding-4B, above stella alone and above OpenAI's text-embedding-3-large, and under NV-Embed-v2 at 7.9B parameters and the self-reported gte-large score. The gaps to those three are 0.010 to 0.016 and sit inside the 95% interval, so read the four as level. On NFCorpus it is level with OpenAI's large embedding and under NV-Embed-v2, and above stella alone by the reranker's margin. What gestalt offers is two models of about a billion parameters together, a 435M embedder and a 0.6B reranker, on one laptop GPU, and the dense leg alone runs on a CPU. It does not claim the top of either leaderboard. The 4B reranker adds another point and a half at two to three times the latency and is an opt-in, and the zoo measures every candidate on the same queries.
 
 Against the closest published design, BM25 with a cross-encoder reranker, the dense leg alone lies above the published scores on both sets, 0.688 and 0.350, with its whole interval.
 
 ![Search quality against query time on SciFact, every system measured on one RTX 4090 laptop GPU. Higher is better and left is faster. The dashed line joins the systems nothing beats on both counts. Stars are gestalt.](docs/score-vs-latency-scifact.png)
 
-The second chart is the same machine for every row, so the latencies compare. It shows SciFact, and the benchmark page has all three sets. The dense leg sits on the frontier of every set at under 130 ms a query. The shipped pipeline sits on it too, two to three seconds a query under the GPU duty cycle the runs used, and the 4B reranker is the only measured system above it, at two to three times the latency and 11 GB of VRAM. `docs/measured-systems.json` holds every row with its duty cycle, and `evals/zoo/README.md` says how to add a system.
+The second chart is the same machine for every row, so the latencies compare. It shows SciFact, and the benchmark page has all three sets. The dense leg sits on the frontier of every set at under 130 ms a query. The shipped pipeline sits on it too, 1.8 to 3.3 seconds a query under the GPU duty cycle the runs used, and the 4B reranker is the only measured system above it, at two to three times the latency and 11 GB of VRAM. `docs/measured-systems.json` holds every row with its duty cycle, and `evals/zoo/README.md` says how to add a system.
 
 **Scope of the result.** The measurement establishes that the pipeline is sound, that the dense leg beats BM25 on every set, and on which sets the reranker's gain is real. It does not establish that gestalt outperforms a strong retriever, and it says nothing about retrieval over personal notes, whose structure differs from scientific abstracts and forum answers. The method, the limits and the one-command reproduction are in [evals/retrieval/BENCHMARKS.md](evals/retrieval/BENCHMARKS.md). Per-query scores and run files are in `evals/retrieval/results/`.
 
@@ -167,7 +168,7 @@ The defaults are what the headline table measures. Each row says why the setting
 
 | Setting | Default | Why |
 |---|---|---|
-| Embedder | stella_en_400M_v5, unit vectors, float32 | The best dense leg under a billion parameters the zoo measured on the same queries: 0.780 on SciFact, where the next embedder under a billion parameters scored 0.768. |
+| Embedder | stella_en_400M_v5, unit vectors, float32 | The best dense leg under a billion parameters the model zoo in `evals/zoo/` measured on the same queries: 0.780 on SciFact, where the next embedder under a billion parameters scored 0.768. |
 | Fusion | the dense order, no lexical vote | Under stella the dense leg alone beat the RRF hybrid on all three sets. The lexical leg answers only where the dense leg has nothing. |
 | Reranker | off, `GESTALT_RERANK=on` to use it | It needs a GPU. It gained on all three sets, and the gain clears p 0.05 on FiQA only, so a laptop without it loses little. |
 | Search mode | `fts`, `GESTALT_SEARCH_MODE=hybrid` for the dense leg | Off, the MCP server holds no model in memory. On, the dense leg loads once and unloads after ten idle minutes. |
@@ -185,11 +186,11 @@ Every model is open weights. Each downloads from Hugging Face on first use, pinn
 |---|---|---|---|---|---|
 | Lexical search, always on | SQLite FTS5 with the porter tokenizer, ranked by BM25 | none | none | public domain | any CPU |
 | Embedder, the default | `NovaSearch/stella_en_400M_v5`, 1024-dimension unit vectors, query prefix from the model card | 435M | 1.7 GB | MIT | a CPU, or a GPU with 0.9 GB free in float16 |
-| Reranker, `GESTALT_RERANK=on` | `Qwen/Qwen3-Reranker-0.6B`, a cross-encoder over the top 40 dense hits, blended half and half with the dense score | 0.6B | 1.2 GB | Apache-2.0 | a GPU, about 2 GB with the embedder in float16 |
+| Reranker, `GESTALT_RERANK=on` | `Qwen/Qwen3-Reranker-0.6B`, a cross-encoder over the top 40 dense hits, blended half and half with the dense score | 0.6B | 1.2 GB | Apache-2.0 | a GPU, a measured peak of about 3.5 GB with the embedder loaded |
 | Reranker, `GESTALT_RERANK_MODEL=qwen3-4b` | `Qwen/Qwen3-Reranker-4B` at depth 20 | 4B | 7.6 GB | Apache-2.0 | a GPU with 9 GB free, 11 GB in use, else it falls back to bge |
 | Reranker, `GESTALT_RERANK_MODEL=bge` | `BAAI/bge-reranker-v2-m3` | 568M | 2.2 GB | Apache-2.0 | a GPU |
 | Embedder, `GESTALT_EMBED_PROFILE=nomic` | `nomic-ai/nomic-embed-text-v1.5`, 768 dimensions, reciprocal rank fusion with BM25 | 137M | 0.5 GB | Apache-2.0 | a CPU |
-| Embedder, `GESTALT_EMBED_PROFILE=qwen3-4b` | `Qwen/Qwen3-Embedding-4B`, 2560 dimensions | 4B | 7.6 GB | Apache-2.0 | a GPU, about 8 GB in bfloat16 |
+| Embedder, `GESTALT_EMBED_PROFILE=qwen3-4b` | `Qwen/Qwen3-Embedding-4B`, 2560 dimensions | 4B | 7.6 GB | Apache-2.0 | a GPU, a measured peak of about 10 GB |
 
 The headline table is the default embedder with the 0.6B reranker. A machine without a GPU runs the embedder alone and gets the dense column. A machine without the model runs the lexical leg alone. The embedder loads through sentence-transformers and torch, and the vectors live in SQLite through sqlite-vec. Changing the embedder re-embeds every note. The stop hook can send session text to a Letta server on localhost, whose model is whatever you configured there, and nothing is sent when no server runs.
 
@@ -242,7 +243,7 @@ Hooks live in `claude-tree/hooks/` and are registered in `claude-tree/settings.j
 
 The hooks act without confirmation, so their effects are stated here before installation.
 
-The session-start hook rebuilds the search index in the background whenever the index is older than the notes. That rebuild downloads the embedding model from Hugging Face and embeds every note. With transformers 5.5 or later the model loads through the library's own class and no code from the Hub runs. On an older library it falls back to remote code pinned to one commit. `GESTALT_TRUST_REMOTE_CODE=0` forbids the remote code. `1` forces it. The default is `auto`. Exporting `GESTALT_INDEX_BUILD_ROLE=hub` in the environment that launches Claude Code keeps the automatic rebuild lexical-only, and `tools/gestalt-index-builder.py` builds vectors on demand.
+The session-start hook rebuilds the search index in the background whenever the index is older than the notes. That rebuild downloads the embedding model from Hugging Face and embeds every note. The default embedder ships its own modelling code in its model repository, and loading it executes that code, pinned to one revision. `GESTALT_TRUST_REMOTE_CODE=0` forbids remote code, and the default profile then does not load. The `nomic` profile needs no remote code on transformers 5.5 or later. The default is `auto`. Exporting `GESTALT_INDEX_BUILD_ROLE=hub` in the environment that launches Claude Code keeps the automatic rebuild lexical-only, and `tools/gestalt-index-builder.py` builds vectors on demand.
 
 The stop hook sends up to 800 characters of each message in the session to a Letta server at `http://localhost:8283` when one is running, and Letta forwards that text to whatever model its agent is configured with. Nothing is sent when no server answers.
 
@@ -254,7 +255,7 @@ Hybrid search runs only when `GESTALT_SEARCH_MODE=hybrid` is set. Otherwise the 
 
 ## Security
 
-Read `SECURITY.md` before installing the hooks. The short form: notes are an input channel to the agent and can carry instructions, so review notes from other people before indexing them. The MCP server's HTTP mode, the embedding shim and the Docker services accept any request that reaches them, so their ports stay on `127.0.0.1`, and stdio mode opens no port at all. The index build runs remote model code from Hugging Face, pinned by weight revision and code commit in `tools/gestalt_embed_config.py`, and the embedding shim uses the same pins. The stop hook sends session text to a local Letta server when one is running, and the audit hook logs every shell command to `~/.claude/audit.log`, secrets included. The safety hooks are best-effort guardrails and not a sandbox. Vulnerabilities go through GitHub's private reporting, linked from `SECURITY.md`.
+Read `SECURITY.md` before installing the hooks. The short form: notes are an input channel to the agent and can carry instructions, so review notes from other people before indexing them. The MCP server's HTTP mode, the embedding shim and the Docker services accept any request that reaches them, so their ports stay on `127.0.0.1` or the Docker bridge, and stdio mode opens no port at all. The index build runs the default embedder's own modelling code from Hugging Face, pinned by revision in `tools/gestalt_embed_config.py`, and the embedding shim uses the same pins. The stop hook sends session text to a local Letta server when one is running, and the audit hook logs every shell command to `~/.claude/audit.log`, secrets included. The safety hooks are best-effort guardrails and not a sandbox. Vulnerabilities go through GitHub's private reporting, linked from `SECURITY.md`.
 
 ## Configuration
 
@@ -262,7 +263,7 @@ Every setting is an environment variable. A variable you leave unset keeps its d
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `GESTALT_SEARCH_MODE` | `fts` | `hybrid` loads the embedding model. `fts` searches the lexical leg only. |
+| `GESTALT_SEARCH_MODE` | `fts` | `hybrid` loads the embedding model. `fts` searches the lexical leg only. On a machine that names a fleet hub, `GESTALT_LEAF_LOCAL_MODEL=1` is needed as well, because fleet laptops relay semantic searches instead of loading a model. |
 | `GESTALT_HUB_MCP_URL` | empty | Relay semantic searches to this MCP URL instead of loading a model locally. |
 | `GESTALT_MODEL_IDLE_S` | `600` | Seconds without a hybrid search before the server unloads the model. `0` keeps it. |
 | `GESTALT_INDEX_BUILD_ROLE` | unset | `hub` means another machine builds the vectors, so the automatic rebuild here stays lexical-only. |
@@ -276,8 +277,8 @@ Every setting is an environment variable. A variable you leave unset keeps its d
 | `GESTALT_TF32` | `0` | `1` allows TF32 matrix products on CUDA. |
 | `GESTALT_ATTN_IMPL` | the library's choice | `sdpa`, `eager` or `flash_attention_2`. |
 | `GESTALT_EMBED_DIM` | the profile's full width | A narrower Matryoshka width. Other widths need the layer-norm, slice and normalise recipe. |
-| `GESTALT_TRUST_REMOTE_CODE` | `auto` | `auto` uses the library's own nomic class on transformers 5.5 or later. `1` forces the pinned remote code. `0` forbids it. |
-| `GESTALT_RERANK` | `auto` | `off`, `auto` or `on`. `auto` resolves to off everywhere except the author's own machines, so pass `on` to use the reranker. |
+| `GESTALT_TRUST_REMOTE_CODE` | `auto` | `auto` runs the pinned modelling code a profile needs, and uses the library's own nomic class on transformers 5.5 or later. `1` forces the pinned remote code. `0` forbids it, and `stella-400m` then does not load. |
+| `GESTALT_RERANK` | `auto` | `off`, `auto` or `on`. `auto` turns the reranker on only on a fleet hub with a GPU, so pass `on` to use it. |
 | `GESTALT_RERANK_MODEL` | the profile's | `qwen3-0.6b` under `stella-400m`, `bge` under `nomic`; also `qwen3-4b` or a Hugging Face id. |
 | `GESTALT_RERANK_BLEND` | the profile's | `0.5` under `stella-400m`, `0` under `nomic`. Above 0 the reranked head is ordered by a mix of the z-scored reranker score and the z-scored fused score. |
 | `GESTALT_RERANK_DEPTH` | `40` | How many fused candidates the reranker sees. |

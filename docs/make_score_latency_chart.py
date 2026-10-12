@@ -25,7 +25,7 @@ ap.add_argument("--band", choices=["scifact", "nfcorpus", "fiqa"], help="draw on
 a = ap.parse_args()
 rows = json.load(open(a.data))
 VERMILION, BLUE, GREY, INK, MUTED = "#D55E00", "#0072B2", "#B0B0B0", "#000000", "#555555"
-STARS = {"stella-400m-rerank-qwen3-0.6b-blend0.5": "gestalt + reranker (opt-in, needs a GPU)", "stella-400m": "gestalt default search"}
+STARS = {"stella-400m-rerank-qwen3-0.6b-blend0.5": "gestalt + reranker (opt-in, needs a GPU)", "stella-400m": "gestalt dense search"}
 LABEL = {"bm25": "keyword search (BM25)", "nomic": "nomic-embed-text-v1.5", "stella-rr-qwen3-4b-d20-b05": "the 4B reranker (opt-in)", "stella-rr-ettin-150m-d40-b05": "gestalt + ettin reranker",
          "denseon": "DenseOn 150M", "gte-base-v15": "gte-base 137M", "qwen3-4b": "Qwen3-Embedding-4B"}
 BEST_OTHER = {"scifact": "gte-base-v15", "nfcorpus": "qwen3-4b", "fiqa": "denseon"}  # the strongest other dense leg in each band

@@ -192,6 +192,12 @@ def _release_model_memory() -> None:
         ctypes.CDLL("libc.so.6").malloc_trim(0)
     except Exception:
         pass
+    try:  # the weights are freed into torch's caching allocator; hand the reserved VRAM back to the card too
+        torch = sys.modules.get("torch")
+        if torch is not None and torch.cuda.is_available():
+            torch.cuda.empty_cache()
+    except Exception:
+        pass
 
 
 def unload_model(force: bool = False) -> bool:
@@ -763,11 +769,23 @@ def _gestalt_search_fts_raw(query: str, limit: int = 10) -> list[dict]:
     ], query)
 
 
+def _fleet_configured() -> bool:
+    """True when this machine is part of a fleet: a hub is named in the environment or ~/.fleet/fleet.env exists.
+    A machine with neither is a lone install, and the leaf policy below does not apply to it."""
+    if os.environ.get("FLEET_HUB_NAME") or os.environ.get("FLEET_HUB"):
+        return True
+    return (Path.home() / ".fleet" / "fleet.env").is_file()
+
+
 def _leaf_may_load_model() -> bool:
-    """Laptops never load the embedding model (<kb-entry>, 2026-09-02): the hub holds the
+    """Fleet laptops never load the embedding model (<kb-entry>, 2026-09-02): the hub holds the
     fleet's only resident model, and a leaf that loads its own costs 750 MB on a machine already in swap.
-    GESTALT_LEAF_LOCAL_MODEL=1 re-enables the local leg on a node that can afford it."""
-    return _is_hub() or os.environ.get("GESTALT_LEAF_LOCAL_MODEL", "") == "1"
+    GESTALT_LEAF_LOCAL_MODEL=1 re-enables the local leg on a node that can afford it. A lone install, with no fleet
+    configured, loads the model whenever GESTALT_SEARCH_MODE=hybrid asks for it (found 2026-10-12: the README's own recipe
+    did nothing on a stranger's machine, because the leaf rule treated every host but "hub" as a fleet laptop)."""
+    if _is_hub() or os.environ.get("GESTALT_LEAF_LOCAL_MODEL", "") == "1":
+        return True
+    return not _fleet_configured()
 
 
 def _route_dense_leg(request: str) -> list[int]:

@@ -23,7 +23,7 @@ rows = [r for r in json.load(open(a.data)) if r.get("scifact") is not None and r
 VERMILION, BLUE, GREY, INK, MUTED = "#D55E00", "#0072B2", "#B0B0B0", "#000000", "#555555"
 opens = [r for r in rows if r["open"] and r.get("params_m") and "self-reported" not in r.get("note", "")]
 closed = sorted([r for r in rows if not r["open"]], key=lambda r: -r["scifact"])
-STARS = {"gestalt dense + Qwen3-Reranker-0.6B": "gestalt + reranker (opt-in, needs a GPU)", "gestalt dense leg, stella_en_400M_v5 served here": "gestalt default search"}
+STARS = {"gestalt dense + Qwen3-Reranker-0.6B": "gestalt + reranker (opt-in, needs a GPU)", "gestalt dense leg, stella_en_400M_v5 served here": "gestalt dense search"}
 LABEL = {"NV-Embed-v2": "NV-Embed-v2, 7.9B", "Qwen3-Embedding-4B": "Qwen3-Embedding-4B",
          "all-MiniLM-L6-v2": "MiniLM-L6, 23M"}
 OFFSET = {  # axes-fraction offsets (dx, dy, ha) per panel, placed by hand
