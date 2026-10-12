@@ -8,6 +8,14 @@ authors:
     given-names: Philip
     affiliation: "New York University"
 repository-code: "https://github.com/phbui/gestalt-core"
+doi: 10.5281/zenodo.23324594
+identifiers:
+  - type: doi
+    value: 10.5281/zenodo.23324594
+    description: "The concept DOI, which resolves to the newest release."
+  - type: doi
+    value: 10.5281/zenodo.23324595
+    description: "The DOI of version 0.1.0."
 license: Apache-2.0
 version: 0.1.0
 date-released: "2026-10-12"

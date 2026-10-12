@@ -3,6 +3,7 @@
 [![CI](https://github.com/phbui/gestalt-core/actions/workflows/ci.yaml/badge.svg)](https://github.com/phbui/gestalt-core/actions/workflows/ci.yaml)
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](#install)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.23324594.svg)](https://doi.org/10.5281/zenodo.23324594)
 [![BEIR SciFact nDCG@10 0.794](https://img.shields.io/badge/SciFact_nDCG%4010-0.794-brightgreen.svg)](evals/retrieval/BENCHMARKS.md)
 [![BEIR NFCorpus nDCG@10 0.422](https://img.shields.io/badge/NFCorpus_nDCG%4010-0.422-brightgreen.svg)](evals/retrieval/BENCHMARKS.md)
 [![BEIR FiQA nDCG@10 0.572](https://img.shields.io/badge/FiQA_nDCG%4010-0.572-brightgreen.svg)](evals/retrieval/BENCHMARKS.md)
