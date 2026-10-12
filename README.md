@@ -7,7 +7,7 @@
 [![BEIR NFCorpus nDCG@10 0.422](https://img.shields.io/badge/NFCorpus_nDCG%4010-0.422-brightgreen.svg)](evals/retrieval/BENCHMARKS.md)
 [![BEIR FiQA nDCG@10 0.572](https://img.shields.io/badge/FiQA_nDCG%4010-0.572-brightgreen.svg)](evals/retrieval/BENCHMARKS.md)
 
-**Local search over your Markdown notes for Claude Code and Cursor, with BEIR numbers you can rerun.** Notes in, the right section back at the right moment. A stella_en_400M_v5 dense leg in SQLite with sqlite-vec, full-text BM25 as the lexical fallback, an optional cross-encoder rerank blended with the dense order, and hooks that put what matters in front of the agent at session start and before each prompt. Nothing leaves your machine and nothing needs an API key. Every published number comes from a harness that reproduces it from a clean checkout.
+**Local search over your Markdown notes for Claude Code and Cursor (re-runnable BEIR benchmarks included).** Notes in, the right section back at the right moment. A stella_en_400M_v5 dense leg in SQLite with sqlite-vec, full-text BM25 as the lexical fallback, an optional cross-encoder rerank blended with the dense order, and hooks that put what matters in front of the agent at session start and before each prompt. Nothing leaves your machine and nothing needs an API key. 
 
 A gestalt is a whole whose meaning exceeds the sum of its parts. Scattered notes become a gestalt when a system recalls the right note at the right moment, so that each session of a coding agent starts with everything the previous sessions learned. I built it for my own work and I use it every day for personal, school, and research related thinking.
 
