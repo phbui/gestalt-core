@@ -137,8 +137,10 @@ echo "$CMD_NORM" | grep -qE '>\s*/dev/(sd[a-z]|nvme[0-9])' && deny "Raw device w
 echo "$CMD_NORM" | grep -qE '\bgit\s+reset\s+--hard' && deny "git reset --hard destroys uncommitted changes. Use 'git stash' first"
 echo "$CMD_NORM" | grep -qE '\bgit\s+reset\s+--merge' && deny "git reset --merge can lose uncommitted changes"
 echo "$CMD_NORM" | grep -qE '\bgit\s+clean\s+(-[a-zA-Z]*f[a-zA-Z]*|--force)' && deny "git clean -f permanently removes untracked files. Use 'git clean -n' to preview first"
-echo "$CMD_NORM" | grep -qE '\bgit\s+push\s+.*--force\b' && deny "git push --force can destroy remote history. Use --force-with-lease"
-echo "$CMD_NORM" | grep -qE '\bgit\s+push\b.*\s-[a-zA-Z]*f[a-zA-Z]*(\s|$)' && deny "git push -f can destroy remote history. Use --force-with-lease"
+# Scoped to the push's own argument list ([^|;&]*): the old `.*` ran past `&&` and read a later
+# `git branch -f` as the push's flag (false positive on a plain refspec push, 2026-10-13).
+echo "$CMD_NORM" | grep -qE '\bgit\s+push\s+[^|;&]*--force\b' && deny "git push --force can destroy remote history. Use --force-with-lease"
+echo "$CMD_NORM" | grep -qE '\bgit\s+push\b[^|;&]*\s-[a-zA-Z]*f[a-zA-Z]*(\s|$)' && deny "git push -f can destroy remote history. Use --force-with-lease"
 echo "$CMD_NORM" | grep -qE '\bgit\s+branch\s+-D\s' && deny "git branch -D force-deletes without merge check. Use -d for safety"
 if echo "$CMD_NORM" | grep -qE '\bgit\s+stash\s+(drop|clear)\b'; then
   if [ "$PHBUI_REPO" = "1" ]; then
