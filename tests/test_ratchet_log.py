@@ -73,3 +73,53 @@ def test_one_line_per_run(rig):
     db(rig, vec=True); uv(rig, "exit 0")
     run(rig); run(rig)
     assert len(rig["log"].read_text().splitlines()) == 2
+
+
+# ---- clamp avoidance and GPU loss on the hub (2026-10-15) -------------------------------------
+
+NO_CUDA = "echo 'hub: cannot run here: no CUDA device: the hub configuration reranks in fp16 on a GPU'"
+
+
+def test_gpu_duty_and_allocator_defaults_reach_the_runner(rig):
+    db(rig, vec=True); uv(rig, 'echo "$GESTALT_GPU_DUTY $PYTORCH_CUDA_ALLOC_CONF" > "$HOME/seen"; exit 0')
+    assert run(rig).returncode == 0
+    assert (rig["home"] / "seen").read_text().split() == ["0.6", "expandable_segments:True"]
+
+
+def test_a_caller_can_override_the_duty(rig):
+    db(rig, vec=True); uv(rig, 'echo "$GESTALT_GPU_DUTY" > "$HOME/seen"; exit 0')
+    env = dict(os.environ, HOME=str(rig["home"]), PATH=f"{rig['bin']}:{os.environ['PATH']}", GESTALT_GPU_DUTY="0.35")
+    env.pop("RATCHET_LOG", None)
+    subprocess.run(["sh", str(SCRIPT)], cwd=rig["repo"], env=env, capture_output=True, text=True, timeout=30)
+    assert (rig["home"] / "seen").read_text().strip() == "0.35"
+
+
+def test_lost_gpu_checks_the_default_config_and_says_the_hub_config_was_not_checked(rig):
+    db(rig, vec=True)
+    uv(rig, f'case "$*" in *--allow-missing-hub-config*) exit 0;; *) {NO_CUDA}; exit 1;; esac')
+    r = run(rig)
+    assert r.returncode == 0 and last(rig)[3:] == ["PASS", "reason=hub-config-unchecked"]
+    assert "NOT checked" in r.stderr and "restart WSL" in r.stderr
+
+
+def test_lost_gpu_still_blocks_a_regression_in_the_default_config(rig):
+    db(rig, vec=True)
+    uv(rig, f'case "$*" in *--allow-missing-hub-config*) echo "default: r@1 dropped"; exit 1;; *) {NO_CUDA}; exit 1;; esac')
+    r = run(rig)
+    assert r.returncode == 1 and last(rig)[3] == "FAIL" and "r@1 dropped" in r.stdout
+
+
+def test_device_restart_during_the_run_is_named_in_the_skip(rig):
+    db(rig, vec=True)
+    ts = rig["home"] / ".fleet" / "gpu-unclamp" / "last-restart-ts"; ts.parent.mkdir(parents=True)
+    uv(rig, f'echo Traceback; echo "RuntimeError: CUDA error"; date +%s > "{ts}"; exit 1')
+    r = run(rig)
+    assert r.returncode == 0 and last(rig)[3:] == ["SKIP", "reason=gpu-restarted-mid-run"]
+    assert "watchdog restarted the device" in r.stdout
+
+
+def test_an_old_device_restart_does_not_relabel_a_real_harness_error(rig):
+    db(rig, vec=True)
+    ts = rig["home"] / ".fleet" / "gpu-unclamp" / "last-restart-ts"; ts.parent.mkdir(parents=True); ts.write_text("1000000000\n")
+    uv(rig, "echo Traceback; echo boom; exit 1")
+    assert run(rig).returncode == 0 and last(rig)[3:] == ["SKIP", "reason=harness-error"]

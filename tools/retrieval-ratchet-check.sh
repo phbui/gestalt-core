@@ -32,18 +32,42 @@ if [ -n "$HUB_NAME" ] && [ "$(hostname -s 2>/dev/null | tr 'A-Z' 'a-z')" != "$(p
   echo "gestalt: retrieval ratchet SKIPPED (fleet leaf: the hub holds the model and runs the ratchet on its own pushes)"
   rlog SKIP leaf-no-model; exit 0
 fi
+# Clamp avoidance (2026-10-15). The hub configuration embeds with stella and reranks in fp16, and at full duty that load took the
+# 4090 into its 10 W firmware clamp inside every other push (ratchet.log: PASS to 10-13 13:02, then FAIL and harness-error). The
+# watchdog (gpu-unclamp) then restarts the device, which kills the run's CUDA context and leaves WSL without GPU passthrough until
+# WSL is restarted. The hub drivers run at 0.6 with expandable segments (knowledge/<kb-entry>.md), so the ratchet
+# does too. A caller can still override either variable.
+export GESTALT_GPU_DUTY="${GESTALT_GPU_DUTY:-0.6}"
+export PYTORCH_CUDA_ALLOC_CONF="${PYTORCH_CUDA_ALLOC_CONF:-expandable_segments:True}"
+RUN_START=$(date +%s)
 # The interpreter is the gestalt venv when it exists: the pinned environment the baseline was banked in (transformers 5.15 to 5.16,
 # which stella_en_400M_v5's modelling code needs; 5.17 removed the helper it calls, tools/requirements.txt). The old "transformers<5"
 # pin here was the nomic era and cannot load the shipped profile. Without the venv, uv builds the same range.
-if [ -x "$HOME/.claude/gestalt/venv/bin/python3" ]; then
-  RETR_OUT=$("$HOME/.claude/gestalt/venv/bin/python3" evals/retrieval/run_retrieval_evals.py --baseline check 2>&1)
-  RETR_RC=$?
-else
+if [ ! -x "$HOME/.claude/gestalt/venv/bin/python3" ]; then
   command -v uv >/dev/null 2>&1 || { echo "gestalt: retrieval ratchet SKIPPED (no gestalt venv and no uv, not a regression)"; rlog SKIP no-uv; exit 0; }
-  RETR_OUT=$(uv run --quiet --with pyyaml --with sqlite-vec --with sentence-transformers --with einops --with "transformers>=5.5,<5.17" python3 evals/retrieval/run_retrieval_evals.py --baseline check 2>&1)
-  RETR_RC=$?
 fi
+run_ratchet() { # extra runner arguments
+  if [ -x "$HOME/.claude/gestalt/venv/bin/python3" ]; then
+    "$HOME/.claude/gestalt/venv/bin/python3" evals/retrieval/run_retrieval_evals.py --baseline check "$@" 2>&1
+  else
+    uv run --quiet --with pyyaml --with sqlite-vec --with sentence-transformers --with einops --with "transformers>=5.5,<5.17" python3 evals/retrieval/run_retrieval_evals.py --baseline check "$@" 2>&1
+  fi
+}
+RETR_OUT=$(run_ratchet)
+RETR_RC=$?
 [ $RETR_RC -eq 0 ] && { rlog PASS; exit 0; }
+# The hub lost its GPU (WSL passthrough gone after a watchdog device restart): the hub configuration cannot run, but the default
+# configuration can. Check that one, and say loudly that the other was not checked. A regression in the default one still blocks.
+if echo "$RETR_OUT" | grep -q "no CUDA device"; then
+  RETR2=$(run_ratchet --allow-missing-hub-config)
+  RC2=$?
+  if [ $RC2 -eq 0 ]; then
+    echo "gestalt: retrieval ratchet PASSED ONLY IN PART: the hub configuration was NOT checked because this machine has no CUDA device." >&2
+    echo "gestalt: the hub lost GPU passthrough (WSL NVML blocked after a gpu-unclamp device restart). Recover it per hub-invariants (restart WSL, verify torch.cuda), then push again." >&2
+    rlog PASS hub-config-unchecked; exit 0
+  fi
+  RETR_OUT="$RETR2"; RETR_RC=$RC2
+fi
 # The runner refuses an index built for another embedding profile (2026-10-10). That is a setup error, not a quality regression,
 # and it must not pass silently either: the push is stopped with the runner's own message.
 if echo "$RETR_OUT" | grep -q "built for another embedding setup"; then
@@ -53,6 +77,14 @@ if echo "$RETR_OUT" | grep -q "built for another embedding setup"; then
   exit 1
 fi
 if echo "$RETR_OUT" | grep -q Traceback; then
+  # The watchdog restarted the GPU while the run was in flight: say so, because the traceback alone reads like a code bug.
+  RESTART_TS=$(cat "$HOME/.fleet/gpu-unclamp/last-restart-ts" 2>/dev/null || echo 0)
+  if [ "$RESTART_TS" -ge "$RUN_START" ] 2>/dev/null; then
+    echo "gestalt: retrieval ratchet SKIPPED (the GPU watchdog restarted the device during the run, a clamp; not a regression)."
+    echo "gestalt: WSL has lost GPU passthrough. Recover it per hub-invariants (restart WSL, verify torch.cuda), then push again."
+    rlog SKIP gpu-restarted-mid-run
+    exit 0
+  fi
   echo "gestalt: retrieval ratchet SKIPPED (harness error, not a regression):"
   echo "$RETR_OUT" | tail -2
   rlog SKIP harness-error
