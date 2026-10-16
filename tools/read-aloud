@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+# Read text aloud on this node's speaker, fully local (Kokoro-82M ONNX, Piper fallback).
+# Thin launcher: runs <kb-entry>.py under a pinned uv environment. Models land in
+# ~/.cache/<kb-entry>/models on first use (about 420 MB). See <kb-entry>.py --help.
+set -euo pipefail
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+export PYTHONWARNINGS="${PYTHONWARNINGS:-ignore::SyntaxWarning}"
+exec uv run -q --python 3.12 \
+  --with kokoro-onnx --with piper-tts --with pysbd --with trafilatura --with numpy \
+  python3 "$HERE/<kb-entry>.py" "$@"

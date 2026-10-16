@@ -41,6 +41,7 @@ All slash commands are skills. They live as `.claude/skills/<name>/SKILL.md` (an
 | `/mutate` | Create, edit, delete, or rename gestalt artifacts (commands, skills, rules, agents) | Utility |
 | `/caveman` | Ultra-compressed communication mode (~75% fewer tokens); gestalt writes stay in standard register per caveman-safeguard | Utility |
 | `/capture [idea\|pref\|commit] <text>` | Deterministic save to the capture inbox — always writes, never judges; commitments get due dates | Jarvis |
+| `/read <file\|url\|text\|this> \| pause \| resume \| stop \| status` | Speak the input aloud in full on this node's speaker with a local neural voice (Kokoro-82M, Piper fallback); chain after a summary with `/read this` | Jarvis |
 | `/weekly-review` | GTD review: memory-hygiene gate (/consolidate status) first, then inbox triage, commitment resolution, stuck/stale surfacing, top-3 next actions | Jarvis |
 
 ---
