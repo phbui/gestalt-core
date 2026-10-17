@@ -28,20 +28,11 @@ REPEAT_NUDGE = (
 # stdlib-only test proving 0.6 too noisy on real transcripts.
 REPEAT_SIMILARITY_THRESHOLD = 0.6
 
-PARALLELISM_HINTS = (
-    "BEFORE RESPONDING: "
-    "(1) Decompose this prompt into subtasks. If 2+ are independent, spawn parallel agents — "
-    "up to 6 per wave. Use Explore agents for read-only work, general-purpose for writes/research. "
-    "Even 2 parallel agents = 50% faster. "
-    "(2) If the task matches a gestalt skill, suggest it: "
-    "/investigate (deep research), /discuss (structured critique), /build (parallel workstreams), "
-    "/fix (batch fixes), /audit (quality gate). "
-    "Suggest before auto-invoking expensive skills."
-)
-
-
-def static_output() -> str:
-    return json.dumps({"additionalContext": PARALLELISM_HINTS})
+# The per-turn parallelism hint was removed 2026-10-17. It repeated the
+# proactive-parallelism rule, which already loads once per session, and it
+# cost about 560 bytes on every prompt (1.7-11 KB per session, measured over
+# 11 sessions). With no retrieved context and no repeat nudge the hook now
+# prints nothing, which Claude Code treats as a no-op.
 
 
 def _iter_transcript_user_texts(transcript_path: str):
@@ -675,9 +666,7 @@ def main():
 
     if not prompt_text:
         if nudge:
-            print(json.dumps({"additionalContext": PARALLELISM_HINTS + "\n\n" + nudge}))
-        else:
-            print(static_output())
+            print(json.dumps({"additionalContext": nudge}))
         return
 
     # Check if httpx is available (required for Graphiti)
@@ -712,15 +701,12 @@ def main():
 
     context = format_context(deduped)
 
-    if context:
-        additional = context + "\n\n---\n\n" + PARALLELISM_HINTS
-    else:
-        additional = PARALLELISM_HINTS
-
+    additional = context
     if nudge:
-        additional += "\n\n" + nudge
+        additional = (additional + "\n\n" + nudge) if additional else nudge
 
-    print(json.dumps({"additionalContext": additional}))
+    if additional:
+        print(json.dumps({"additionalContext": additional}))
     sys.stdout.flush()  # hook output is delivered before the log write, which is never on the critical path
     try:
         log_injection(args.state_dir, build_injection_record(prompt_text, results, deduped, _SOURCE_STATUS))

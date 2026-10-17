@@ -37,10 +37,11 @@ PROMPTS = [
     "what is the plan for the fellowship proposal draft and the deadline",
 ]
 # Captured from the hook at the commit before the semantic leg, against build_index() below.
+# The trailing parallelism hint was dropped from the hook 2026-10-17, so each string ends at the context.
 GOLDEN = {
-    PROMPTS[0]: '{"additionalContext": "## Relevant Context\\n\\n**Gestalt:** [[hub-restart#b1]] \\u2014 Restart, [[fellowship#b3]] \\u2014 Deadline\\n\\n---\\n\\nBEFORE RESPONDING: (1) Decompose this prompt into subtasks. If 2+ are independent, spawn parallel agents \\u2014 up to 6 per wave. Use Explore agents for read-only work, general-purpose for writes/research. Even 2 parallel agents = 50% faster. (2) If the task matches a gestalt skill, suggest it: /investigate (deep research), /discuss (structured critique), /build (parallel workstreams), /fix (batch fixes), /audit (quality gate). Suggest before auto-invoking expensive skills."}\n',
-    PROMPTS[1]: '{"additionalContext": "## Relevant Context\\n\\n**Gestalt:** [[embedding-model#b2]] \\u2014 Model, [[hub-restart#b1]] \\u2014 Restart, [[cooking#b5]] \\u2014 Soup\\n\\n---\\n\\nBEFORE RESPONDING: (1) Decompose this prompt into subtasks. If 2+ are independent, spawn parallel agents \\u2014 up to 6 per wave. Use Explore agents for read-only work, general-purpose for writes/research. Even 2 parallel agents = 50% faster. (2) If the task matches a gestalt skill, suggest it: /investigate (deep research), /discuss (structured critique), /build (parallel workstreams), /fix (batch fixes), /audit (quality gate). Suggest before auto-invoking expensive skills."}\n',
-    PROMPTS[2]: '{"additionalContext": "## Relevant Context\\n\\n**Gestalt:** [[fellowship#b3]] \\u2014 Deadline, [[cooking#b5]] \\u2014 Soup, [[embedding-model#b2]] \\u2014 Model\\n\\n---\\n\\nBEFORE RESPONDING: (1) Decompose this prompt into subtasks. If 2+ are independent, spawn parallel agents \\u2014 up to 6 per wave. Use Explore agents for read-only work, general-purpose for writes/research. Even 2 parallel agents = 50% faster. (2) If the task matches a gestalt skill, suggest it: /investigate (deep research), /discuss (structured critique), /build (parallel workstreams), /fix (batch fixes), /audit (quality gate). Suggest before auto-invoking expensive skills."}\n',
+    PROMPTS[0]: '{"additionalContext": "## Relevant Context\\n\\n**Gestalt:** [[hub-restart#b1]] \\u2014 Restart, [[fellowship#b3]] \\u2014 Deadline"}\n',
+    PROMPTS[1]: '{"additionalContext": "## Relevant Context\\n\\n**Gestalt:** [[embedding-model#b2]] \\u2014 Model, [[hub-restart#b1]] \\u2014 Restart, [[cooking#b5]] \\u2014 Soup"}\n',
+    PROMPTS[2]: '{"additionalContext": "## Relevant Context\\n\\n**Gestalt:** [[fellowship#b3]] \\u2014 Deadline, [[cooking#b5]] \\u2014 Soup, [[embedding-model#b2]] \\u2014 Model"}\n',
 }
 
 
