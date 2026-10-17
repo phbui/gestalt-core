@@ -4,7 +4,8 @@
       "Bash(rm -rf /*)",
       "Bash(mkfs.*)",
       "Bash(terraform destroy*)",
-      "Bash(docker system prune -a*)"
+      "Bash(docker system prune -a*)",
+      "Artifact"
     ]
   },
   "hooks": {
@@ -300,7 +301,8 @@
             "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/gestalt-session-start.sh",
             "timeout": 10
           }
-        ]
+        ],
+        "matcher": "startup|resume|clear|fork"
       }
     ],
     "ConfigChange": [
@@ -343,5 +345,52 @@
     "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/statusline.sh"
   },
   "askUserQuestionTimeout": "10m",
-  "promptCacheTtl": "1h"
+  "promptCacheTtl": "1h",
+  "bashOutputMaxChars": 15000,
+  "skillOverrides": {
+    "audit": "name-only",
+    "briefing": "name-only",
+    "build": "name-only",
+    "capture": "name-only",
+    "caveman": "name-only",
+    "compact-resume": "name-only",
+    "fix": "name-only",
+    "help-gestalt": "name-only",
+    "help-kitty": "name-only",
+    "learn": "name-only",
+    "lecture": "name-only",
+    "mutate": "name-only",
+    "pr": "name-only",
+    "prompt": "name-only",
+    "read": "name-only",
+    "review": "name-only",
+    "route": "name-only",
+    "setup": "name-only",
+    "spin-up": "name-only",
+    "swarm-check": "name-only",
+    "sync": "name-only",
+    "vet": "name-only",
+    "gestalt:audit": "name-only",
+    "gestalt:briefing": "name-only",
+    "gestalt:build": "name-only",
+    "gestalt:capture": "name-only",
+    "gestalt:caveman": "name-only",
+    "gestalt:compact-resume": "name-only",
+    "gestalt:fix": "name-only",
+    "gestalt:help-gestalt": "name-only",
+    "gestalt:help-kitty": "name-only",
+    "gestalt:learn": "name-only",
+    "gestalt:lecture": "name-only",
+    "gestalt:mutate": "name-only",
+    "gestalt:pr": "name-only",
+    "gestalt:prompt": "name-only",
+    "gestalt:read": "name-only",
+    "gestalt:review": "name-only",
+    "gestalt:route": "name-only",
+    "gestalt:setup": "name-only",
+    "gestalt:spin-up": "name-only",
+    "gestalt:swarm-check": "name-only",
+    "gestalt:sync": "name-only",
+    "gestalt:vet": "name-only"
+  }
 }

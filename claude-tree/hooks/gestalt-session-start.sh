@@ -316,18 +316,24 @@ fi
 # Per-section budgets, then wrap. Ordering + budgets guarantee that
 # operational content (session digest, CWD hint) always
 # survives; Letta memory — the largest and most compressible section —
-# absorbs whatever remains of the 40KB cap. The closing tag always
-# survives because content is truncated before wrapping.
+# absorbs whatever remains of the cap. The cap is 10,000 bytes because
+# Claude Code spills additionalContext above 10,000 characters to a file
+# and shows only a 2,000-character preview (hooks docs, checked 2026-10-17),
+# so the old 16,000 cap could silently lose the Letta section that way.
+# Payloads measured on 2026-10-17 were 7.4-8.7 KB, with the non-Letta
+# sections at 4.4-4.9 KB, so the budgets below cut nothing that was being
+# sent. The closing tag always survives because content is truncated
+# before wrapping.
 if [ -n "$LETTA_CONTEXT" ] || [ -n "$SESSION_CONTEXT" ] || [ -n "$CWD_HINT" ] || [ -n "$BRIEF_CONTEXT" ]; then
     # Command substitution strips trailing newlines, so section separators
     # are emitted OUTSIDE the captured parts (in _emit), never inside them.
-    _CAP=16000
+    _CAP=10000
     _SESS_PART=""
-    [ -n "$SESSION_CONTEXT" ] && _SESS_PART=$(printf '## Recent Sessions (compact)\n%s' "$SESSION_CONTEXT" | head -c 8000)
+    [ -n "$SESSION_CONTEXT" ] && _SESS_PART=$(printf '## Recent Sessions (compact)\n%s' "$SESSION_CONTEXT" | head -c 5000)
     _HINT_PART=""
     [ -n "$CWD_HINT" ] && _HINT_PART=$(printf '%s' "$CWD_HINT" | head -c 1000)
     _BRIEF_PART=""
-    [ -n "$BRIEF_CONTEXT" ] && _BRIEF_PART=$(printf '%s' "$BRIEF_CONTEXT" | head -c 4200)
+    [ -n "$BRIEF_CONTEXT" ] && _BRIEF_PART=$(printf '%s' "$BRIEF_CONTEXT" | head -c 3000)
     _USED=$(( $(printf '%s' "$_SESS_PART" | wc -c) + $(printf '%s' "$_HINT_PART" | wc -c) + $(printf '%s' "$_BRIEF_PART" | wc -c) ))
     _LETTA_BUDGET=$(( _CAP - _USED ))
     [ "$_LETTA_BUDGET" -lt 0 ] && _LETTA_BUDGET=0

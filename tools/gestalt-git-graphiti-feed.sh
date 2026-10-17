@@ -22,7 +22,13 @@
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"
+# An exported GESTALT_WORKSPACE / GESTALT_STATE_DIR must win over gestalt/.env. gestalt_init sources
+# .env with `set -a`, so on a node whose .env names the workspace (every installed node since
+# 2026-08-18) the caller's values were silently replaced and the tests scanned the real workspace.
+_FEED_WS="${GESTALT_WORKSPACE:-}"; _FEED_SD="${GESTALT_STATE_DIR:-}"
 source "$SCRIPT_DIR/../.claude/hooks/lib.sh" && gestalt_init
+[ -n "$_FEED_WS" ] && WORKSPACE="$_FEED_WS"
+[ -n "$_FEED_SD" ] && { STATE_DIR="$_FEED_SD"; LOG="$STATE_DIR/health.log"; }
 
 GRAPHITI_URL="${GRAPHITI_URL:-http://localhost:8200}"
 GROUP="${GRAPHITI_GROUP_ID:-gestalt}"
