@@ -28,6 +28,11 @@ gestalt_init() {
 
     # Fleet-wide per-node config (memory-stack endpoints etc.) — sourced first
     # so the repo-local .env can still override it. See <kb-entry>.
+    # A value the caller exported before calling gestalt_init wins over both files:
+    # `set -a; source` would otherwise replace it, which made every hook ignore an
+    # exported GESTALT_WORKSPACE or GESTALT_STATE_DIR on a node whose .env names
+    # the workspace (2026-10-17, test_git_graphiti_feed.py).
+    _GI_PRE_WS="${GESTALT_WORKSPACE:-}"; _GI_PRE_SD="${GESTALT_STATE_DIR:-}"
     FLEET_ENV="${FLEET_ENV:-$HOME/.fleet/fleet.env}"
     if [ -f "$FLEET_ENV" ]; then
         set -a; source "$FLEET_ENV"; set +a
@@ -36,6 +41,9 @@ gestalt_init() {
     if [ -f "$ENV_FILE" ]; then
         set -a; source "$ENV_FILE"; set +a
     fi
+    [ -n "$_GI_PRE_WS" ] && GESTALT_WORKSPACE="$_GI_PRE_WS"
+    [ -n "$_GI_PRE_SD" ] && GESTALT_STATE_DIR="$_GI_PRE_SD"
+    unset _GI_PRE_WS _GI_PRE_SD
 
     WORKSPACE="${GESTALT_WORKSPACE:-$(cd "$GESTALT_DIR/.." && pwd)}"
     STATE_DIR="${GESTALT_STATE_DIR:-$WORKSPACE/.claude/gestalt}"
