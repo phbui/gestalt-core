@@ -1,0 +1,12 @@
+# Overleaf: Pull and Merge First, Every Time
+
+**Before every edit to an Overleaf-backed project, and again immediately before every push, run `git pull --rebase --autostash` in the Overleaf clone, then reread the exact passage you are about to change.** Phi edits in the browser continuously, so any copy is stale within minutes. Instituted by Phi 2026-10-22 after a session built and tested edits on a fetched side copy instead of merging, and was about to push it: "always pull and merge from overleaf first when editing. literally we need a rule for that."
+
+- **Never work from a stale copy.** No scratch build, side worktree or earlier fetch stands in for the pull. A scratch copy is for measuring only. Make the edit in the clone, on the freshly merged text.
+- **A dirty clone is a reason to merge, not to avoid it.** Other Claude seats share the checkout and leave uncommitted hunks, and `git pull --rebase --autostash` carries them through. On conflicts, resolve each hunk toward Phi's Overleaf text, name what the other seat's version had, and keep the other seat's non-conflicting hunks in the working tree.
+- **Commit only your own hunks.** Never `git add -A`, `git add <file>` or `commit -a` on a clone with another seat's uncommitted work. Stage with `git apply --cached <your patch>`, mirror the same edits into the working tree, commit, then `git push`.
+- **The hook sets the push rules.** Plain `git push` from the clone works. `git push origin HEAD:main`, force pushes, and `git stash drop` are blocked. Leave the stash in place.
+- **If the push is rejected, pull again and retry.** Never overwrite Overleaf.
+- **Report the base.** Name the Overleaf commit you merged onto and whether origin moved meanwhile.
+
+Applies to every Overleaf project: the fellowship proposal and essays, the DC packet, the RTM and civic papers, and any CV or deck repo Phi edits in a browser. Related: feedback-reread-overleaf-first, [[no-unverified-claims]]. Shared-checkout mechanics: `gestalt/knowledge/the-relevant-entry.md` and the shared-checkout-races memory.

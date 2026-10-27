@@ -4,7 +4,7 @@ This page tells you how to reproduce every retrieval number gestalt reports. It 
 
 ## Result
 
-nDCG@10 on the BEIR test split. Each cell is the mean over queries with a 95% bootstrap interval.
+nDCG@10 on the BEIR test split. Each cell is the mean over queries with a 95% bootstrap interval from 10,000 resamples.
 
 | Dataset | Docs | Queries | BM25 leg, a fresh install | Dense leg, `GESTALT_SEARCH_MODE=hybrid` | Dense + reranker, `GESTALT_RERANK=on` |
 |---|---|---|---|---|---|
@@ -23,6 +23,33 @@ Paired sign-flip permutation tests over queries, 20,000 permutations, seed 12345
 | FiQA | +0.305, p < 0.0001 | +0.019, p < 0.0001 |
 
 The smallest p-value this test can report is 1 in 20,001, which is 0.00005.
+
+### Held-out check
+
+ArguAna and SCIDOCS were never touched by a development choice, and they were scored once under the shipped configuration on 2026-10-26. These two rows are held-out numbers. The three rows of the table above are development numbers.
+
+| Dataset | Docs | Queries | BM25 leg | Dense leg | Dense + reranker |
+|---|---|---|---|---|---|
+| ArguAna | 8,674 | 1,406 | 0.360 [0.347, 0.372] | 0.461 [0.451, 0.471] | **0.519 [0.511, 0.527]** |
+| SCIDOCS | 25,657 | 1,000 | 0.155 [0.143, 0.168] | 0.240 [0.225, 0.255] | **0.248 [0.233, 0.263]** |
+
+The test is the same paired sign-flip permutation test, with 20,000 permutations and seed 12345.
+
+| Dataset | Dense leg minus BM25 | Dense + reranker minus dense leg |
+|---|---|---|
+| ArguAna | +0.101, p < 0.0001 | +0.059, p < 0.0001 |
+| SCIDOCS | +0.085, p < 0.0001 | +0.008, p = 0.00015 |
+
+The dense leg beats BM25 on both sets, and both gaps are significant. The reranker's gain is large on ArguAna and small on SCIDOCS. Both gains are significant, and the SCIDOCS gain is under one point. The configuration is the headline one: stella-400m in float32, convex fusion at alpha 0, and `Qwen/Qwen3-Reranker-0.6B` in float16 at depth 40 with `GESTALT_RERANK_MAXCHARS=2000`. The GPU duty cycle was `GESTALT_GPU_DUTY=0.7`. Both runs were complete, and the reranker fell back on 0 queries of ArguAna and 0 queries of SCIDOCS. The hybrid system equals the dense leg here for the reason given above, so it is not shown twice.
+
+The reranker instruction for each set was written before any result existed, in the form of the three headline lines.
+
+| Dataset | `GESTALT_RERANK_INSTRUCTION` |
+|---|---|
+| ArguAna | Given a claim, retrieve documents that present a counterargument to the claim |
+| SCIDOCS | Given a scientific paper title, retrieve paper abstracts that are cited by the paper |
+
+These two sets are a small addition. They are scientific and argument text, as the headline sets are, and they say nothing about retrieval over personal notes. The embedding model and the reranker may have seen text from them, as with the headline sets. The files are in `evals/retrieval/results/heldout/`: one summary and one per-dataset result file for each set, the four `.run` files for each set, the exact launcher `run-heldout.sh` and its `progress.log`. The headline `results/summary.json` and the hashes it records are unchanged.
 
 ## What each harness measures and never claims
 
@@ -65,7 +92,7 @@ Scores are the MTEB results repository's per-task numbers at commit `b64a5db`, 2
 
 Reading the chart. Two panels, SciFact above and NFCorpus below, each with its own vertical scale, and each open model appears once in each at its parameter count. Five systems carry labels in each panel and the rest are grey dots. Closed APIs have no parameter count, so they are not on the axis; their scores and prices are the line under the chart.
 
-Where gestalt lands, stated with its limits. On SciFact the reranked pipeline scores above Qwen3-Embedding-4B, above stella alone and above OpenAI's text-embedding-3-large, and under NV-Embed-v2 at 7.9B parameters; gte-large-en-v1.5 claims a higher score on its own model card, with no results file in the repository. The gaps to those three are 0.010 to 0.016 and sit inside the 95% interval, so read the four as level. On NFCorpus the pipeline is level with OpenAI's text-embedding-3-large and Linq-Embed-Mistral, under NV-Embed-v2, and above every sub-billion embedder in the repository. The dense leg alone, stella_en_400M_v5 served through this pipeline, lands within a point of MTEB's own run of the model on both sets, which is the check that the pipeline adds no loss. A few entries carry no parameter count and could not be sized.
+Where gestalt lands, stated with its limits. On SciFact the reranked pipeline scores above Qwen3-Embedding-4B, above stella alone and above OpenAI's text-embedding-3-large, and under NV-Embed-v2 at 7.9B parameters; gte-large-en-v1.5 claims a higher score on its own model card, with no results file in the repository. The gaps to those three are 0.010 to 0.016 and sit inside the 95% interval, so read the four as level. Those three are Qwen3-Embedding-4B, stella alone and OpenAI's text-embedding-3-large. The gaps use the unrounded scores in `docs/released-systems.json`, so they can differ by 0.001 from the rounded table. NV-Embed-v2 sits 0.007 to 0.008 above the pipeline and is not one of the three. On NFCorpus the pipeline is level with OpenAI's text-embedding-3-large and Linq-Embed-Mistral, under NV-Embed-v2, and above every sub-billion embedder in the repository. The dense leg alone, stella_en_400M_v5 served through this pipeline, lands within a point of MTEB's own run of the model on both sets, which is the check that the pipeline adds no loss. A few entries carry no parameter count and could not be sized.
 
 What the comparison is for. It places a pipeline of about a billion parameters that fits a laptop GPU, or a 435M embedder that fits a CPU, among models eight times larger and among paid APIs. It does not claim that gestalt beats them. The chart is drawn by `docs/make_score_cost_chart.py` from `docs/released-systems.json`. A reader who wants another system in it adds a row with its source.
 
@@ -93,7 +120,7 @@ Sources: Thakur et al., BEIR, https://arxiv.org/abs/2104.08663, and the Pyserini
 
 ## What the numbers say
 
-The BM25 leg lands where published BM25 does on all three sets. The dense leg is about ten points over BM25 on SciFact, nine on NFCorpus and thirty on FiQA, and the permutation tests reject a zero difference on all three at p below 0.001. The reranker adds about a point and a half on SciFact and under a point on NFCorpus, and neither gain clears p 0.05 here (0.09 and 0.13): on these two sets the data do not separate the reranked system from the dense leg. On FiQA it adds 1.9 points at p 0.0001, which is why it ships on a GPU host. On SciFact and NFCorpus the whole interval of the dense leg lies above the published BM25 plus cross-encoder scores of 0.688 and 0.350, whose lower bounds here are 0.742 and 0.378. Those published numbers have no interval of their own and come from another implementation. The two tables above give the exact scores.
+The BM25 leg lands where published BM25 does on all three sets. FiQA is not a column of the two comparison tables above. The BEIR paper's Table 2 gives BM25 0.236 on FiQA-2018, and the BM25 leg here scores 0.248. The dense leg is about ten points over BM25 on SciFact, nine on NFCorpus and thirty on FiQA, and the permutation tests reject a zero difference on all three at p below 0.001. The reranker adds about a point and a half on SciFact and under a point on NFCorpus, and neither gain clears p 0.05 here (0.09 and 0.13): on these two sets the data do not separate the reranked system from the dense leg. On FiQA it adds 1.9 points at p 0.0001, which is why it ships on a GPU host. On SciFact and NFCorpus the whole interval of the dense leg lies above the published BM25 plus cross-encoder scores of 0.688 and 0.350, whose lower bounds here are 0.742 and 0.378. Those published numbers have no interval of their own and come from another implementation. The two tables above give the exact scores.
 
 They do not say gestalt is better than a stronger retriever, a reranked pipeline, or a bigger embedding model. They do not say anything about retrieval over your own notes.
 
@@ -105,7 +132,7 @@ The embedding model is `NovaSearch/stella_en_400M_v5` at revision `ffeb2b7ee715c
 
 Each BEIR document is one unit. The title and the abstract are joined and indexed whole. Gestalt's production index splits notes into sections, so this benchmark does not exercise the chunker.
 
-The shipped configuration was chosen on these datasets. The zoo in `evals/zoo/` compared 56 pipeline configurations on the test queries of SciFact, NFCorpus and FiQA, over 14 embedding models and 6 rerankers (`docs/measured-systems.json` holds every row), and the best shape became the default: the embedder, the dropped lexical vote, the reranker, its depth and its blend. So the headline is a development number, optimistic by an amount that was not measured, and no set the zoo never touched has been scored yet. The optional fusion weights are different. `tune_fusion.py` picks them on a dev half of the queries only, and the test half stays unread.
+The shipped configuration was chosen on these datasets. The zoo in `evals/zoo/` compared 56 pipeline configurations on the test queries of SciFact, NFCorpus and FiQA, over 14 embedding models and 6 rerankers (`docs/measured-systems.json` holds every row), and the best shape became the default: the embedder, the dropped lexical vote, the reranker, its depth and its blend. So the headline is a development number, optimistic by an amount that was not measured, and the two sets the zoo never touched, ArguAna and SCIDOCS, are scored once under Held-out check above. The optional fusion weights are different. `tune_fusion.py` picks them on a dev half of the queries only, and the test half stays unread.
 
 ## Fusion
 
@@ -232,6 +259,7 @@ Every guard in "What can go wrong" fired at least once while these numbers were 
 
 - `evals/zoo/README.md` compares gestalt with other retrievers on the same queries under one result schema and cost block.
 - `HELDOUT.md` covers three sealed evaluation sets that no development choice touched.
+- Held-out check, in Result above, scores ArguAna and SCIDOCS, two BEIR sets that no development choice touched.
 - `CALIBRATION.md` turns the reranker's top score into a probability that the query is answerable.
 - `precision_study.py`, in Precision below, measures what half precision costs.
 
@@ -359,7 +387,7 @@ The score column in the run files is derived from rank, because `search()` retur
 
 ## The datasets, their cost and their terms
 
-The datasets are downloaded at run time and never committed here. `ir_datasets` fetches the BEIR sets and `mteb` fetches the MTEB tasks. The version of each library is the pin. `ir_datasets` is pinned to 0.6.3 in the lock file and `mteb` to 2.24.1 in `requirements-bench.txt`. This tree records no checksum for BEIR or MTEB data. The memory datasets are different: they carry a commit and a sha256, and a cached file with another hash stops the run. Both are listed in `evals/memory/README.md`.
+The datasets are downloaded at run time and never committed here. `ir_datasets` fetches the BEIR sets and `mteb` fetches the MTEB tasks. The version of each library is the pin. `ir_datasets` is pinned to 0.6.3 in the lock file and `mteb` to 2.24.1 in `requirements-bench.txt`. This tree records no checksum for BEIR or MTEB data. The BEIR sets load by their `ir_datasets` id (`beir_bench.py` lines 300 and 323), so the code pins the library version and no content hash. The memory datasets are different: they carry a commit and a sha256, and a cached file with another hash stops the run. Both are listed in `evals/memory/README.md`.
 
 Document and query counts follow the BEIR paper. The queries are the test queries with at least one positive judgement, except MS MARCO, which uses its dev queries. A run counts the queries it excluded and writes the count into the result file.
 

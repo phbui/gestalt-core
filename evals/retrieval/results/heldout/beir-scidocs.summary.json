@@ -1,0 +1,147 @@
+{
+ "generated_utc": "2026-10-26T23:03:13Z",
+ "environment": {
+  "python": "3.12.3",
+  "platform": "Linux-6.6.87.2-microsoft-standard-WSL2-x86_64-with-glibc2.39",
+  "sqlite": "3.45.1",
+  "sqlite_vec": "0.1.9",
+  "numpy": "2.5.2",
+  "torch": "2.11.0+cu128",
+  "sentence_transformers": "6.0.0",
+  "ir_datasets": "0.6.3",
+  "device": "cuda:0",
+  "gpu": "NVIDIA GeForce RTX 4090 Laptop GPU",
+  "embedding_model": "NovaSearch/stella_en_400M_v5",
+  "embedding_revision": "ffeb2b7ee715c226d4ffe5e4619f7dbb48624c20",
+  "embedding_load_path": "remote-code",
+  "embed_profile": "stella-400m",
+  "embed_dim": 1024,
+  "embed_dtype": "float32",
+  "embed_normalize": true,
+  "rerank_dtype": "float16",
+  "tf32": false,
+  "attn_impl": null,
+  "embed_batch_size": 64,
+  "embed_sort_order": "length-sorted",
+  "doc_prefix": "",
+  "query_prefix": "Instruct: Given a web search query, retrieve relevant passages that answer the query.\nQuery: ",
+  "rrf_k": 60,
+  "fusion": {
+   "mode": "convex",
+   "alpha": 0.0,
+   "call_site": "bench_engine.fuse_pools, through gestalt_rank.fuse and evals/retrieval/fusion.py, the fusion the server runs",
+   "resolved": {
+    "method": "convex",
+    "alpha": 0.0,
+    "w_bm25": 0.5,
+    "norm": "tmin",
+    "missing": "zero",
+    "rescue": {
+     "max_rank": 3,
+     "min_norm_score": 0.5,
+     "dense_window": 20,
+     "insert_at": 5,
+     "max_rescues": 2
+    },
+    "rrf_k": 60
+   }
+  },
+  "rerank": {
+   "on": true,
+   "model": "qwen3-0.6b",
+   "depth": 40,
+   "instruction": "Given a scientific paper title, retrieve paper abstracts that are cited by the paper",
+   "maxchars": 2000,
+   "instruction_note": "The Qwen rerankers prepend this instruction. It is dataset-specific tuning, set per dataset with GESTALT_RERANK_INSTRUCTION. The default names a personal knowledge base."
+  },
+  "engine": {
+   "block_size": 20000,
+   "dtype": "float32",
+   "dense": "auto",
+   "dense_threshold": 300000,
+   "dense_note": "sqlite-vec up to 300000 documents, exact blocked search above",
+   "fts": "file-backed FTS5, contentless, porter unicode61",
+   "encode_budgets": {
+    "token_budget": 16384,
+    "attn_budget": 4000000
+   },
+   "query_encode": "one call per query",
+   "stopwords": false
+  },
+  "code_sha256": {
+   "evals/retrieval/beir_bench.py": "7cdfd56bb8ba1535a8655c822921a7afeb6f6a3d983685c0ea7357c4e5d14673",
+   "evals/retrieval/bench_stats.py": "59f192f4df24fefaac60f466f1d2472417055e410f8c44cf35badbcb391cca57",
+   "evals/retrieval/bench_engine.py": "02dfb6dd2b1821da123181937ee9be3bb3ad66c0db9250c32fdfe0e862f072b9",
+   "evals/retrieval/fusion.py": "4c202efeb9bfd24bb65e4d7cd04309088e1dfbc6e83c9853402d17331997bc96",
+   "evals/retrieval/resumable.py": "007ac31de4326aa0308a17b23e3ac2c394979321991e7f4dfd8641eac6508f70",
+   "evals/retrieval/run_retrieval_evals.py": "d6fceb3d922b41f3f19537a6dea9092b65ff9a128e63aeb030b79e0eedb102b2",
+   "tools/gestalt_embed_config.py": "68f955ee80bf5b9de0ce4060c0099477d8bf4393e12b6e14276f49965330aa54",
+   "tools/gestalt_rank.py": "a77c51cfb7ca8c90dfbe1d5e5f8e90be9a717a06446638afadf6b3466e193583"
+  }
+ },
+ "smoke_subset": false,
+ "results": {
+  "beir/scidocs": {
+   "documents": 25657,
+   "queries": 1000,
+   "queries_excluded_no_positive": 0,
+   "smoke_subset": false,
+   "systems": {
+    "bm25": {
+     "ndcg10": 0.155,
+     "ci95_bootstrap": [
+      0.1427,
+      0.1681
+     ]
+    },
+    "dense": {
+     "ndcg10": 0.2396,
+     "ci95_bootstrap": [
+      0.225,
+      0.2546
+     ]
+    },
+    "hybrid": {
+     "ndcg10": 0.2396,
+     "ci95_bootstrap": [
+      0.225,
+      0.2546
+     ]
+    },
+    "hybrid_rerank": {
+     "ndcg10": 0.2476,
+     "ci95_bootstrap": [
+      0.2327,
+      0.2629
+     ]
+    }
+   },
+   "tests": {
+    "hybrid_vs_bm25": {
+     "mean_difference": 0.0846,
+     "p_value": 5e-05,
+     "permutations": 20000
+    },
+    "hybrid_vs_dense": {
+     "mean_difference": 0.0,
+     "p_value": 1.0,
+     "permutations": 20000
+    },
+    "rerank_vs_hybrid": {
+     "mean_difference": 0.008,
+     "p_value": 0.00015,
+     "permutations": 20000
+    }
+   },
+   "rerank_fallback_queries": 0
+  }
+ },
+ "mean_ndcg10": {
+  "bm25": 0.155,
+  "dense": 0.2396,
+  "hybrid": 0.2396,
+  "hybrid_rerank": 0.2476
+ },
+ "datasets_run": 1,
+ "subset": false
+}
