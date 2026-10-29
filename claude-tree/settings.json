@@ -4,8 +4,7 @@
       "Bash(rm -rf /*)",
       "Bash(mkfs.*)",
       "Bash(terraform destroy*)",
-      "Bash(docker system prune -a*)",
-      "Artifact"
+      "Bash(docker system prune -a*)"
     ]
   },
   "hooks": {

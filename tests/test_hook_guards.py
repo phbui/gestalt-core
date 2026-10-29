@@ -38,6 +38,11 @@ CASES = [
     ('echo "please explain terraform destroy risks to me"', False),
     ("docker system prune -a", True),
     ('grep -r "docker system prune" knowledge/', False),
+    # schtasks Create/Run/Change is a hub-lifecycle trigger; the match is case-insensitive since
+    # 2026-10-27, when a lowercase `schtasks /run` from a session passed the uppercase-only pattern.
+    ("ssh hub-win 'schtasks /Run /tn gpu-unclamp-restart'", True),
+    ("ssh hub-win 'schtasks /run /tn gpu-unclamp-restart'", True),
+    ("ssh hub-win 'schtasks /query /tn gpu-unclamp-restart'", False),
 ]
 
 
