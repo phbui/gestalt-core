@@ -12,7 +12,7 @@ Final quality gate for a pitch implementation. You are an **orchestrator agent**
 
 ## Purpose
 
-Run this after `/implement` or `/build` is complete. This is the last pass before a pitch's code is considered done. Unlike `/review` (which audits gestalt itself), this command audits the **code and design artifacts** produced for a specific pitch.
+Run this after `/requirements implement` or `/build` is complete. This is the last pass before a pitch's code is considered done. Unlike `/review` (which audits gestalt itself), this command audits the **code and design artifacts** produced for a specific pitch.
 
 ## Architecture
 
@@ -65,31 +65,7 @@ Example invocations:
 Spawn a **Scout Agent** while you simultaneously read documents. Both run in parallel.
 
 **Scout Agent (explore):**
-```
-Task(subagent_type="explore", prompt="""
-Survey the full change footprint for this pitch implementation.
-
-1. GIT DIFF: First detect the default branch: `git symbolic-ref refs/remotes/origin/HEAD --short` (fallback: main). Use it in place of `main` below.
-   Run `git diff <default-branch> --name-only` in each affected repo.
-   List every file created, modified, or deleted.
-2. COMMIT HISTORY: Run `git log --oneline main..HEAD` to understand the
-   sequence of changes.
-3. DEPENDENCY GRAPH: For each changed file, identify what imports it and
-   what it imports. Flag any new cross-package dependencies introduced.
-4. FILE CATEGORIZATION: Group changed files by:
-   - Frontend components / hooks / utilities
-   - Backend endpoints / services / models
-   - Types / interfaces / contracts
-   - Configuration / build / deploy
-   - Tests
-   - Documentation
-
-RETURN: structured inventory with file list, dependency edges, and
-categorization. Include line counts for each changed file.
-
-[Embed the Task Completion Gate from gestalt/.claude/references/discipline-block.md verbatim here — read that file once per skill run; subagents do not inherit it]
-""")
-```
+[Worker prompt W1: read `gestalt/.claude/references/audit-worker-prompts.md` §W1 and dispatch it verbatim, substituting the placeholders.]
 
 **Orchestrator (simultaneous):** While the scout runs, read:
 1. `index.md`, `srs.md`, `sdd.md` (or `sdd/index.md` + component SDDs), all `adr-*.md`
@@ -135,108 +111,16 @@ FORBIDDEN:
 ```
 
 **Agent 1 — Architecture & Integration Reviewer:**
-```
-Task(subagent_type="general-purpose", prompt="""
-ARCHITECTURE & INTEGRATION audit.
-
-CONTEXT:
-- SRS: {srs_path}
-- SDD: {sdd_path}
-- ADRs: {adr_paths}
-- Changed files: {file_list}
-- Dependency graph: {dependency_edges from scout}
-- Gestalt knowledge: {relevant_gestalt_entries}
-
-CRITERIA:
-1. ARCHITECTURE FIT: Right layer/package? Dependencies correct direction? No circular deps? Module boundaries respected? Packages/exports registered?
-2. INTEGRATION: Every component imported and used? No orphans? API contracts match producer/consumer? Feature flags/env/config threaded?
-3. ADR COMPLIANCE: Implementation matches ADRs? Undocumented deviations?
-4. CROSS-CUTTING: Error handling, auth/permissions, observability for new code.
-
-OUTPUT: ID (ARCH-{NNN}), Severity, Category (STRUCTURAL/INFORMATIONAL), file:line, evidence, exact fix. Sorted by severity.
-
-[Embed the Reviewer Evidence Protocol block verbatim here]
-
-[Embed the Task Completion Gate from gestalt/.claude/references/discipline-block.md verbatim here — read that file once per skill run; subagents do not inherit it]
-- For EACH finding in your output, confirm an Evidence block with verbatim diff line is present. Drop any finding without one.
-""")
-```
+[Worker prompt W2: read `gestalt/.claude/references/audit-worker-prompts.md` §W2 and dispatch it verbatim, substituting the placeholders.]
 
 **Agent 2 — Code Quality & DRY Reviewer:**
-```
-Task(subagent_type="general-purpose", prompt="""
-CODE QUALITY, DRY, MAINTAINABILITY audit.
-
-CONTEXT:
-- Changed files: {file_list}
-- Codebase conventions: {gestalt_entries_for_repos}
-
-CRITERIA:
-1. DRY: Duplicated logic (extract shared abstraction)? Inline values → constants? Repeated types → shared? Similar components → parameterized? API patterns → shared client?
-2. DEAD CODE: Unused imports/vars/functions/types? Unreachable branches? Debug logs? Commented-out code? TODO/FIXME — if work not done elsewhere, implement or flag.
-3. MAINTAINABILITY: Functions >50 lines? Unclear naming? Missing error handling? Magic numbers? Complex conditionals → named predicates? Deep nesting (>3)?
-4. TYPE SAFETY: `any` in TS? Missing null checks? Unjustified `as X`? Implicit any?
-
-OUTPUT: ID (QUAL-{NNN}), Severity, Category (QUALITY/INFORMATIONAL), file:line, evidence, exact fix. Sorted by severity.
-
-[Embed the Reviewer Evidence Protocol block verbatim here]
-
-[Embed the Task Completion Gate from gestalt/.claude/references/discipline-block.md verbatim here — read that file once per skill run; subagents do not inherit it]
-- For EACH finding in your output, confirm an Evidence block with verbatim diff line is present. Drop any finding without one.
-""")
-```
+[Worker prompt W3: read `gestalt/.claude/references/audit-worker-prompts.md` §W3 and dispatch it verbatim, substituting the placeholders.]
 
 **Agent 3 — Performance & Optimization Reviewer:**
-```
-Task(subagent_type="general-purpose", prompt="""
-PERFORMANCE & OPTIMIZATION audit.
-
-CONTEXT:
-- SRS: {srs_path} (NFRs)
-- Changed files: {file_list}
-- Dependency graph: {dependency_edges from scout}
-
-CRITERIA:
-1. RENDERING: Unnecessary re-renders? Large lists without virtualization? Expensive compute without useMemo? Handlers without useCallback (where it matters)? Cascading re-renders? Missing Suspense for lazy?
-2. DATA FETCHING: N+1 patterns? Missing cache? Overfetching? Unbounded lists without pagination? Waterfall → parallel?
-3. BUNDLE: Heavy deps for small features? Missing code splitting? Unoptimized assets?
-4. BACKEND: Missing indices? Unbounded queries? Sync where async? Connection pooling/cleanup? Memory leaks?
-5. NFR: Each SRS performance NFR satisfied? Cite NFR ID.
-
-OUTPUT: ID (PERF-{NNN}), Severity, Category (OPTIMIZATION/INFORMATIONAL), file:line, evidence, exact fix, estimated impact. Sorted by severity.
-
-[Embed the Reviewer Evidence Protocol block verbatim here]
-
-[Embed the Task Completion Gate from gestalt/.claude/references/discipline-block.md verbatim here — read that file once per skill run; subagents do not inherit it]
-- For EACH finding in your output, confirm an Evidence block with verbatim diff line is present. Drop any finding without one.
-""")
-```
+[Worker prompt W4: read `gestalt/.claude/references/audit-worker-prompts.md` §W4 and dispatch it verbatim, substituting the placeholders.]
 
 **Agent 4 — Requirements & Completeness Reviewer:**
-```
-Task(subagent_type="general-purpose", prompt="""
-REQUIREMENTS TRACEABILITY & COMPLETENESS audit.
-
-CONTEXT:
-- SRS: {srs_path}
-- SDD: {sdd_path}
-- ADRs: {adr_paths}
-- Changed files: {file_list}
-
-CRITERIA:
-1. REQUIREMENTS: Per functional requirement — PASS/PARTIAL/MISSING. Orphan code (no requirement mapping)?
-2. SDD: Reflects built state? Unbuilt design sections? Built but undocumented? Progress Tracking accurate?
-3. ADR: All terminal state? Accidental implementation of unchosen options?
-4. DOCS: Implementation Log complete? SRS statuses current? index.md links correct?
-
-OUTPUT: ID (REQ-{NNN}), Severity, Category (STRUCTURAL/DOCUMENTATION), requirement ID if applicable, evidence, exact fix. Plus PASS/PARTIAL/MISSING counts table.
-
-[Embed the Reviewer Evidence Protocol block verbatim here]
-
-[Embed the Task Completion Gate from gestalt/.claude/references/discipline-block.md verbatim here — read that file once per skill run; subagents do not inherit it]
-- For EACH finding in your output, confirm an Evidence block with verbatim diff line is present. Drop any finding without one.
-""")
-```
+[Worker prompt W5: read `gestalt/.claude/references/audit-worker-prompts.md` §W5 and dispatch it verbatim, substituting the placeholders.]
 
 ### Phase 3: Triage (Orchestrator Only)
 
@@ -296,29 +180,7 @@ Execute fix batches **sequentially** (Batch 1 completes before Batch 2 starts). 
 
 **For each batch:**
 
-```
-Task(subagent_type="builder", isolation="worktree", prompt="""
-Implement audit fixes — Batch {N}: {STRUCTURAL | QUALITY | OPTIMIZATION}.
-
-ASSIGNED FIXES:
-{list of finding IDs, files, line ranges, and exact fixes}
-
-FILE CLUSTER (no other agent touches these):
-{file_list for this cluster}
-
-RULES:
-- You must apply every assigned fix. No skipped fixes.
-- You MUST verify syntax and imports after each change.
-- You MUST document ALL ripple effects outside cluster.
-
-RETURN:
-- Fixes applied: {N}/{N} with descriptions
-- Ripple effects outside cluster: {list or "none"}
-- Verification: syntax/imports checked for all modified files
-
-[Embed the Task Completion Gate from gestalt/.claude/references/discipline-block.md verbatim here — read that file once per skill run; subagents do not inherit it]
-""")
-```
+[Worker prompt W6: read `gestalt/.claude/references/audit-worker-prompts.md` §W6 and dispatch it verbatim, substituting the placeholders.]
 
 **Between batches:** Collect all agent returns. If any agent reports cross-cluster ripple effects, resolve them before starting the next batch. If any fix could not be applied, assess whether it blocks the next batch — if yes, resolve first; if no, defer to Phase 5.
 
@@ -328,7 +190,7 @@ After all fix batches complete, spawn **two parallel verification agents**:
 
 **Verification Agent 1 — Regression Checker:**
 ```
-Task(subagent_type="verifier", prompt="""
+Agent(subagent_type="verifier", prompt="""
 Verify audit fixes applied correctly, no regressions.
 
 ORIGINAL FINDINGS: {master_findings_list with IDs}
@@ -344,30 +206,7 @@ RETURN: Per-finding verification status (PASS/FAIL/PARTIAL) with evidence.
 ```
 
 **Verification Agent 2 — Lint & Contract Checker:**
-```
-Task(subagent_type="general-purpose", prompt="""
-You are verifying compile health and contract integrity after audit fixes.
-
-CONTEXT:
-- All affected files: {file_list}
-- API contracts from SDD: {contract_definitions}
-
-YOUR TASK:
-1. Run the project's linter on every modified file. Report any new lint errors.
-2. For every API boundary (frontend <-> backend), verify field names and
-   types still match between:
-   - TypeScript interfaces and Python Pydantic models
-   - API call sites and endpoint response shapes
-3. Verify all barrel files / index exports include new or moved modules.
-4. Check that package.json / pyproject.toml dependencies are correct
-   (no missing deps from extracted utils, no unused deps from dead code
-   removal).
-
-RETURN: PASS or list of issues found (with file path and description).
-
-[Embed the Task Completion Gate from gestalt/.claude/references/discipline-block.md verbatim here — read that file once per skill run; subagents do not inherit it]
-""")
-```
+[Worker prompt W7: read `gestalt/.claude/references/audit-worker-prompts.md` §W7 and dispatch it verbatim, substituting the placeholders.]
 
 **After both return:** If either reports issues, fix them inline (orchestrator handles directly — no additional agent spawn). Maximum 1 retry: if issues persist after inline fix, present them to the user for manual resolution.
 

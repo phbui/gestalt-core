@@ -22,7 +22,7 @@ All slash commands are skills. They live as `.claude/skills/<name>/SKILL.md` (an
 | `/help-gestalt` | This index — shows all commands and how to use them | Reference |
 | `/consolidate [run\|status\|recall\|publish]` | Memory-layer operations: synthesis cycle, health dashboard, temporal-graph recall, shareable briefing | Memory |
 | `/prompt <request>` | Optimize a raw request with gestalt context and execution strategy, confirm before executing | Memory |
-| `/save` | Extract knowledge from conversation to gestalt | Knowledge |
+| `/save [capture <text>]` | Extract knowledge from conversation to gestalt, or `capture` a deterministic one-line note to the inbox | Knowledge |
 | `/compact-resume` | Prep for context compaction/session end: secure perishables, write the canonical gestalt resume anchor, sync memory | Knowledge |
 | `/learn` | Deep-scan a repo and create/update gestalt entries | Knowledge |
 | `/review` | Verify gestalt entries against actual codebase | Knowledge |
@@ -33,14 +33,13 @@ All slash commands are skills. They live as `.claude/skills/<name>/SKILL.md` (an
 | `/swarm-check` | Detect cross-repo ripple effects from a change | Investigation |
 | `/vet` | Eval-loop review of a research document: dimension auditors + venue personas, rounds to convergence, cold-referee exit gates | Investigation |
 | `/build` | General-purpose builder from any input | Build |
-| `/audit` | Final quality gate after /implement or /build | Build |
+| `/audit` | Final quality gate after /requirements implement or /build | Build |
 | `/pr` | Multi-persona PR review with selectable fixes | Build |
 | `/fix` | Parallel batch fixes from any source | Build |
 | `/requirements <mode>` | Whole requirements lifecycle in one skill — modes: explain, pitch, system, srs, adr, sdd, promote, implement (full SRS→code pipeline) | Requirements |
 | `/commit` | Interactive commit with detailed message, review/edit flow, optional push | Utility |
 | `/mutate` | Create, edit, delete, or rename gestalt artifacts (commands, skills, rules, agents) | Utility |
 | `/caveman` | Ultra-compressed communication mode (~75% fewer tokens); gestalt writes stay in standard register per caveman-safeguard | Utility |
-| `/capture [idea\|pref\|commit] <text>` | Deterministic save to the capture inbox — always writes, never judges; commitments get due dates | Jarvis |
 | `/read <file\|url\|text\|this> \| pause \| resume \| stop \| status` | Speak the input aloud in full on this node's speaker with a local neural voice (Kokoro-82M, Piper fallback); chain after a summary with `/read this` | Jarvis |
 | `/weekly-review` | GTD review: memory-hygiene gate (/consolidate status) first, then inbox triage, commitment resolution, stuck/stale surfacing, top-3 next actions | Jarvis |
 
@@ -109,6 +108,8 @@ Everything is automatic: `SessionStart` injects relevant context at conversation
 - When the user corrects a mistake — capture the correct approach
 - Auto-triggers when context is approaching its limit
 
+**Capture mode:** `/save capture [idea|pref|commit] <text>` appends one line to `knowledge/capture-inbox.md`, always, with no judgment (formerly the capture skill).
+
 **Example:** `/save` (after a conversation about spatial pipeline quirks)
 
 #### `/learn`
@@ -134,7 +135,7 @@ Everything is automatic: `SessionStart` injects relevant context at conversation
 **When to use:**
 - After team meetings or architecture decisions made outside the codebase
 - When you need the latest product/business context
-- Before `/publish` to ensure external sources are current
+- Before `/consolidate publish` to ensure external sources are current
 
 **Example:** `/sync`
 
@@ -201,7 +202,7 @@ Everything is automatic: `SessionStart` injects relevant context at conversation
 - Building a new feature or component from a description
 - Implementing from an SDD or spiking an ADR
 - Extending existing code with new functionality
-- Any build task that doesn't need the full `/implement` pipeline
+- Any build task that doesn't need the full `/requirements implement` pipeline
 
 **Example:** `/build "Add a retry wrapper with exponential backoff to src/api/"`
 **Example:** `/build @docs/pitches/c7-comms/sdd.md "Implement the NATS handler"`
@@ -209,7 +210,7 @@ Everything is automatic: `SessionStart` injects relevant context at conversation
 #### `/audit`
 **What:** Final quality gate. Spawns 4 specialist reviewers (Architecture, Code Quality, Performance, Requirements), then implements fixes in ordered batches.
 **When to use:**
-- After `/implement` or `/build` is complete
+- After `/requirements implement` or `/build` is complete
 - Before marking a pitch as done
 - When you want a thorough quality review of recent changes
 

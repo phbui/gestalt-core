@@ -34,7 +34,7 @@ All modes except `explain` and `implement` are read/write document authors — *
 
 Two behaviors in one mode, auto-detected from the request:
 
-**Concept Q&A** — user asks about the discipline itself ("what's the difference between SRS and SDD?", "when should I write an ADR?"). Ground answers in `docs/requirements/` and give concrete codebase examples. Do NOT edit files.
+**Concept Q&A** — user asks about the discipline itself ("what's the difference between SRS and SDD?", "when should I write an ADR?"). Give concrete codebase examples. Do NOT edit files.
 
 Key concepts to lead with:
 > Requirements describe WHAT must remain true. Designs describe HOW that truth is achieved.
@@ -42,7 +42,6 @@ Key concepts to lead with:
 
 The three artifacts: **SRS** = what the system must do; **SDD** = how it's built; **ADR** = why a significant decision was made.
 
-Reference table: `docs/requirements/index.md` (nav), `concepts.md` (philosophy/spectrum), `artifacts.md` (SRS/SDD/ADR definitions), `system-hierarchy.md` (levels of detail), `shape-up-integration.md` (phase guide), `traceability.md` (provenance/ADR feedback), `docs-organization.md` (file structure), `backfilling.md` (documenting existing systems).
 
 **Inspect a pitch/system** — user names a specific pitch or system ("inspect c7-comms", "summarize this pitch's SRS"). Process:
 1. Identify target: pitches live in `docs/pitches/{slug}/`, systems in `docs/systems/{system-id}/`. Ask if unclear.
@@ -64,7 +63,6 @@ Ground future requirements/design in a concise stakeholder-perspective problem s
 6. **Existing pitch:** read current `index.md`, propose targeted updates, preserve content unless told otherwise.
 7. **Summarize:** what changed, what's still needed, suggest `srs` mode next.
 
-Reference: `docs/requirements/shape-up-integration.md` for pitch↔Shape-Up phase mapping.
 
 ---
 
@@ -80,7 +78,6 @@ Ground future requirements/design in a system-owner-perspective statement. No pr
 6. **Existing system:** read current `index.md`, propose targeted updates, preserve content unless told otherwise.
 7. **Summarize:** what changed, what's still needed, suggest `srs` mode next (often for backfilling).
 
-Reference: `docs/requirements/docs-organization.md` (structure), `backfilling.md` (existing systems), `system-hierarchy.md` (level fit).
 
 ---
 
@@ -91,7 +88,7 @@ Capture verifiable requirements for a pitch or system.
 **Prerequisite:** `pitch` or `system` mode must have run first — verify `docs/pitches/{slug}/index.md` or `docs/systems/{id}/index.md` exists. If not, STOP and direct the user there.
 
 1. Identify target: pitch SRS (new bet) vs system SRS (durable, possibly backfill).
-2. If `srs.md` exists, follow any `TODO`/`<AGENT>` markers, else check accuracy/completeness. Otherwise copy `docs/requirements/reference/templates/srs-template.md`.
+2. If `srs.md` exists, follow any `TODO`/`<AGENT>` markers, else check accuracy/completeness. Otherwise write the SRS from this section's structure.
 3. Work WITH the user per `gestalt/.claude/references/collaborative-work.md`.
 4. Capture each requirement as:
    ```
@@ -110,7 +107,6 @@ Capture verifiable requirements for a pitch or system.
 
 **Good-requirements checklist:** Verifiable, Unambiguous, Traceable, Independent, Necessary, Consistent.
 
-Reference: `docs/requirements/concepts.md`, `artifacts.md`, `traceability.md`, `docs/requirements/reference/templates/srs-template.md`.
 
 ---
 
@@ -124,7 +120,7 @@ Record WHY a significant decision was made — context, options, consequences, r
 
 1. Identify the decision, affected systems, whether it's a spike.
 2. Check for existing/related/superseded ADRs in the target folder.
-3. Location: same folder as pitch/system. Naming: `adr-{NNN}-{short-slug}.md`. Copy `docs/requirements/reference/templates/adr-template.md`.
+3. Location: same folder as pitch/system. Naming: `adr-{NNN}-{short-slug}.md`. Write the ADR from this section's structure.
 4. Work WITH the user per `gestalt/.claude/references/collaborative-work.md`.
 5. Fill in: frontmatter (`status: proposed|rejected|accepted|deprecated|superseded by ADR-XXX`, `date`, `decision-makers`) then sections — Context and Problem Statement, Decision Drivers, Considered Options, Decision Outcome (chosen + justification, Consequences good/bad, Confirmation — how we'll know it was right / what triggers reconsideration), Pros and Cons per option, **Impact on Requirements**, More Information.
 6. **Impact on Requirements is mandatory, never omit:** `Adds:`/`Modifies:`/`Constrains:`/`Removes:` with REQ-ID and text. If genuinely none: state `None — this decision is implementation-internal and does not affect requirements.`
@@ -132,7 +128,6 @@ Record WHY a significant decision was made — context, options, consequences, r
 8. Summarize: decision, impact rows, next steps.
 9. **Spikes:** Context = "we need to know if X is feasible", Options = "we explored A/B/C", Outcome = the chosen path, Consequences = downstream requirement impact. The spike's conclusion IS the ADR's conclusion.
 
-Reference: `docs/requirements/traceability.md`, `artifacts.md`, `docs/requirements/reference/templates/adr-template.md`.
 
 ---
 
@@ -145,7 +140,7 @@ Capture how a system or pitch is designed/implemented.
 1. Identify target: pitch SDD (living doc during build) vs system SDD (as-built, durable).
 2. Check for existing SDD in either structure: monolithic `sdd.md`, or modular `sdd/index.md` + `sdd/*.md` component files. If found, follow `TODO`/`<AGENT>` markers or check accuracy.
 3. **Choosing structure for new SDDs:** simple/single-component → `sdd.md`; multiple subsystems/delegated concerns/large teams → `sdd/` folder. Modular `index.md` MUST link every component SDD and define component boundaries/progress.
-4. Create: monolithic copies `docs/requirements/reference/templates/sdd-template.md`; modular creates the folder, `index.md` (see structure below), and component files linked from it.
+4. Create: monolithic writes one SDD from this section's structure; modular creates the folder, `index.md` (see structure below), and component files linked from it.
 5. Work WITH the user per `gestalt/.claude/references/collaborative-work.md`.
 6. Every major design element MUST trace to requirement(s): `**Satisfies:** AUTH-FR-001, AUTH-FR-002`.
 7. Pitch SDD only — living Progress Tracking table: `| Requirement | Status (✅/🔄/⏳) | Notes |`.
@@ -161,7 +156,6 @@ Capture how a system or pitch is designed/implemented.
 
 **SDD-SRS relationship:** SRS = WHAT must be true; SDD = HOW we make it true. If the SDD can't satisfy an SRS requirement, that's a requirements problem, not just a design one.
 
-Reference: `docs/requirements/concepts.md`, `artifacts.md`, `docs/requirements/reference/templates/sdd-template.md`.
 
 ---
 
@@ -185,7 +179,6 @@ Move pitch-scoped requirements/design/decisions into durable system documentatio
 
 **Traceability maintenance:** pitch SRS → system SRS gets a provenance link; ADR "Impact on Requirements" gets updated req-IDs; downstream docs referencing changed system requirements get updated too.
 
-Reference: `docs/requirements/traceability.md`, `shape-up-integration.md` (Cooldown phase).
 
 ---
 
@@ -263,11 +256,10 @@ Re-runnable: read existing ADRs/SDD/Implementation Log, diff against what's done
 | All ADR options are bad | Log findings, propose new options, ask user |
 | Scope too large for one session | Prioritize workstreams, defer rest to next `implement` run |
 
-If the repo has no `docs/requirements/`, fall back to this skill's `srs`/`sdd`/`adr` sections for document structure.
+No template files exist (verified 2026-11-02). Use this skill's `srs`/`sdd`/`adr` sections for document structure.
 
 **Follow-up:** after implementation, run the `audit` skill as a final quality gate (architecture, DRY, performance, requirements completeness).
 
-Reference: `docs/requirements/concepts.md`, `artifacts.md`, `shape-up-integration.md`, `traceability.md`.
 
 ---
 

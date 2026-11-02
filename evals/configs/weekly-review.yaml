@@ -12,7 +12,7 @@ trigger_cases:
     routes_to: "briefing"
   - prompt: "Save this idea about the new pricing model so I don't forget it"
     should_trigger: false
-    routes_to: "capture"
+    routes_to: "save"
 output_assertions:
   - type: regex
     value: "Commitments"

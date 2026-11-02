@@ -70,51 +70,7 @@ Parsed {N} fixes. Launching triage...
 
 Spawn ONE readonly explore agent to map the problem space:
 
-```
-Task(subagent_type="explore", model="fast", readonly=true, prompt="""
-You are triaging a batch of code fixes for parallel execution.
-
-FIX LIST:
-{normalized fix list from Phase 0}
-
-SCOPE: {repo path or directory}
-
-YOUR TASK:
-1. For each fix, identify the EXACT files that need modification.
-   Use grep, glob, and semantic search to locate relevant code.
-   If a fix is vague, determine the concrete files and lines involved.
-
-2. Build a FILE OWNERSHIP MAP — which files each fix touches:
-   FIX-001 → [file_a.py, file_b.py]
-   FIX-002 → [file_c.py]
-   FIX-003 → [file_a.py, file_d.py]  ← shares file_a with FIX-001
-
-3. Identify DEPENDENCIES between fixes:
-   - FIX-003 depends on FIX-001 (shared file, FIX-001 changes API that FIX-003 uses)
-   - FIX-005 depends on FIX-002 (type change propagates)
-
-4. Propose PARTITIONS — group fixes into up to 4 non-overlapping clusters.
-   Rules:
-   - Fixes touching the same file(s) go in the SAME cluster
-   - Dependent fixes go in the SAME cluster (or ordered across waves)
-   - Balance cluster sizes roughly evenly
-   - If >4 clusters needed, plan multiple waves
-
-5. For each fix, note:
-   - Estimated complexity: trivial / moderate / complex
-   - Key context the fixer agent will need (imports, patterns, related code)
-
-RETURN:
-- File ownership map
-- Dependency graph
-- Proposed partitions (clusters with file lists)
-- Wave plan (if batching needed)
-- Per-fix context notes
-- Total files mapped / total fixes mapped. Coverage: ALL fixes MUST be mapped.
-
-[Embed the Task Completion Gate from gestalt/.claude/references/discipline-block.md verbatim here — read that file once per skill run; subagents do not inherit it]
-""")
-```
+[Worker prompt W1: read `gestalt/.claude/references/fix-worker-prompts.md` §W1 and dispatch it verbatim, substituting the placeholders.]
 
 **After triage returns:**
 
@@ -139,43 +95,7 @@ For each wave, spawn up to 4 agents in parallel. Each agent owns a cluster.
 
 > **Claude Code quality gate:** The `builder-quality-gate.sh` Stop hook automatically runs lint and type checks on all files modified by this agent. If checks fail, the agent is instructed to fix the issues before stopping.
 
-```
-Task(subagent_type="general-purpose", isolation="worktree", prompt="""
-You are a code fixer. You own a specific set of files and fixes.
-
-YOUR FIXES:
-{list of FIX-IDs with descriptions for this cluster}
-
-YOUR FILES (you may ONLY modify these):
-{explicit file list for this cluster}
-
-CONTEXT:
-{per-fix context notes from triage — relevant imports, patterns, related code}
-{codebase conventions if known from gestalt}
-
-RULES:
-- You must fix every issue in your assignment. No partial fixes. No TODOs.
-- You MUST follow existing codebase conventions (naming, patterns, error handling).
-- If a fix requires changing a file NOT in your list, STOP and report it —
-  do not modify files outside your ownership.
-- You MUST run the project's linter on every file you modify to catch new errors.
-- If you discover additional issues while fixing, note them but only fix issues
-  in your assignment unless the additional issue is in your owned files and trivial.
-- Use the simplest fix that resolves each issue. Do NOT refactor surrounding code,
-  add abstractions, or add handling for cases that cannot occur — an unrequested
-  change is the same error as an unfixed issue: a scope mismatch.
-
-RETURN FORMAT:
-- Files modified: [list with brief description of changes]
-- Fixes completed: [FIX-IDs with status]
-- Unrequested changes: none, or [list with justification]
-- Issues found: [any new issues discovered]
-- Files that need changes outside your ownership: [if any]
-- Confidence: high / medium / low (how confident you are the fixes are correct)
-
-[Embed the Task Completion Gate from gestalt/.claude/references/discipline-block.md verbatim here — read that file once per skill run; subagents do not inherit it]
-""")
-```
+[Worker prompt W2: read `gestalt/.claude/references/fix-worker-prompts.md` §W2 and dispatch it verbatim, substituting the placeholders.]
 
 **After each wave completes:**
 - Collect results from all agents
@@ -187,64 +107,10 @@ RETURN FORMAT:
 After all fix waves complete, run verification in parallel:
 
 **Agent 1 — Automated Checks (shell verification):**
-```
-Task(subagent_type="explore", model="fast", prompt="""
-Run verification checks on the codebase after fixes were applied.
-
-MODIFIED FILES:
-{list of all files modified across all fix agents}
-
-REPO PATH: {repo path}
-
-YOUR TASK:
-1. Run linters/type checkers if the project has them:
-   - Python: look for pyproject.toml (ruff, mypy, pyright) or setup.cfg
-   - TypeScript: look for tsconfig.json (tsc --noEmit)
-   - Check Taskfile.yaml or Makefile for lint/check commands
-2. Run relevant test suites if they exist:
-   - Python: pytest on affected directories
-   - TypeScript: vitest/jest on affected directories
-3. Report ALL failures with file paths and error messages.
-
-RETURN: structured list of check results (pass/fail with details).
-
-[Embed the Task Completion Gate from gestalt/.claude/references/discipline-block.md verbatim here — read that file once per skill run; subagents do not inherit it]
-""")
-```
+[Worker prompt W3: read `gestalt/.claude/references/fix-worker-prompts.md` §W3 and dispatch it verbatim, substituting the placeholders.]
 
 **Agent 2 — Exhaustive Verification (explore, readonly):**
-```
-Task(subagent_type="explore", model="fast", readonly=true, prompt="""
-Verify that fixes were applied correctly by exhaustively verifying the code.
-
-ORIGINAL FIX LIST:
-{full fix list with descriptions}
-
-FIXES REPORTED AS COMPLETE:
-{FIX-IDs and agent descriptions of what was changed}
-
-YOUR TASK:
-1. For EVERY fix, read the modified file and verify:
-   - The original issue is actually resolved
-   - No regressions were introduced in the same file
-   - The fix follows codebase conventions
-2. Flag any fix that looks incomplete, incorrect, or introduces new issues.
-
-RULES:
-- Your verification matrix MUST have one row per FIX-ID. Missing rows = incomplete.
-- You MUST verify ALL fixes, not a sample.
-
-RETURN: verification matrix
-| FIX-ID | Status | Notes |
-|--------|--------|-------|
-| FIX-001 | PASS | Clean fix |
-| FIX-002 | PARTIAL | Missing edge case handling |
-...
-Verified: {N}/{total} fixes checked.
-
-[Embed the Task Completion Gate from gestalt/.claude/references/discipline-block.md verbatim here — read that file once per skill run; subagents do not inherit it]
-""")
-```
+[Worker prompt W4: read `gestalt/.claude/references/fix-worker-prompts.md` §W4 and dispatch it verbatim, substituting the placeholders.]
 
 ### Phase 4: Reconcile
 
@@ -312,7 +178,7 @@ Follows shared orchestration patterns — read `gestalt/.claude/references/orche
 ## When NOT to Use
 
 - **Single fix** — just do it directly, no orchestration overhead needed
-- **Fixes requiring architectural decisions** — use `/implement` or `/discuss` first
+- **Fixes requiring architectural decisions** — use `/requirements implement` or `/discuss` first
 - **Exploratory "make it better"** — use `/audit` for systematic quality review
 - **Fixes spanning multiple repos** — use `/swarm-check` to map impact first
 

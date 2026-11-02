@@ -1,6 +1,6 @@
 ---
 description: The .cursor/ tree is generated from claude-tree/ by tools/sync-cursor-tree.py. Edit claude-tree/ only, then run --write
-globs: "gestalt/claude-tree/**,gestalt/.cursor/**"
+globs: "**/claude-tree/**,**/.cursor/**"
 alwaysApply: false
 ---
 

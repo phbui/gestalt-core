@@ -14,4 +14,4 @@ alwaysApply: true
 - **If the push is rejected, pull again and retry.** Never overwrite Overleaf.
 - **Report the base.** Name the Overleaf commit you merged onto and whether origin moved meanwhile.
 
-Applies to every Overleaf project: the fellowship proposal and essays, the DC packet, the RTM and civic papers, and any CV or deck repo Phi edits in a browser. Related: feedback-reread-overleaf-first, [[no-unverified-claims]]. Shared-checkout mechanics: `gestalt/knowledge/the-relevant-entry.md` and the shared-checkout-races memory.
+Applies to every Overleaf project: the fellowship proposal and essays, the DC packet, the RTM and civic papers, and any CV or deck repo Phi edits in a browser. Related: the `feedback_reread_overleaf_first` memory, [[no-unverified-claims]]. Shared-checkout mechanics: `gestalt/knowledge/the-relevant-entry.md` and the shared-checkout-races memory.

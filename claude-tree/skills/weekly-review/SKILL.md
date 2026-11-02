@@ -3,6 +3,7 @@ name: weekly-review
 description: "GTD-style weekly review: triage the capture inbox, resolve/rollover commitments, surface stuck pending items, stale entries, and un-actioned NEEDS APPROVAL lines from recent sessions. Interactive by default, headless summary on a timer."
 model: sonnet
 user-invocable: true
+disable-model-invocation: true
 argument-hint: "[--headless]"
 ---
 

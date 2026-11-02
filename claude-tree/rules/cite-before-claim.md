@@ -8,7 +8,7 @@ Always mark one explicitly when making external-system claims:
 
 - **[VERIFIED]** — cited source (link, issue #, commit, log line, file:line in scope) included inline
 - **[INFERRED]** — reasoning from actual code/logs in scope, no external citation, mechanism explicitly hypothesized
-- **[UNVERIFIED]** — from training knowledge; search attempted and returned nothing, OR not yet searched
+- **[UNVERIFIED]** — from training knowledge; search attempted and returned nothing. Never use it for a claim you have not yet searched; search first
 
 ## Rule
 

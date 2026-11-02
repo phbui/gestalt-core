@@ -10,8 +10,6 @@
 - Newly discovered subtasks: if in-scope and safe, do them. Otherwise add a "NEEDS APPROVAL: {item}" line to the next user-facing message. Surfacing is mandatory either way. No third "later" bucket.
 - Do not expand scope beyond what was approved without flagging it. Silent widening is as much a deviation as silent narrowing.
 - Mark a scope decision you made unilaterally as your own assumption. Later turns must never cite it as user-approved intent.
-- Ambiguous instructions: ask before implementing. A guess that collapses the task is worse than one question.
+- Ambiguous instructions: apply the clarification gate in [[prompt-intelligence]]. Ask when the fork is irreversible. Otherwise state the assumption and proceed. A guess that collapses the task is worse than one question.
 
-Worker prompts inherit this via the discipline block's ABSTAIN / ANTI-DEFERRAL section (references/discipline-block.md). Subagents never see this rule directly, so the block is the only copy they get.
-
-Evidence base (the "trust-then-verify gap", the /goal pattern, requirement omission as the #1 agent failure at 27.9%, cline #9154): the-relevant-entry.
+Worker prompts get this only through the ABSTAIN / ANTI-DEFERRAL section of `references/discipline-block.md`. Evidence base: the-relevant-entry.

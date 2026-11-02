@@ -9,7 +9,7 @@ trigger_cases:
     should_trigger: true
   - prompt: "What are my kitty terminal keybindings and how do I reload the config?"
     should_trigger: false
-    routes_to: "help-kitty"
+    routes_to: "setup"
   - prompt: "Bootstrap my Claude Code global config and MCP servers on this new machine"
     should_trigger: false
     routes_to: "setup"

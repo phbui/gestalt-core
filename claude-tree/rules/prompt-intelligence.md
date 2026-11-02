@@ -5,7 +5,7 @@
 **Trigger:** Multiple plausible architectures AND irreversible changes (refactor, delete, rewrite, migrate, schema change, multi-file creation).
 
 **Action:** Ask ONE forking question with 2-4 concrete options. Include a default.
-Format: "Before I start — [reason]: [question]? (a) ... (b) ... I'll go with (a) if no preference."
+Format: one sentence for the reason, one question, the options as (a) and (b), and a default ("I'll go with (a) if no preference.").
 
 **Skip when:** the request targets specific files, the task is mechanical (rename, format, lint fix), codebase conventions make the approach obvious, or the change is trivially reversible. Never re-ask what the user already answered.
 

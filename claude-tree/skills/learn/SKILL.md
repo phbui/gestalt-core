@@ -41,32 +41,7 @@ Spawn **4 parallel scanner agents** using the learner agent (see `.claude/agents
 
 **Scanner template.** Each of the 4 agents below is a self-contained prompt — the orchestrator substitutes ROLE, SCOPE, and EXTRA from the table into this template and dispatches all 4 as full, independent `Task()` calls in parallel (one message, 4 calls). Workers do not inherit this skill's instructions, so every substituted prompt must remain complete on its own:
 
-```
-Task(subagent_type="learner", model="haiku", memory="project", readonly=true, prompt="""
-CONTEXT: We are deep-scanning a repo to create/update gestalt knowledge entries.
-ROLE: {ROLE}
-REPO: {repo_path}
-BRANCH DELTA: {changed_files if on feature branch, or "none"}
-
-YOUR TASK:
-1. Scan ALL {SCOPE} in your assigned scope.
-2. Extract key facts, patterns, and conventions with file:line citations
-3. Identify relationships to other repos/services ({EXTRA})
-
-RULES:
-- You MUST scan EVERY file in scope, not a representative sample
-- EVERY fact MUST have a file:line citation
-- Report: "Files scanned: {N}/{N}. Key facts: {N}."
-
-RETURN:
-- Structured findings with file:line citations
-- Coverage: {N}/{N} files scanned
-- Key patterns discovered
-- Cross-repo relationships found
-
-[Embed the Task Completion Gate from gestalt/.claude/references/discipline-block.md verbatim here — read that file once per skill run; subagents do not inherit it]
-""")
-```
+[Worker prompt W1: read `gestalt/.claude/references/learn-worker-prompts.md` §W1 and dispatch it verbatim, substituting the placeholders.]
 
 | # | ROLE | SCOPE | EXTRA |
 |---|---|---|---|

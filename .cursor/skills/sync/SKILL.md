@@ -36,7 +36,7 @@ Spawn parallel syncer agents (see `.cursor/agents/syncer.md`). Each agent gets S
 **Syncer template.** Each of the 3 agents below is a self-contained prompt — the orchestrator substitutes SOURCE and ENTRIES from the table into this template and dispatches all 3 as full, independent `Task()` calls in parallel (one message, 3 calls). Workers do not inherit this skill's instructions, so every substituted prompt must remain complete on its own:
 
 ```
-Task(subagent_type="syncer", readonly=true, prompt="""
+Agent(subagent_type="syncer", prompt="""
 SOURCE: {SOURCE}
 ENTRIES: {list of entry slugs with {SOURCE} references from SOURCES.md}
 

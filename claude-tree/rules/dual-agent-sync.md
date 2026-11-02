@@ -1,8 +1,8 @@
 ---
 paths:
-  - "gestalt/claude-tree/**"
-  - "gestalt/.claude/**"
-  - "gestalt/.cursor/**"
+  - "**/claude-tree/**"
+  - "**/.claude/**"
+  - "**/.cursor/**"
 ---
 
 # Dual-Agent Sync

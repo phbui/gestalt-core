@@ -19,7 +19,7 @@ Read `gestalt/MANIFEST.md` and `gestalt/BRANCHES.md`. List every rule and knowle
 Spawn the staleness-detector agent to prioritize which entries need verification most urgently:
 
 ```
-Task(subagent_type="staleness-detector", model="haiku", readonly=true, prompt="""
+Agent(subagent_type="staleness-detector", model="haiku", prompt="""
 Scan all repos referenced by gestalt knowledge entries. Compare git history against BRANCHES.md last-synced commits. Return a staleness report ranked HIGH/MEDIUM/LOW/NONE.
 """)
 ```
@@ -36,85 +36,17 @@ Compare with BRANCHES.md last-synced commit. If a repo's main branch has advance
 
 ### Step 4: Parallel Verification
 
-Split entries into batches and spawn **parallel verifier agents**. Use `subagent_type="reviewer"` for Agents 1–3 (batch verification and link checking — inherits `disallowedTools: [Write, Edit, NotebookEdit]`). Use `subagent_type="explore"` for Agent 4 (gap finding — different task). See `.cursor/agents/reviewer.md` for verifier specifications.
+Split entries into batches and spawn **parallel verifier agents**. Use `subagent_type="reviewer"` for Agents 1–3 (batch verification and link checking — inherits `disallowedTools: [Write, Edit, NotebookEdit]`). Use `subagent_type="Explore"` for Agent 4 (gap finding — different task). See `.cursor/agents/reviewer.md` for verifier specifications.
 
 **Verifier template (batches 1–2).** Split entries into 3 roughly equal batches; this template is invoked twice — once for batch 1 (entries 1..N/3) and once for batch 2 (entries N/3+1..2N/3) — as two full, independent `Task()` calls dispatched in parallel alongside Agents 3–4. Each is a self-contained prompt (workers don't inherit this skill's instructions), so substitute ENTRIES per call and send the complete prompt below both times:
 
-```
-Task(subagent_type="reviewer", memory="project", readonly=true, prompt="""
-CONTEXT: Auditing gestalt knowledge base against actual codebase. Code is truth.
-ENTRIES: {list of entry slugs for this batch}
-
-YOUR TASK:
-1. Read EVERY entry assigned to you in full
-2. For EACH entry, go to the referenced repo and verify ALL factual claims against current code
-3. Document ALL discrepancies between gestalt entries and actual code state
-
-RULES:
-- You MUST verify EVERY entry assigned, not a sample
-- EVERY claim checked MUST cite the code location that confirms or contradicts it
-- Completeness marker: "Entries reviewed: {N}/{N}. Stale: {list}. Current: {list}."
-
-RETURN:
-- Per-entry verdict: CURRENT / STALE / PARTIAL with evidence
-- Specific stale claims with code citations proving staleness
-- Entries reviewed: {N}/{N}. Stale: {list}. Current: {list}.
-
-[Embed the Task Completion Gate from gestalt/.cursor/references/discipline-block.md verbatim here — read that file once per skill run; subagents do not inherit it]
-""")
-```
+[Worker prompt W1: read `gestalt/.cursor/references/review-worker-prompts.md` §W1 and dispatch it verbatim, substituting the placeholders.]
 
 **Verifier Agent 3 — Link Checker:**
-```
-Task(subagent_type="reviewer", memory="project", readonly=true, prompt="""
-CONTEXT: Auditing gestalt knowledge base link integrity.
-ROLE: Link Checker
-ENTRIES: {all entry slugs}
-
-YOUR TASK:
-1. Validate ALL wikilinks resolve to existing entries
-2. Verify ALL ^block-ids referenced by other entries exist at their targets
-3. Verify ALL GRAPH.md connections are valid and bidirectional
-
-RULES:
-- You MUST check EVERY link in EVERY entry, not a sample
-- EVERY broken link MUST be reported with source file and line number
-- Completeness marker: "Links checked: {N}/{N}. Broken: {list}. Valid: {list}."
-
-RETURN:
-- Broken wikilinks: {list with source:line}
-- Orphan ^block-ids: {list with source:line}
-- Invalid GRAPH.md connections: {list}
-- Links checked: {N}/{N}. Broken: {list}. Valid: {list}.
-
-[Embed the Task Completion Gate from gestalt/.cursor/references/discipline-block.md verbatim here — read that file once per skill run; subagents do not inherit it]
-""")
-```
+[Worker prompt W2: read `gestalt/.cursor/references/review-worker-prompts.md` §W2 and dispatch it verbatim, substituting the placeholders.]
 
 **Verifier Agent 4 — Gap Finder:**
-```
-Task(subagent_type="explore", model="haiku", readonly=true, prompt="""
-CONTEXT: Auditing gestalt knowledge base for missing coverage.
-
-YOUR TASK:
-1. List ALL repos in workspace
-2. Verify ALL repos against gestalt coverage — identify which have entries and which do not
-3. Query external sources (Notion/Linear) for uncovered topics
-
-RULES:
-- You MUST check EVERY repo, not a sample
-- EVERY uncovered repo MUST be reported
-- Completeness marker: "Repos checked: {N}/{N}. Covered: {list}. Gaps: {list}."
-
-RETURN:
-- Repos with coverage: {list}
-- Repos without coverage: {list}
-- Topics found in external sources with no gestalt entry: {list}
-- Repos checked: {N}/{N}. Covered: {list}. Gaps: {list}.
-
-[Embed the Task Completion Gate from gestalt/.cursor/references/discipline-block.md verbatim here — read that file once per skill run; subagents do not inherit it]
-""")
-```
+[Worker prompt W3: read `gestalt/.cursor/references/review-worker-prompts.md` §W3 and dispatch it verbatim, substituting the placeholders.]
 
 For EACH entry, verifiers check:
 - **Rules:** Read the code the rule applies to. Does the rule still match the code? Are examples valid?

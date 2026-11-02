@@ -1,6 +1,6 @@
 ---
 description: Gestalt operational conventions — write philosophy, linking rules, agent teams, symlinks. Applies when working on gestalt files.
-globs: gestalt/**
+globs: "gestalt/**,knowledge/**,claude-tree/**"
 alwaysApply: false
 ---
 
@@ -15,6 +15,10 @@ Entries read as authoritative reference — as if the correct answer was always 
 **Scoped exception — incident-class content** (adopted 2026-08-30 from gbrain's incident discipline, knowledge/gbrain.md ^cost-explosion): when an entry or section records an operational incident — an outage, a destructive mistake, a cost overrun, a silent failure — the dated, root-caused record IS the reference knowledge, and it follows a fixed skeleton so it stays minable later: **What happened** (one paragraph, dated) → **Root causes** (numbered, each with file:line or command evidence) → **Fixes** (numbered, each carrying an explicit `shipped` / `deferred: <where it's tracked>` status) → **Standing rule** (the doctrine the incident produced, stated positively per the philosophy above) → **What did NOT ship** (mandatory even when empty — "nothing deferred" is a claim, absence is silence; this extends [[no-silent-deferral]] from sessions to documents). The surrounding entry still reads as authoritative reference; the skeleton governs the incident block itself, the way the-relevant-entry's fan-incident and hub-invariants narratives already almost do.
 
 Before creating a new entry, check MANIFEST.md — and when the trigger for the new entry was a search, read the search results' `create_safety` field first: `exists` means update that entry instead, `probable` means open it and check before creating (tools/gestalt-mcp-server.py stamps every result; adopted from gbrain's duplicate-stub incident, knowledge/gbrain.md ^maxpool-incident). Update existing entries rather than duplicate.
+
+## Evidence in Entries
+
+A gestalt entry that asserts code or config was shipped, fixed, added, installed, created, or wired carries the evidence inline — a commit SHA or a `file:line` that exists at write time (`git log -S'<token>'` first); an uncommitted change is written as "applied uncommitted on <host>, not yet in git", never bare "fixed".
 
 ## Linking Rules
 
@@ -68,17 +72,15 @@ For write-heavy operations (`/learn`, `/review`, `/sync`, `/fix`), use parallel 
 
 ## Sync Rule
 
-When any file in `gestalt/.cursor/rules/`, `gestalt/.cursor/skills/`, `gestalt/.cursor/agents/`, or `gestalt/.cursor/references/` is created or edited, verify the corresponding symlink exists in the workspace root.
+`gestalt/.claude` is one directory symlink to `claude-tree`, so no per-file symlink exists to check. After any edit under `claude-tree/`, run `tools/sync-cursor-tree.py --write` and then `--check` ([[dual-agent-sync]]).
 
 ## Help & Index Sync Rule
 
 When any command, skill, or rule is **added, removed, renamed, or has its purpose changed**:
 
 1. Update `gestalt/.cursor/references/skill-index.md` — both the Quick Reference table and the affected per-skill section
-2. Update `gestalt/.cursor/references/skill-index.md` — same changes, with `.cursor/` paths translated to `.cursor/`
-3. Update the **Commands & Skills** list below in this file
-4. Update the corresponding list in `gestalt/.cursor/rules/gestalt-operations.mdc`
-5. Only touch `gestalt/.cursor/skills/help-gestalt/SKILL.md` (and its `.cursor/` counterpart) if the pointer to `skill-index.md` itself changes — it no longer holds the Quick Reference table or per-skill detail directly.
+2. Run `tools/sync-cursor-tree.py --write`. Never edit `.cursor/` by hand.
+3. Only touch `gestalt/.cursor/skills/help-gestalt/SKILL.md` (and its `.cursor/` counterpart) if the pointer to `skill-index.md` itself changes — it no longer holds the Quick Reference table or per-skill detail directly.
 
 Do NOT skip this. `references/skill-index.md` is the single source of truth for what commands exist and how to use them.
 

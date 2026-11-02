@@ -1,7 +1,8 @@
 """Skill-routing accuracy, pinned to a measured floor.
 
-`gestalt_route` is a WEAK ADVISORY signal, not a router — measured 23/40 top-1 (57%)
-and 31/40 top-3 (77%) on the cases below, which cover all 31 skills.
+`gestalt_route` is a WEAK ADVISORY signal, not a router — measured 28/40 top-1 (70%)
+and 34/40 top-3 (85%) on the original 40 cases (re-measured 2026-11-02, lexical leg). The cases
+below now cover all 31 skills.
 
 An earlier 15-case version of this file reported 9/15 (60%) and 14/15 (93%). Those
 numbers were an artifact of too few and too-easy cases: on a representative set the
@@ -87,6 +88,17 @@ CASES: list[tuple[str, tuple[str, ...]]] = [
     ("build the feature from this design", ("build", "requirements")),
     ("batch up all these review comments and apply them", ("fix",)),
     ("deep dive on prior art for this idea", ("research", "investigate")),
+    # 2026-11-02 audit: the ten skills that had no case. Targets are acceptable sets, not single answers.
+    ("give me my morning briefing", ("briefing",)),
+    ("save this idea to the capture inbox", ("save",)),
+    ("sync the fleet laptops and converge the git state", ("fleet-sync",)),
+    ("what are my kitty split shortcuts", ("setup",)),
+    ("turn this lecture recording into notes", ("lecture",)),
+    ("read this page aloud to me", ("read",)),
+    ("which machine should run this job", ("route",)),
+    ("set up this new laptop for gestalt", ("setup",)),
+    ("spin up a cloud GPU sandbox", ("spin-up",)),
+    ("run the weekly review and triage my inbox", ("weekly-review",)),
 ]
 
 # Measured floors, not aspirations. Raise them only alongside a real improvement.

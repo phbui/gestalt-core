@@ -61,11 +61,11 @@ The `commands/` directory no longer exists — all commands live in `skills/<nam
 
 #### Agent
 1. Write `gestalt/.claude/agents/<name>.md` with full Claude frontmatter (model, tools, disallowedTools, permissionMode, maxTurns, etc.)
-2. Write `gestalt/.cursor/agents/<name>.md` with only `name` and `description` in frontmatter, same body
+2. Run `gestalt/tools/sync-cursor-tree.py --write`. It generates the `.cursor/` copy. Never write `.cursor/` by hand.
 
 #### Reference
 1. Write `gestalt/.claude/references/<name>.md`
-2. Copy to `gestalt/.cursor/references/<name>.md` — identical content, translate tool-specific paths
+2. Run `gestalt/tools/sync-cursor-tree.py --write`. It generates the `.cursor/` copy. Never write `.cursor/` by hand.
 
 ### Step 3: Content
 
@@ -93,12 +93,10 @@ For `rename`:
 
 **This step is mandatory.** After any mutation, update all required indexes:
 
-1. **`gestalt/.claude/skills/help-gestalt/SKILL.md`** — Quick Reference table + Detailed Guide section
-2. **`gestalt/.cursor/skills/help-gestalt/SKILL.md`** — same changes, `.claude/` → `.cursor/` path translation
-3. **`gestalt/.claude/rules/gestalt-operations.md`** — Commands & Skills list
-4. **`gestalt/.cursor/rules/gestalt-operations.mdc`** — same list
-5. **`gestalt/knowledge/the-relevant-entry.md`** — Commands & Skills tables (split from gestalt.md 2026-08-30; if the artifact is a command or skill)
-6. **`gestalt/.claude/rules/gestalt.md`** — Commands list at the bottom (if the artifact is a command or skill)
+1. **`gestalt/.claude/references/skill-index.md`** — Quick Reference table + Detailed Guide section. This is the single source of truth. `help-gestalt/SKILL.md` only points at it.
+2. Run `gestalt/tools/sync-cursor-tree.py --write` so the `.cursor/` copies regenerate. Never edit `.cursor/` by hand.
+3. **`gestalt/knowledge/the-relevant-entry.md`** — Commands & Skills tables (split from gestalt.md 2026-08-30; if the artifact is a command or skill)
+4. **`gestalt/.claude/rules/gestalt.md`** — Commands list at the bottom (if the artifact is a command or skill)
 
 For commands/skills, also add to the appropriate category:
 - Gestalt Operations, Requirements Engineering, Engineering, Build, Investigation, Deliverable, or Utility

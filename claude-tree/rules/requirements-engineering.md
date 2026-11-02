@@ -1,8 +1,8 @@
 ---
 paths:
-  - "docs/pitches/**/*.md"
-  - "docs/systems/**/*.md"
-  - "docs/requirements/**/*.md"
+  - "**/docs/pitches/**/*.md"
+  - "**/docs/systems/**/*.md"
+  - "**/docs/requirements/**/*.md"
 ---
 
 # Requirements Engineering
@@ -78,14 +78,7 @@ docs/
 
 ## Templates
 
-Always use these templates when creating new documents:
-
-
-
-> **No template files exist in this workspace (verified 2026-08-31 audit):** the `@docs/requirements/` paths below are aspirational — no repo here carries `docs/requirements/`, and the `/requirements` skill's SKILL.md references the same absent files. Until the templates are created, author SRS/SDD/ADR documents directly from the `/requirements` skill's own subcommands (`requirements srs|sdd|adr`), which structure the document without needing a template file. Treat the @-paths as the intended location once templates land, not a current dependency.
-- **SRS:** @docs/requirements/reference/templates/srs-template.md
-- **SDD:** @docs/requirements/reference/templates/sdd-template.md
-- **ADR:** @docs/requirements/reference/templates/adr-template.md
+No template files exist in this workspace (verified 2026-08-31 and again 2026-11-02). Author SRS, SDD and ADR documents with the `/requirements` skill's subcommands (`requirements srs|sdd|adr`), which structure the document without a template file.
 
 ## Writing Requirements
 

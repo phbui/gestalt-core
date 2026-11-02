@@ -1,0 +1,8 @@
+# Diff, Then Wait for Go
+
+Show every proposed text change to Phi's documents as a fenced `diff` block in chat, one sentence per line, before touching the file. Apply it only on an explicit go ("apply", "go", "do it"). Liking a phrasing is not a go. A linked file never substitutes for the diff. Instituted 2026-10-08.
+
+- **Skip the diff** when the message already says to apply ("fix the typos") or names a mechanical change. Show the diff after.
+- **Never apply the rest of a batch** he only partly approved.
+- **Once Phi edits a live deck or Doc himself**, change only the element he names.
+- **Overleaf:** pull, show the diff against the merged text, wait for the go, then commit your own hunks ([[overleaf-pull-first]]).

@@ -3,6 +3,7 @@ name: caveman
 description: "Ultra-compressed communication mode that slashes token usage ~75% while keeping full technical accuracy."
 model: sonnet
 user-invocable: true
+disable-model-invocation: true
 argument-hint: ""
 ---
 

@@ -10,7 +10,7 @@ argument-hint: "what to build (feature description, spec, or SDD path)"
 
 General-purpose builder. Takes any input — a description, a spec file, a design doc, an SDD, an ADR, or just a plain request — and builds it. Spawns parallel agents for independent workstreams when possible.
 
-Unlike `/implement` (which requires an SRS and runs the full requirements-to-code pipeline), `/build` is flexible: it works with whatever context you have.
+Unlike `/requirements implement` (which requires an SRS and runs the full requirements-to-code pipeline), `/build` is flexible: it works with whatever context you have.
 
 ## Input
 
@@ -217,7 +217,7 @@ If issues found: fix inline (max 2 retries), then escalate to user.
 
 ## When NOT to Use
 
-- **Full requirements pipeline needed** → use `/implement` (SRS → ADR → SDD → Build → QA)
+- **Full requirements pipeline needed** → use `/requirements implement` (SRS → ADR → SDD → Build → QA)
 - **Batch of fixes/errors** → use `/fix` (parallel fix agents with triage)
 - **Quality review of existing code** → use `/audit` (4 specialist reviewers)
 - **Need to understand before building** → use `/investigate` first

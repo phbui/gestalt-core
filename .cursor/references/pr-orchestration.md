@@ -2,6 +2,8 @@
 
 Phase-by-phase mechanics for `/pr`. Covers context gathering scouts, triage rules, fix-batch ordering, verification agents, and the final report contract. Persona definitions for Phase 1 live in `pr-personas.md`.
 
+Every worker prompt below starts with the Standard Block from `gestalt/.cursor/references/discipline-block.md`, embedded verbatim. Subagents do not inherit this skill's rules. Reviewer and verifier rows are numbered single-claim rows with a `file:line` source, and any scope may return `NO FINDINGS`.
+
 ## Contents
 
 - [Phase 0: Context Gathering (Parallel)](#phase-0-context-gathering-parallel)
@@ -18,7 +20,7 @@ Spawn **two scout agents** while you simultaneously read PR metadata. All three 
 ### Scout Agent 1 — PR Scout
 
 ```
-Agent(subagent_type="explore", prompt="""
+Agent(subagent_type="Explore", prompt="""
 You are surveying a pull request for a deep multi-persona review.
 
 PR REFERENCE: {pr_number_or_branch}
@@ -71,7 +73,7 @@ context feeds three specialist reviewers.
 ### Scout Agent 2 — Repo Conventions Scanner
 
 ```
-Agent(subagent_type="explore", prompt="""
+Agent(subagent_type="Explore", prompt="""
 You are scanning a repository to understand its conventions, patterns, and standards
 so that PR reviewers can assess whether changes conform.
 
