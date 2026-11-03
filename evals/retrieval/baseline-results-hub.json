@@ -21,7 +21,7 @@
       "text_format": "v2-title"
     },
     "split": "all",
-    "golden_sha256": "ed9c1e6dcbd3412f2ab827a87cfd4e985394a00e779fc8e97968460e1e41b53f",
+    "golden_sha256": "dbb13e356c165436b278ac70c9daa77c0a18e84d495e59295de9326caa95dcbb",
     "n_cases": 151,
     "n_answerable": 129,
     "n_abstain": 22,
@@ -33,51 +33,51 @@
     },
     "rerank_fallbacks": 0,
     "recall": {
-      "@1": 0.7209,
+      "@1": 0.7132,
       "@3": 0.8372,
-      "@5": 0.8915
+      "@5": 0.8682
     },
-    "mrr": 0.788,
+    "mrr": 0.7766,
     "hard": {
       "n": 32,
-      "recall@3": 0.8438,
-      "mrr": 0.7682
+      "recall@3": 0.8125,
+      "mrr": 0.7146
     },
     "easy": {
       "n": 97,
-      "recall@3": 0.8351,
-      "mrr": 0.7945
+      "recall@3": 0.8454,
+      "mrr": 0.7971
     },
-    "block_precision": 0.8333,
+    "block_precision": 0.7917,
     "family_rescued": 2,
     "overall": {
       "n": 129,
       "targets": 89,
-      "recall@1": 0.7209,
+      "recall@1": 0.7132,
       "recall@1_ci": [
-        0.638,
-        0.791
+        0.63,
+        0.784
       ],
       "recall@3": 0.8372,
       "recall@3_ci": [
         0.764,
         0.891
       ],
-      "recall@5": 0.8915,
+      "recall@5": 0.8682,
       "recall@5_ci": [
-        0.826,
-        0.934
+        0.799,
+        0.916
       ],
-      "mrr": 0.788
+      "mrr": 0.7766
     },
     "buckets": {
       "abstain": {
         "n": 22,
         "answerable_n": 129,
-        "auroc": 0.9461,
+        "auroc": 0.9489,
         "auroc_ci90": [
-          0.8959,
-          0.9855
+          0.9002,
+          0.9867
         ]
       },
       "ops": {
@@ -98,35 +98,35 @@
           0.78,
           0.981
         ],
-        "mrr": 0.8534
+        "mrr": 0.8517
       },
       "paper": {
         "n": 67,
         "targets": 67,
-        "recall@1": 0.6866,
+        "recall@1": 0.7015,
         "recall@1_ci": [
-          0.568,
-          0.785
+          0.583,
+          0.798
         ],
-        "recall@3": 0.791,
+        "recall@3": 0.806,
         "recall@3_ci": [
-          0.679,
-          0.871
+          0.696,
+          0.883
         ],
-        "recall@5": 0.8806,
+        "recall@5": 0.8507,
         "recall@5_ci": [
-          0.782,
-          0.938
+          0.747,
+          0.917
         ],
-        "mrr": 0.7547
+        "mrr": 0.7585
       },
       "projects": {
         "n": 16,
         "targets": 7,
-        "recall@1": 0.875,
+        "recall@1": 0.8125,
         "recall@1_ci": [
-          0.64,
-          0.965
+          0.57,
+          0.934
         ],
         "recall@3": 1.0,
         "recall@3_ci": [
@@ -138,7 +138,7 @@
           0.806,
           1.0
         ],
-        "mrr": 0.9375
+        "mrr": 0.8854
       },
       "research": {
         "n": 11,
@@ -158,49 +158,49 @@
           0.354,
           0.848
         ],
-        "mrr": 0.4848
+        "mrr": 0.5
       },
       "voice": {
         "n": 6,
         "targets": 2,
-        "recall@1": 1.0,
+        "recall@1": 0.8333,
         "recall@1_ci": [
-          0.61,
-          1.0
+          0.436,
+          0.97
         ],
-        "recall@3": 1.0,
+        "recall@3": 0.8333,
         "recall@3_ci": [
-          0.61,
-          1.0
+          0.436,
+          0.97
         ],
-        "recall@5": 1.0,
+        "recall@5": 0.8333,
         "recall@5_ci": [
-          0.61,
-          1.0
+          0.436,
+          0.97
         ],
-        "mrr": 1.0
+        "mrr": 0.8333
       }
     },
     "fts_only": {
       "overall": {
         "n": 129,
         "targets": 89,
-        "recall@1": 0.4574,
+        "recall@1": 0.4341,
         "recall@1_ci": [
-          0.374,
-          0.543
+          0.352,
+          0.52
         ],
-        "recall@3": 0.6202,
+        "recall@3": 0.6047,
         "recall@3_ci": [
-          0.534,
-          0.699
+          0.518,
+          0.685
         ],
-        "recall@5": 0.6899,
+        "recall@5": 0.6744,
         "recall@5_ci": [
-          0.606,
-          0.763
+          0.59,
+          0.749
         ],
-        "mrr": 0.5443
+        "mrr": 0.5245
       },
       "buckets": {
         "abstain": {
@@ -213,42 +213,42 @@
         "ops": {
           "n": 29,
           "targets": 11,
-          "recall@1": 0.5172,
+          "recall@1": 0.4483,
           "recall@1_ci": [
-            0.344,
-            0.686
+            0.284,
+            0.625
           ],
-          "recall@3": 0.6552,
+          "recall@3": 0.6207,
           "recall@3_ci": [
-            0.473,
-            0.801
+            0.44,
+            0.773
           ],
-          "recall@5": 0.7586,
+          "recall@5": 0.7241,
           "recall@5_ci": [
-            0.579,
-            0.878
+            0.543,
+            0.853
           ],
-          "mrr": 0.6029
+          "mrr": 0.5511
         },
         "paper": {
           "n": 67,
           "targets": 67,
-          "recall@1": 0.3731,
+          "recall@1": 0.3433,
           "recall@1_ci": [
-            0.267,
-            0.493
+            0.241,
+            0.463
           ],
-          "recall@3": 0.5224,
+          "recall@3": 0.5075,
           "recall@3_ci": [
-            0.405,
-            0.637
+            0.391,
+            0.623
           ],
           "recall@5": 0.597,
           "recall@5_ci": [
             0.477,
             0.706
           ],
-          "mrr": 0.4507
+          "mrr": 0.4331
         },
         "projects": {
           "n": 16,
@@ -273,22 +273,22 @@
         "research": {
           "n": 11,
           "targets": 2,
-          "recall@1": 0.4545,
+          "recall@1": 0.5455,
           "recall@1_ci": [
-            0.213,
-            0.72
+            0.28,
+            0.787
           ],
           "recall@3": 0.7273,
           "recall@3_ci": [
             0.434,
             0.903
           ],
-          "recall@5": 0.8182,
+          "recall@5": 0.7273,
           "recall@5_ci": [
-            0.523,
-            0.949
+            0.434,
+            0.903
           ],
-          "mrr": 0.5939
+          "mrr": 0.6212
         },
         "voice": {
           "n": 6,
@@ -308,7 +308,7 @@
             0.61,
             1.0
           ],
-          "mrr": 0.8333
+          "mrr": 0.8056
         }
       },
       "family_rescued": 3
@@ -321,8 +321,8 @@
       "split": "test",
       "got": [
         "paper-louGeoConformalPredictionModelagnostic2024",
-        "paper-gawlikowskiSurveyUncertaintyDeep2021",
-        "paper-singhUncertaintyQuantificationProbabilistic2024"
+        "paper-singhUncertaintyQuantificationProbabilistic2024",
+        "paper-gawlikowskiSurveyUncertaintyDeep2021"
       ],
       "top_score": 1.53125,
       "score_kind": "rerank",
@@ -368,7 +368,7 @@
         "large-entry",
         "large-entry"
       ],
-      "top_score": -3.6328125,
+      "top_score": -3.6484375,
       "score_kind": "rerank",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -434,7 +434,7 @@
         "phone-hub",
         "gestalt-system-map-hub"
       ],
-      "top_score": 6.140625,
+      "top_score": 6.125,
       "score_kind": "rerank",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -498,7 +498,7 @@
       "got": [
         "claude-1m-hallucination",
         "agent-deferral-mitigations",
-        "agent-deferral-mitigations"
+        "no-silent-deferral"
       ],
       "top_score": 3.2578125,
       "score_kind": "rerank",
@@ -509,7 +509,7 @@
       "hard": true,
       "bucket": "ops",
       "rank": 1,
-      "block_hit": true,
+      "block_hit": false,
       "family_rescued": false,
       "cluster": "claude-1m-hallucination"
     },
@@ -522,7 +522,7 @@
         "claude-1m-hallucination",
         "claude-1m-hallucination"
       ],
-      "top_score": 2.359375,
+      "top_score": 2.390625,
       "score_kind": "rerank",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -540,11 +540,11 @@
       "query": "rendering point clouds in a browser",
       "split": "test",
       "got": [
-        "splat",
-        "splat",
+        "point-cloud-hub",
+        "point-cloud-hub",
         "splat"
       ],
-      "top_score": -1.03125,
+      "top_score": 2.109375,
       "score_kind": "rerank",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -552,7 +552,7 @@
       "expect_block": null,
       "hard": true,
       "bucket": "projects",
-      "rank": 1,
+      "rank": 3,
       "block_hit": null,
       "family_rescued": false,
       "cluster": "splat"
@@ -610,7 +610,7 @@
         "generic-cms",
         "nyu-hpc-access"
       ],
-      "top_score": 3.3046875,
+      "top_score": 3.328125,
       "score_kind": "rerank",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -718,7 +718,7 @@
       "got": [
         "linear-cursor",
         "linear-cursor",
-        "obsidian-vault"
+        "dual-agent-sync"
       ],
       "top_score": -2.921875,
       "score_kind": "rerank",
@@ -739,8 +739,8 @@
       "split": "dev",
       "got": [
         "civic-ai-tools",
-        "civic-ai-tools",
-        "civic-honesty-benchmark"
+        "civic-honesty-benchmark",
+        "civic-ai-tools"
       ],
       "top_score": 2.734375,
       "score_kind": "rerank",
@@ -760,11 +760,11 @@
       "query": "which venues are my three manuscripts aimed at",
       "split": "test",
       "got": [
-        "phi-formal-voice",
-        "phd-paper-pipeline",
-        "phi-formal-voice"
+        "gestalt-core-publishing-2026-10",
+        "phi-voice-legacy",
+        "phd-paper-pipeline"
       ],
-      "top_score": 1.3203125,
+      "top_score": 2.6640625,
       "score_kind": "rerank",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -786,7 +786,7 @@
         "research-project-log-1",
         "paper-chalonerBayesianExperimentalDesign1995"
       ],
-      "top_score": 4.6875,
+      "top_score": 4.5390625,
       "score_kind": "rerank",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -808,7 +808,7 @@
         "large-entry",
         "large-entry"
       ],
-      "top_score": -0.6953125,
+      "top_score": -0.671875,
       "score_kind": "rerank",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -874,7 +874,7 @@
         "kitty-math-mcp",
         "kitty-math-mcp"
       ],
-      "top_score": 6.7578125,
+      "top_score": 6.734375,
       "score_kind": "rerank",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -896,7 +896,7 @@
         "kitty-math-mcp",
         "gestalt-system-map-tools"
       ],
-      "top_score": 4.0078125,
+      "top_score": 4.015625,
       "score_kind": "rerank",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -916,9 +916,9 @@
       "got": [
         "iros-2026-full-shift-poster",
         "artifact-links",
-        "iros-2026-full-shift-poster"
+        "artifact-links"
       ],
-      "top_score": 1.765625,
+      "top_score": 1.7421875,
       "score_kind": "rerank",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -926,7 +926,7 @@
       "expect_block": "cost",
       "hard": true,
       "bucket": "ops",
-      "rank": 4,
+      "rank": 5,
       "block_hit": true,
       "family_rescued": false,
       "cluster": "kitty-math-mcp"
@@ -954,57 +954,57 @@
       "cluster": "kitty-math-mcp"
     },
     {
-      "qid": "edda248cc957",
+      "qid": "14950f33668a",
       "query": "what's different about how I write for a grad school application versus everyday texting",
-      "split": "test",
+      "split": "dev",
       "got": [
-        "phi-formal-voice",
+        "phi-voice",
         "phi-voice",
         "phi-voice"
       ],
-      "top_score": 3.3359375,
+      "top_score": 1.2578125,
       "score_kind": "rerank",
       "rerank_fallback": false,
       "fts_failed": false,
-      "expect_slug": "phi-formal-voice",
+      "expect_slug": "phi-voice-legacy",
       "expect_block": "split-rationale",
       "hard": true,
       "bucket": "voice",
-      "rank": 1,
-      "block_hit": true,
+      "rank": null,
+      "block_hit": false,
       "family_rescued": false,
-      "cluster": "phi-formal-voice"
+      "cluster": "phi-voice-legacy"
     },
     {
-      "qid": "4b5ec32ac072",
+      "qid": "ea616aaf8aae",
       "query": "what's the target register for my formal application essays",
-      "split": "test",
+      "split": "dev",
       "got": [
-        "phi-formal-voice",
-        "phi-formal-voice",
-        "phi-formal-voice"
+        "phi-voice-legacy",
+        "phi-voice-legacy",
+        "phi-voice-legacy"
       ],
-      "top_score": 5.875,
+      "top_score": 4.671875,
       "score_kind": "rerank",
       "rerank_fallback": false,
       "fts_failed": false,
-      "expect_slug": "phi-formal-voice",
+      "expect_slug": "phi-voice-legacy",
       "expect_block": "explicit-definitions",
       "hard": false,
       "bucket": "voice",
       "rank": 1,
       "block_hit": false,
       "family_rescued": false,
-      "cluster": "phi-formal-voice"
+      "cluster": "phi-voice-legacy"
     },
     {
       "qid": "a21ce2bfbaea",
       "query": "what kind of typos do I make when typing fast to claude code",
-      "split": "dev",
+      "split": "test",
       "got": [
         "phi-voice",
         "phi-voice",
-        "phi-formal-voice"
+        "phi-voice"
       ],
       "top_score": 4.40625,
       "score_kind": "rerank",
@@ -1022,11 +1022,11 @@
     {
       "qid": "3a9dfecdb6b8",
       "query": "do I use em dashes when texting casually",
-      "split": "dev",
+      "split": "test",
       "got": [
         "phi-voice",
-        "phi-formal-voice",
-        "phi-voice-tells"
+        "phi-voice-legacy",
+        "phi-voice"
       ],
       "top_score": 2.8125,
       "score_kind": "rerank",
@@ -1044,13 +1044,13 @@
     {
       "qid": "922aa0db7fcb",
       "query": "what corpora was Phi's authentic writing style model built from",
-      "split": "dev",
+      "split": "test",
       "got": [
         "phi-voice",
-        "phi-formal-voice",
-        "phi-formal-voice"
+        "phi-voice-legacy",
+        "phi-voice-legacy"
       ],
-      "top_score": 6.578125,
+      "top_score": 6.5625,
       "score_kind": "rerank",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -1066,7 +1066,7 @@
     {
       "qid": "329110e1cddd",
       "query": "how does Phi soften blunt statements in Slack",
-      "split": "dev",
+      "split": "test",
       "got": [
         "phi-voice",
         "phi-voice",
@@ -1092,9 +1092,9 @@
       "got": [
         "gestalt-benchmarks-2026-10",
         "gestalt-benchmarks-2026-10",
-        "research-project-log-2"
+        "gestalt-core-publishing-2026-10"
       ],
-      "top_score": 4.9453125,
+      "top_score": 4.9375,
       "score_kind": "rerank",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -1116,7 +1116,7 @@
         "gestalt-overhaul-2026-09",
         "gestalt-system-map-health"
       ],
-      "top_score": 6.6640625,
+      "top_score": 6.65625,
       "score_kind": "rerank",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -1204,7 +1204,7 @@
         "shapefile-smasher",
         "shapefile-smasher"
       ],
-      "top_score": 7.546875,
+      "top_score": 7.5390625,
       "score_kind": "rerank",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -1226,7 +1226,7 @@
         "linear-cursor",
         "linear-cursor"
       ],
-      "top_score": 7.640625,
+      "top_score": 7.6484375,
       "score_kind": "rerank",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -1248,7 +1248,7 @@
         "game",
         "paper-faisalCostEffectiveLiDAR2025"
       ],
-      "top_score": 4.0,
+      "top_score": 3.9921875,
       "score_kind": "rerank",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -1421,7 +1421,7 @@
       "split": "dev",
       "got": [
         "gestalt",
-        "gestalt-system-map-agent-layer",
+        "gestalt-token-audit-2026-10",
         "gestalt-system-map-knowledge-index"
       ],
       "top_score": 3.34375,
@@ -1486,9 +1486,9 @@
       "query": "my GitHub push keeps failing with repository not found even though I have access",
       "split": "dev",
       "got": [
+        "capture-inbox",
         "gestalt-system-map-repo-sync",
-        "generic-cms",
-        "gestalt-system-map-hooks"
+        "generic-cms"
       ],
       "top_score": -1.1171875,
       "score_kind": "rerank",
@@ -1498,7 +1498,7 @@
       "expect_block": "ops-gotchas",
       "hard": true,
       "bucket": "projects",
-      "rank": 2,
+      "rank": 3,
       "block_hit": false,
       "family_rescued": false,
       "cluster": "generic-cms"
@@ -1534,7 +1534,7 @@
         "large-entry",
         "large-entry"
       ],
-      "top_score": 4.71875,
+      "top_score": 4.7109375,
       "score_kind": "rerank",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -1553,7 +1553,7 @@
       "split": "dev",
       "got": [
         "gestalt-system-map-memory",
-        "capture-inbox",
+        "large-entry",
         "large-entry"
       ],
       "top_score": -1.875,
@@ -1564,7 +1564,7 @@
       "expect_block": "path-b-status",
       "hard": true,
       "bucket": "research",
-      "rank": 3,
+      "rank": 2,
       "block_hit": false,
       "family_rescued": false,
       "cluster": "large-entry"
@@ -1578,7 +1578,7 @@
         "large-entry",
         "large-entry"
       ],
-      "top_score": 6.609375,
+      "top_score": 6.6015625,
       "score_kind": "rerank",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -1642,7 +1642,7 @@
       "got": [
         "paper-yuLearningEfficientMultiAgent2021",
         "research-project",
-        "paper-placedSurveyActiveSimultaneous2023"
+        "paper-yuLearningEfficientMultiAgent2021"
       ],
       "top_score": 4.703125,
       "score_kind": "rerank",
@@ -1710,7 +1710,7 @@
         "paper-farjadnasabCooperativeAsynchronousTransformerbased2024",
         "paper-fuRobustTaskScheduling2021"
       ],
-      "top_score": 3.6015625,
+      "top_score": 3.234375,
       "score_kind": "rerank",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -1776,7 +1776,7 @@
         "paper-agha-mohammadiConfidencerichGridMapping2020",
         "paper-banfiItWorthReason2022"
       ],
-      "top_score": 6.4375,
+      "top_score": 6.4296875,
       "score_kind": "rerank",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -1818,7 +1818,7 @@
       "got": [
         "paper-tangRewardingBeliefsNot2026",
         "paper-tangRewardingBeliefsNot2026",
-        "paper-tangRewardingBeliefsNot2026"
+        "paper-auzinaIntrinsicCreditAssignment2026"
       ],
       "top_score": 7.921875,
       "score_kind": "rerank",
@@ -1838,11 +1838,11 @@
       "query": "classification scheme for how several robots divide up jobs among themselves",
       "split": "dev",
       "got": [
-        "paper-gerkeyFormalAnalysisTaxonomy2004",
         "paper-korsahComprehensiveTaxonomyMultirobot2013",
+        "paper-gerkeyFormalAnalysisTaxonomy2004",
         "paper-korsahComprehensiveTaxonomyMultirobot2013"
       ],
-      "top_score": 3.609375,
+      "top_score": 5.4375,
       "score_kind": "rerank",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -1850,7 +1850,7 @@
       "expect_block": null,
       "hard": false,
       "bucket": "paper",
-      "rank": 1,
+      "rank": 2,
       "block_hit": null,
       "family_rescued": false,
       "cluster": "paper-gerkeyFormalAnalysisTaxonomy2004"
@@ -1864,7 +1864,7 @@
         "paper-parkProperScoringRulebased2026",
         "paper-singhVerifiableRewardsCalibrated2026"
       ],
-      "top_score": 5.8046875,
+      "top_score": 7.359375,
       "score_kind": "rerank",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -1886,7 +1886,7 @@
         "paper-xiaoStreetSideVehicle2016",
         "paper-faisalCostEffectiveLiDAR2025"
       ],
-      "top_score": 3.203125,
+      "top_score": 3.1875,
       "score_kind": "rerank",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -1906,9 +1906,9 @@
       "got": [
         "paper-NimbleCellularNetworks2025",
         "paper-saifUnmannedAerialVehicle2021",
-        "paper-ahmadiResilienceAirborneNetworks2018"
+        "paper-saifUnmannedAerialVehicle2021"
       ],
-      "top_score": 1.375,
+      "top_score": 3.265625,
       "score_kind": "rerank",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -1952,7 +1952,7 @@
         "paper-batraObjectNavRevisitedEvaluation2020",
         "paper-batraObjectNavRevisitedEvaluation2020"
       ],
-      "top_score": 6.0,
+      "top_score": 6.015625,
       "score_kind": "rerank",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -1974,7 +1974,7 @@
         "paper-pelegRepeatabilityHyperspectralImaging2005",
         "paper-nansenCalibrationMaximizeTemporal2023"
       ],
-      "top_score": 6.4453125,
+      "top_score": 6.5234375,
       "score_kind": "rerank",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -1992,11 +1992,11 @@
       "query": "finding what was built or demolished between two street-level camera drives",
       "split": "dev",
       "got": [
-        "paper-xuVolumetricChangeDetection2021",
-        "paper-xiaoStreetSideVehicle2016",
+        "paper-yadavBuildingChangeDetection2022",
+        "paper-yadavBuildingChangeDetection2022",
         "paper-xuVolumetricChangeDetection2021"
       ],
-      "top_score": 0.125,
+      "top_score": -2.71875,
       "score_kind": "rerank",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -2004,7 +2004,7 @@
       "expect_block": null,
       "hard": false,
       "bucket": "paper",
-      "rank": 4,
+      "rank": null,
       "block_hit": null,
       "family_rescued": false,
       "cluster": "paper-yewCityscaleSceneChange2021"
@@ -2038,7 +2038,7 @@
       "got": [
         "paper-TerrainObstacleData2019",
         "paper-PARCSteeringGroup2022",
-        "phd-paper-pipeline"
+        "paper-TerrainObstacleData2019"
       ],
       "top_score": 5.734375,
       "score_kind": "rerank",
@@ -2062,7 +2062,7 @@
         "paper-rajpurkarKnowWhatYou2018",
         "paper-kirichenkoAbstentionBenchReasoningLLMs2025"
       ],
-      "top_score": 4.5859375,
+      "top_score": 4.59375,
       "score_kind": "rerank",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -2084,7 +2084,7 @@
         "paper-deereENGINEERINGCLASSIFICATIONINDEX1966",
         "paper-pellsRockQualityDesignation2017"
       ],
-      "top_score": -1.578125,
+      "top_score": -1.59375,
       "score_kind": "rerank",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -2150,7 +2150,7 @@
         "paper-venkatachalamUVMissionPlanning2020",
         "paper-fuRobustTaskScheduling2021"
       ],
-      "top_score": 3.0625,
+      "top_score": 4.4765625,
       "score_kind": "rerank",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -2234,8 +2234,8 @@
       "query": "argument that a decades-old drill core fracture metric should be retired",
       "split": "dev",
       "got": [
-        "rewrite-context",
         "paper-pellsRockQualityDesignation2017",
+        "rewrite-context",
         "paper-pellsRockQualityDesignation2017"
       ],
       "top_score": -0.078125,
@@ -2246,7 +2246,7 @@
       "expect_block": null,
       "hard": false,
       "bucket": "paper",
-      "rank": 2,
+      "rank": 1,
       "block_hit": null,
       "family_rescued": false,
       "cluster": "paper-pellsRockQualityDesignation2017"
@@ -2304,7 +2304,7 @@
         "paper-dabestaniComparativeAssessmentYOLOOBB2026",
         "paper-brownAutomatedAerialAnimal2021"
       ],
-      "top_score": 4.7265625,
+      "top_score": 4.71875,
       "score_kind": "rerank",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -2370,7 +2370,7 @@
         "paper-lethanhUseExponentialHidden2013",
         "paper-lethanhUseExponentialHidden2013"
       ],
-      "top_score": 6.59375,
+      "top_score": 6.6015625,
       "score_kind": "rerank",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -2410,11 +2410,11 @@
       "query": "spotting land changes when the before and after images come from different sensor types",
       "split": "test",
       "got": [
-        "paper-chenHighperformanceDeepFeature2026",
-        "paper-schaffrathLandscapescaleGeomorphicChange2015",
+        "paper-songSpotDifferencesRegistrationrobust2026",
+        "paper-songSpotDifferencesRegistrationrobust2026",
         "paper-chenHighperformanceDeepFeature2026"
       ],
-      "top_score": 4.109375,
+      "top_score": 4.2109375,
       "score_kind": "rerank",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -2458,7 +2458,7 @@
         "paper-tianOcc3DLargeScale3D2023",
         "paper-tianOcc3DLargeScale3D2023"
       ],
-      "top_score": 7.53125,
+      "top_score": 7.5,
       "score_kind": "rerank",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -2524,7 +2524,7 @@
         "paper-raileanuRIDERewardingImpactDriven2020",
         "paper-achiamSurpriseBasedIntrinsicMotivation2017"
       ],
-      "top_score": 6.7890625,
+      "top_score": 6.8046875,
       "score_kind": "rerank",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -2546,7 +2546,7 @@
         "paper-barnettRegressionMeanWhat2004",
         "paper-oldhamNoteAnalysisRepeated1962"
       ],
-      "top_score": 3.9453125,
+      "top_score": 3.9375,
       "score_kind": "rerank",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -2565,7 +2565,7 @@
       "split": "test",
       "got": [
         "paper-leiningerGaussianProcessbasedTraversability2024",
-        "paper-dixitSTEPStochasticTraversability2023",
+        "paper-leiningerGaussianProcessbasedTraversability2024",
         "paper-banfiItWorthReason2022"
       ],
       "top_score": 6.3828125,
@@ -2590,7 +2590,7 @@
         "paper-chevalier-boisvertMinigridAmpMiniworld2023",
         "paper-chevalier-boisvertMinigridAmpMiniworld2023"
       ],
-      "top_score": 4.453125,
+      "top_score": 4.4453125,
       "score_kind": "rerank",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -2634,7 +2634,7 @@
         "paper-ramakrishnanOccupancyAnticipationEfficient2020",
         "paper-ramakrishnanOccupancyAnticipationEfficient2020"
       ],
-      "top_score": 6.5234375,
+      "top_score": 6.515625,
       "score_kind": "rerank",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -2696,11 +2696,11 @@
       "query": "per-point accuracy figures for point clouds built from drone photographs",
       "split": "test",
       "got": [
+        "paper-huangUncertaintyQuantificationFramework2025",
         "paper-aguera-vegaEffectsPointCloud2020",
-        "paper-aguera-vegaEffectsPointCloud2020",
-        "paper-huangUncertaintyQuantificationFramework2026"
+        "paper-aguera-vegaEffectsPointCloud2020"
       ],
-      "top_score": 6.5546875,
+      "top_score": 6.546875,
       "score_kind": "rerank",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -2708,7 +2708,7 @@
       "expect_block": null,
       "hard": false,
       "bucket": "paper",
-      "rank": 4,
+      "rank": 1,
       "block_hit": null,
       "family_rescued": false,
       "cluster": "paper-huangUncertaintyQuantificationFramework2025"
@@ -2719,10 +2719,10 @@
       "split": "dev",
       "got": [
         "paper-shaikREVERSALBENCHReversibilityAxis2026",
-        "paper-kreiterExaminingRaterOccasion2016",
-        "research-project-log-1"
+        "paper-shaikREVERSALBENCHReversibilityAxis2026",
+        "paper-kreiterExaminingRaterOccasion2016"
       ],
-      "top_score": 1.828125,
+      "top_score": 1.4765625,
       "score_kind": "rerank",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -2854,7 +2854,7 @@
         "paper-andriotisDeepReinforcementLearning2020",
         "paper-smilowitzOptimalInspectionMaintenance2000"
       ],
-      "top_score": 6.40625,
+      "top_score": 6.59375,
       "score_kind": "rerank",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -2916,11 +2916,11 @@
       "query": "urban 3D map comparison for finding new buildings and trees across years",
       "split": "dev",
       "got": [
+        "paper-yadavBuildingChangeDetection2022",
         "paper-xiao3DUrbanObject2023",
-        "paper-degelisChangeDetectionUrban2021",
-        "paper-aljumailyVoxelChangeBig2021"
+        "paper-degelisChangeDetectionUrban2021"
       ],
-      "top_score": 5.265625,
+      "top_score": 5.40625,
       "score_kind": "rerank",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -2928,7 +2928,7 @@
       "expect_block": null,
       "hard": false,
       "bucket": "paper",
-      "rank": 4,
+      "rank": null,
       "block_hit": null,
       "family_rescued": false,
       "cluster": "paper-albaqamiLiDARbased3DChange2025"
@@ -2986,7 +2986,7 @@
         "paper-kegeleirsSwarmSLAMChallenges2021",
         "paper-tchuievDistributedConsistentMultiRobot2020"
       ],
-      "top_score": 5.09375,
+      "top_score": 5.5,
       "score_kind": "rerank",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -3052,7 +3052,7 @@
         "paper-scarioloUncertaintyAwareHybridMathematicalMachineLearning2026",
         "paper-scarioloUncertaintyAwareHybridMathematicalMachineLearning2026"
       ],
-      "top_score": 5.78125,
+      "top_score": 6.6328125,
       "score_kind": "rerank",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -3118,7 +3118,7 @@
         "paper-fengPavementDistressDetection2022",
         "paper-zhongPavementCrackDetection2020"
       ],
-      "top_score": 8.2421875,
+      "top_score": 8.265625,
       "score_kind": "rerank",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -3140,7 +3140,7 @@
         "paper-huangCRITICALANALYSISINTERNAL2023",
         "paper-cluster-a"
       ],
-      "top_score": 7.34375,
+      "top_score": 7.5546875,
       "score_kind": "rerank",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -3248,7 +3248,7 @@
       "got": [
         "paper-burdaLargeScaleStudyCuriosityDriven2018",
         "paper-burdaLargeScaleStudyCuriosityDriven2018",
-        "paper-pintoAsymmetricActorCritic2017"
+        "paper-burdaLargeScaleStudyCuriosityDriven2018"
       ],
       "top_score": -5.515625,
       "score_kind": "rerank",
@@ -3338,7 +3338,7 @@
         "gestalt-system-map-defects",
         "gestalt-system-map-defects"
       ],
-      "top_score": -9.609375,
+      "top_score": -9.59375,
       "score_kind": "rerank",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -3356,11 +3356,11 @@
       "query": "how do I file a tax return for a small business",
       "split": "dev",
       "got": [
-        "artifact-links",
         "iros-2026-full-shift-poster",
-        "gestalt"
+        "gestalt",
+        "large-entry"
       ],
-      "top_score": -6.28125,
+      "top_score": -6.25,
       "score_kind": "rerank",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -3382,7 +3382,7 @@
         "generic-cms",
         "generic-cms"
       ],
-      "top_score": -3.125,
+      "top_score": -3.1328125,
       "score_kind": "rerank",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -3404,7 +3404,7 @@
         "large-entry",
         "large-entry"
       ],
-      "top_score": -7.765625,
+      "top_score": -7.28515625,
       "score_kind": "rerank",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -3448,7 +3448,7 @@
         "paper-pathakCuriosityDrivenExploration2017",
         "paper-pathakCuriosityDrivenExploration2017"
       ],
-      "top_score": 2.8671875,
+      "top_score": 3.109375,
       "score_kind": "rerank",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -3470,7 +3470,7 @@
         "gestalt-system-map-layout",
         "hub-rebuild-runbook"
       ],
-      "top_score": 5.21875,
+      "top_score": 5.203125,
       "score_kind": "rerank",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -3533,10 +3533,10 @@
       "split": "dev",
       "got": [
         "phone-hub",
-        "gestalt-system-map-fleet-bus",
+        "phone-hub",
         "gestalt-system-map-fleet-bus"
       ],
-      "top_score": -4.25,
+      "top_score": -4.265625,
       "score_kind": "rerank",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -3558,7 +3558,7 @@
         "large-entry",
         "large-entry"
       ],
-      "top_score": -3.453125,
+      "top_score": -3.71875,
       "score_kind": "rerank",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -3602,7 +3602,7 @@
         "home-mesh",
         "gestalt-system-map-seats"
       ],
-      "top_score": 2.8671875,
+      "top_score": 2.609375,
       "score_kind": "rerank",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -3644,11 +3644,11 @@
       "query": "what does the confidence layer research say about prediction quality",
       "split": "test",
       "got": [
-        "gestalt-benchmarks-2026-10",
-        "research-project-log-1",
-        "paper-GeospatialPositioningAccuracy1998"
+        "paper-cluster-c",
+        "gestalt-release-2026-10",
+        "research-project-log-1"
       ],
-      "top_score": 12.49137920891326,
+      "top_score": 12.677627202381668,
       "score_kind": "bm25",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -3656,7 +3656,7 @@
       "expect_block": null,
       "hard": false,
       "bucket": "research",
-      "rank": 2,
+      "rank": 3,
       "block_hit": null,
       "family_rescued": true,
       "cluster": "research-project"
@@ -3667,10 +3667,10 @@
       "split": "dev",
       "got": [
         "large-entry",
-        "phi-voice",
+        "large-entry",
         "phi-voice"
       ],
-      "top_score": 16.7791592912808,
+      "top_score": 16.71574674189569,
       "score_kind": "bm25",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -3690,9 +3690,9 @@
       "got": [
         "large-entry",
         "paper-PARCSteeringGroup2022",
-        "paper-PARCSteeringGroup2022"
+        "large-entry"
       ],
-      "top_score": 16.41453708900734,
+      "top_score": 16.049451918223024,
       "score_kind": "bm25",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -3714,7 +3714,7 @@
         "generic-cms",
         "generic-cms"
       ],
-      "top_score": 16.154869639596647,
+      "top_score": 16.24569900219649,
       "score_kind": "bm25",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -3736,7 +3736,7 @@
         "web-search-access",
         "web-search-access"
       ],
-      "top_score": 21.3623407953417,
+      "top_score": 21.389702827494762,
       "score_kind": "bm25",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -3756,9 +3756,9 @@
       "got": [
         "claude-code-session-caps",
         "phone-hub",
-        "gestalt-internals"
+        "claude-code-telemetry"
       ],
-      "top_score": 19.507044312885295,
+      "top_score": 19.490900001120174,
       "score_kind": "bm25",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -3778,9 +3778,9 @@
       "got": [
         "home-mesh",
         "paper-NimbleCellularNetworks2025",
-        "home-mesh"
+        "phi-formal-voice"
       ],
-      "top_score": 12.591112586342588,
+      "top_score": 12.606232233206384,
       "score_kind": "bm25",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -3802,7 +3802,7 @@
         "research-project-log-1",
         "phi-voice"
       ],
-      "top_score": 18.59413831923405,
+      "top_score": 18.496142681109767,
       "score_kind": "bm25",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -3824,7 +3824,7 @@
         "claude-1m-hallucination",
         "phi-voice"
       ],
-      "top_score": 19.631742787816805,
+      "top_score": 19.76752858739914,
       "score_kind": "bm25",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -3846,7 +3846,7 @@
         "travel-price-access",
         "research-project"
       ],
-      "top_score": 14.295483546327716,
+      "top_score": 14.379100197177854,
       "score_kind": "bm25",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -3864,11 +3864,11 @@
       "query": "rendering point clouds in a browser",
       "split": "test",
       "got": [
-        "paper-degelisChangeDetectionUrban2021",
         "paper-johnsonCapturingChange3D2026",
-        "paper-gaoSHREC2023Point2023"
+        "paper-gaoSHREC2023Point2023",
+        "paper-zolanvariThreedimensionalBuildingFacade2018"
       ],
-      "top_score": 11.819035360172117,
+      "top_score": 11.656474058035101,
       "score_kind": "bm25",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -3890,7 +3890,7 @@
         "paper-cluster-b",
         "thesis-problem"
       ],
-      "top_score": 14.860208476910806,
+      "top_score": 14.576832360463392,
       "score_kind": "bm25",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -3909,10 +3909,10 @@
       "split": "dev",
       "got": [
         "paper-albaqamiLiDARbased3DChange2025",
-        "monitoring-cities",
-        "research-project-log-1"
+        "phi-voice-legacy",
+        "monitoring-cities"
       ],
-      "top_score": 15.957842523775994,
+      "top_score": 15.87232829237308,
       "score_kind": "bm25",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -3934,7 +3934,7 @@
         "jarvis-north-star",
         "google-workspace-mcp-nyu"
       ],
-      "top_score": 11.59429040713081,
+      "top_score": 11.796451272859912,
       "score_kind": "bm25",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -3956,7 +3956,7 @@
         "home-mesh",
         "home-mesh"
       ],
-      "top_score": 14.614868067253493,
+      "top_score": 14.86980689082652,
       "score_kind": "bm25",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -3978,7 +3978,7 @@
         "phi-voice",
         "agent-autonomy"
       ],
-      "top_score": 19.306890795089657,
+      "top_score": 19.602230348197075,
       "score_kind": "bm25",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -3996,11 +3996,11 @@
       "query": "how do I add knowledge about a repo to this system",
       "split": "dev",
       "got": [
-        "gestalt",
         "phi-voice",
-        "claude-code-dispatch-and-environments"
+        "claude-code-dispatch-and-environments",
+        "gestalt-system-map-knowledge-index"
       ],
-      "top_score": 14.151922180513099,
+      "top_score": 13.933950851476997,
       "score_kind": "bm25",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -4008,7 +4008,7 @@
       "expect_block": null,
       "hard": false,
       "bucket": "ops",
-      "rank": 1,
+      "rank": null,
       "block_hit": null,
       "family_rescued": false,
       "cluster": "gestalt"
@@ -4022,7 +4022,7 @@
         "paper-rajpurkarKnowWhatYou2018",
         "claude-code-dispatch-and-environments"
       ],
-      "top_score": 12.426794951103862,
+      "top_score": 12.618838565283205,
       "score_kind": "bm25",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -4044,7 +4044,7 @@
         "generic-cms",
         "linux-git-gui"
       ],
-      "top_score": 13.203485350462708,
+      "top_score": 13.290976016553355,
       "score_kind": "bm25",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -4066,7 +4066,7 @@
         "civic-ai-tools",
         "large-entry"
       ],
-      "top_score": 14.736256156822463,
+      "top_score": 14.183843887602999,
       "score_kind": "bm25",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -4084,11 +4084,11 @@
       "query": "which venues are my three manuscripts aimed at",
       "split": "test",
       "got": [
+        "research-project-log-1",
         "large-entry",
-        "phi-formal-voice",
-        "research-project-log-1"
+        "phi-voice-legacy"
       ],
-      "top_score": 13.15342915615649,
+      "top_score": 13.027367765321118,
       "score_kind": "bm25",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -4096,7 +4096,7 @@
       "expect_block": null,
       "hard": true,
       "bucket": "research",
-      "rank": 3,
+      "rank": 1,
       "block_hit": null,
       "family_rescued": true,
       "cluster": "research-project"
@@ -4110,7 +4110,7 @@
         "research-project-log-1",
         "paper-brasingtonMethodologicalSensitivityMorphometric2003"
       ],
-      "top_score": 16.854889827617725,
+      "top_score": 17.007961499295586,
       "score_kind": "bm25",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -4132,7 +4132,7 @@
         "capture-inbox",
         "gestalt-system-map-agent-layer"
       ],
-      "top_score": 13.726911045453809,
+      "top_score": 13.549314918115446,
       "score_kind": "bm25",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -4154,7 +4154,7 @@
         "paper-machadoRevisitingArcadeLearning2017",
         "agent-autonomy"
       ],
-      "top_score": 17.749609727934097,
+      "top_score": 17.810198015374954,
       "score_kind": "bm25",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -4176,7 +4176,7 @@
         "mcp-demo",
         "home-mesh"
       ],
-      "top_score": 16.666427609104648,
+      "top_score": 16.593213405008523,
       "score_kind": "bm25",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -4195,10 +4195,10 @@
       "split": "dev",
       "got": [
         "mermaid-diagrams",
-        "monitoring-cities",
-        "google-workspace-mcp-nyu"
+        "google-workspace-mcp-nyu",
+        "monitoring-cities"
       ],
-      "top_score": 18.61346344792381,
+      "top_score": 18.7390311414553,
       "score_kind": "bm25",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -4206,7 +4206,7 @@
       "expect_block": "tui-repaint",
       "hard": true,
       "bucket": "ops",
-      "rank": 4,
+      "rank": 5,
       "block_hit": true,
       "family_rescued": false,
       "cluster": "kitty-math-mcp"
@@ -4216,11 +4216,11 @@
       "query": "is drawing into the rendering pane something I should do without being asked",
       "split": "dev",
       "got": [
+        "artifact-links",
         "kitty-math-mcp",
-        "gestalt-system-map-tools",
-        "artifact-links"
+        "gestalt-system-map-tools"
       ],
-      "top_score": 23.37724074278121,
+      "top_score": 24.058934015513167,
       "score_kind": "bm25",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -4228,7 +4228,7 @@
       "expect_block": "pane-opt-in",
       "hard": true,
       "bucket": "ops",
-      "rank": 1,
+      "rank": 2,
       "block_hit": true,
       "family_rescued": false,
       "cluster": "kitty-math-mcp"
@@ -4238,11 +4238,11 @@
       "query": "how much does printing a quick image link cost compared to a full webpage artifact",
       "split": "dev",
       "got": [
-        "artifact-links",
         "phi-voice",
-        "research-project-log-1"
+        "research-project-log-1",
+        "artifact-links"
       ],
-      "top_score": 19.453003424905127,
+      "top_score": 17.710011664584165,
       "score_kind": "bm25",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -4250,7 +4250,7 @@
       "expect_block": "cost",
       "hard": true,
       "bucket": "ops",
-      "rank": 5,
+      "rank": 4,
       "block_hit": false,
       "family_rescued": false,
       "cluster": "kitty-math-mcp"
@@ -4264,7 +4264,7 @@
         "kitty-math-mcp",
         "gestalt-system-map-tools"
       ],
-      "top_score": 35.767600141566696,
+      "top_score": 36.272266084233735,
       "score_kind": "bm25",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -4278,59 +4278,59 @@
       "cluster": "kitty-math-mcp"
     },
     {
-      "qid": "edda248cc957",
+      "qid": "14950f33668a",
       "query": "what's different about how I write for a grad school application versus everyday texting",
-      "split": "test",
+      "split": "dev",
       "got": [
         "large-entry",
-        "phi-formal-voice",
-        "large-entry"
+        "large-entry",
+        "phi-voice-legacy"
       ],
-      "top_score": 15.278710709280965,
+      "top_score": 15.187781160569353,
       "score_kind": "bm25",
       "rerank_fallback": false,
       "fts_failed": false,
-      "expect_slug": "phi-formal-voice",
+      "expect_slug": "phi-voice-legacy",
       "expect_block": "split-rationale",
       "hard": true,
       "bucket": "voice",
-      "rank": 2,
+      "rank": 3,
       "block_hit": true,
       "family_rescued": false,
-      "cluster": "phi-formal-voice"
+      "cluster": "phi-voice-legacy"
     },
     {
-      "qid": "4b5ec32ac072",
+      "qid": "ea616aaf8aae",
       "query": "what's the target register for my formal application essays",
-      "split": "test",
+      "split": "dev",
       "got": [
-        "phi-formal-voice",
-        "phi-formal-voice",
+        "phi-voice-legacy",
+        "phi-voice-legacy",
         "phi-formal-voice"
       ],
-      "top_score": 24.59988419449286,
+      "top_score": 23.19840924210077,
       "score_kind": "bm25",
       "rerank_fallback": false,
       "fts_failed": false,
-      "expect_slug": "phi-formal-voice",
+      "expect_slug": "phi-voice-legacy",
       "expect_block": "explicit-definitions",
       "hard": false,
       "bucket": "voice",
       "rank": 1,
       "block_hit": false,
       "family_rescued": false,
-      "cluster": "phi-formal-voice"
+      "cluster": "phi-voice-legacy"
     },
     {
       "qid": "a21ce2bfbaea",
       "query": "what kind of typos do I make when typing fast to claude code",
-      "split": "dev",
+      "split": "test",
       "got": [
         "claude-1m-hallucination",
         "phi-voice",
         "phi-voice"
       ],
-      "top_score": 21.909353183013028,
+      "top_score": 22.235565117604988,
       "score_kind": "bm25",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -4346,13 +4346,13 @@
     {
       "qid": "3a9dfecdb6b8",
       "query": "do I use em dashes when texting casually",
-      "split": "dev",
+      "split": "test",
       "got": [
         "phi-voice",
-        "phi-formal-voice",
-        "large-entry"
+        "phi-voice-legacy",
+        "phi-voice-legacy"
       ],
-      "top_score": 25.471927564349887,
+      "top_score": 25.39378169364863,
       "score_kind": "bm25",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -4368,13 +4368,13 @@
     {
       "qid": "922aa0db7fcb",
       "query": "what corpora was Phi's authentic writing style model built from",
-      "split": "dev",
+      "split": "test",
       "got": [
         "phi-voice",
         "phi-voice",
-        "phi-formal-voice"
+        "phi-voice-legacy"
       ],
-      "top_score": 23.529663397239833,
+      "top_score": 23.877687880391232,
       "score_kind": "bm25",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -4390,13 +4390,13 @@
     {
       "qid": "329110e1cddd",
       "query": "how does Phi soften blunt statements in Slack",
-      "split": "dev",
+      "split": "test",
       "got": [
         "phi-voice",
         "phi-voice",
         "phi-voice"
       ],
-      "top_score": 29.098312803320642,
+      "top_score": 29.034470268830855,
       "score_kind": "bm25",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -4418,7 +4418,7 @@
         "skypilot-managed-jobs",
         "gestalt-portability-traps"
       ],
-      "top_score": 14.17843586765656,
+      "top_score": 14.255598723582908,
       "score_kind": "bm25",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -4440,7 +4440,7 @@
         "home-mesh",
         "gestalt-overhaul-2026-09"
       ],
-      "top_score": 20.44267707195585,
+      "top_score": 20.589158125025325,
       "score_kind": "bm25",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -4462,7 +4462,7 @@
         "skypilot-managed-jobs",
         "skypilot-managed-jobs"
       ],
-      "top_score": 28.591453224160027,
+      "top_score": 29.090365343300903,
       "score_kind": "bm25",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -4484,7 +4484,7 @@
         "civic-ai-tools",
         "civic-ai-tools"
       ],
-      "top_score": 24.590230047177712,
+      "top_score": 24.482891660926462,
       "score_kind": "bm25",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -4506,7 +4506,7 @@
         "splat",
         "splat"
       ],
-      "top_score": 29.021100839104328,
+      "top_score": 27.80184010536332,
       "score_kind": "bm25",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -4528,7 +4528,7 @@
         "shapefile-smasher",
         "shapefile-smasher"
       ],
-      "top_score": 38.8614092132569,
+      "top_score": 39.501843575072016,
       "score_kind": "bm25",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -4550,7 +4550,7 @@
         "linear-cursor",
         "linear-cursor"
       ],
-      "top_score": 56.103617620779715,
+      "top_score": 56.290382954672445,
       "score_kind": "bm25",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -4572,7 +4572,7 @@
         "game",
         "game"
       ],
-      "top_score": 27.321999969918508,
+      "top_score": 27.186899116325407,
       "score_kind": "bm25",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -4594,7 +4594,7 @@
         "workshop-bootstrap",
         "gestalt-system-map-repo-sync"
       ],
-      "top_score": 30.736162317616078,
+      "top_score": 31.224207616903932,
       "score_kind": "bm25",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -4616,7 +4616,7 @@
         "google-workspace-mcp-nyu",
         "google-workspace-mcp-nyu"
       ],
-      "top_score": 30.985421373432036,
+      "top_score": 31.380404990809005,
       "score_kind": "bm25",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -4638,7 +4638,7 @@
         "local-dev-network",
         "local-dev-network"
       ],
-      "top_score": 26.314228277162293,
+      "top_score": 26.192690806753635,
       "score_kind": "bm25",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -4658,9 +4658,9 @@
       "got": [
         "web-search-access",
         "claude-code-session-caps",
-        "prompt-intelligence"
+        "gestalt-system-map-tools"
       ],
-      "top_score": 15.57476478387396,
+      "top_score": 15.557232981885427,
       "score_kind": "bm25",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -4679,10 +4679,10 @@
       "split": "dev",
       "got": [
         "large-entry",
-        "paper-magnoniDetectionThresholdsArchaeological2016",
-        "phi-voice"
+        "large-entry",
+        "phi-voice-legacy"
       ],
-      "top_score": 24.91585630202145,
+      "top_score": 23.855913682405763,
       "score_kind": "bm25",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -4704,7 +4704,7 @@
         "mcp-prompting-patterns",
         "mcp-prompting-patterns"
       ],
-      "top_score": 23.11684142266416,
+      "top_score": 22.885896375131058,
       "score_kind": "bm25",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -4726,7 +4726,7 @@
         "web-search-access",
         "gestalt-system-map-hooks"
       ],
-      "top_score": 19.547341880487064,
+      "top_score": 19.722407698428807,
       "score_kind": "bm25",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -4745,10 +4745,10 @@
       "split": "dev",
       "got": [
         "hemingway-voice",
-        "paper-osbandOptimalForecastingIncentives1989",
-        "research-project-log-1"
+        "phi-formal-voice",
+        "paper-osbandOptimalForecastingIncentives1989"
       ],
-      "top_score": 16.011691488437506,
+      "top_score": 14.860534688897031,
       "score_kind": "bm25",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -4770,7 +4770,7 @@
         "gestalt-system-map-knowledge-index",
         "gestalt-system-map-hub"
       ],
-      "top_score": 11.781125277434317,
+      "top_score": 12.244372983497147,
       "score_kind": "bm25",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -4792,7 +4792,7 @@
         "generic-cms",
         "generic-cms"
       ],
-      "top_score": 29.378538666001003,
+      "top_score": 29.74015121360936,
       "score_kind": "bm25",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -4812,9 +4812,9 @@
       "got": [
         "large-entry",
         "generic-cms",
-        "capture-inbox"
+        "generic-cms"
       ],
-      "top_score": 20.45782545088279,
+      "top_score": 20.320956405059633,
       "score_kind": "bm25",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -4836,7 +4836,7 @@
         "generic-cms",
         "nyu-data-lake"
       ],
-      "top_score": 25.26592108274293,
+      "top_score": 25.458627469745764,
       "score_kind": "bm25",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -4854,11 +4854,11 @@
       "query": "how do I regenerate the submission documents if something breaks",
       "split": "dev",
       "got": [
-        "agent-autonomy",
         "gestalt-system-map",
-        "phi-formal-voice"
+        "phi-voice-legacy",
+        "agent-autonomy"
       ],
-      "top_score": 20.2938535434249,
+      "top_score": 14.978950571897208,
       "score_kind": "bm25",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -4866,8 +4866,8 @@
       "expect_block": "artifacts",
       "hard": true,
       "bucket": "research",
-      "rank": 5,
-      "block_hit": true,
+      "rank": null,
+      "block_hit": false,
       "family_rescued": false,
       "cluster": "large-entry"
     },
@@ -4877,10 +4877,10 @@
       "split": "dev",
       "got": [
         "large-entry",
-        "soundcloud-console",
-        "large-entry"
+        "large-entry",
+        "soundcloud-console"
       ],
-      "top_score": 11.844303273550272,
+      "top_score": 12.154064605684203,
       "score_kind": "bm25",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -4902,7 +4902,7 @@
         "large-entry",
         "large-entry"
       ],
-      "top_score": 22.93540809618631,
+      "top_score": 22.288977573229886,
       "score_kind": "bm25",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -4924,7 +4924,7 @@
         "boston-open-tree-data",
         "boston-open-tree-data"
       ],
-      "top_score": 40.6763905323256,
+      "top_score": 41.26126217283629,
       "score_kind": "bm25",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -4946,7 +4946,7 @@
         "claude-1m-hallucination",
         "claude-1m-hallucination"
       ],
-      "top_score": 29.097159938698,
+      "top_score": 29.390648523254125,
       "score_kind": "bm25",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -4968,7 +4968,7 @@
         "paper-yuLearningEfficientMultiAgent2021",
         "research-project"
       ],
-      "top_score": 16.329600831710184,
+      "top_score": 16.36764587885539,
       "score_kind": "bm25",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -4990,7 +4990,7 @@
         "gestalt-improvement-plan-2026-10",
         "large-entry"
       ],
-      "top_score": 13.472494376642985,
+      "top_score": 13.435616250911117,
       "score_kind": "bm25",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -5008,11 +5008,11 @@
       "query": "position paper on how sensor-based bridge health tracking should serve decision makers",
       "split": "dev",
       "got": [
+        "paper-kangSensingAidedVehicularBeam2026",
         "paper-chenUtilityFrameworkBoundedLoss2012",
-        "paper-mozannarConsistentEstimatorsLearning2020",
         "research-project"
       ],
-      "top_score": 15.874263388256235,
+      "top_score": 15.867072932944636,
       "score_kind": "bm25",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -5020,7 +5020,7 @@
       "expect_block": null,
       "hard": false,
       "bucket": "paper",
-      "rank": 4,
+      "rank": 5,
       "block_hit": null,
       "family_rescued": false,
       "cluster": "paper-kamariotisMonitoringSupportedValue2024"
@@ -5032,9 +5032,9 @@
       "got": [
         "paper-chiunMARVELMultiAgentReinforcement2025",
         "paper-chiunMARVELMultiAgentReinforcement2025",
-        "paper-cluster-intake"
+        "paper-fuRobustTaskScheduling2021"
       ],
-      "top_score": 23.5676789817367,
+      "top_score": 23.136819689496225,
       "score_kind": "bm25",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -5052,11 +5052,11 @@
       "query": "making learned dynamics models report honest error bars so a planner can trust them",
       "split": "test",
       "got": [
-        "phi-formal-voice",
-        "paper-singhUncertaintyQuantificationProbabilistic2024",
-        "paper-singhUncertaintyQuantificationProbabilistic2024"
+        "phi-voice-legacy",
+        "paper-xiongSkyDriveLearningDrive2026",
+        "paper-cheAbstentionActionCan2026"
       ],
-      "top_score": 17.86393690770646,
+      "top_score": 16.197455573319658,
       "score_kind": "bm25",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -5078,7 +5078,7 @@
         "paper-bani-harouniRewardingDoubtReinforcement2025",
         "paper-bani-harouniRewardingDoubtReinforcement2025"
       ],
-      "top_score": 19.282132923465035,
+      "top_score": 19.102326907508406,
       "score_kind": "bm25",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -5100,7 +5100,7 @@
         "paper-teixeiraMemorylikeMapDecay2018",
         "paper-maPrivilegedReinforcementCommunication2024"
       ],
-      "top_score": 28.207228859092456,
+      "top_score": 28.034274175925326,
       "score_kind": "bm25",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -5122,7 +5122,7 @@
         "paper-madrasPredictResponsiblyImproving2017",
         "paper-cluster-a"
       ],
-      "top_score": 30.466182977457713,
+      "top_score": 30.131446449183613,
       "score_kind": "bm25",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -5144,7 +5144,7 @@
         "paper-tangRewardingBeliefsNot2026",
         "paper-auzinaIntrinsicCreditAssignment2026"
       ],
-      "top_score": 25.104887430629663,
+      "top_score": 25.016753722998185,
       "score_kind": "bm25",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -5166,7 +5166,7 @@
         "paper-cluster-a",
         "paper-cluster-a"
       ],
-      "top_score": 13.512120749079926,
+      "top_score": 13.544521751081547,
       "score_kind": "bm25",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -5185,10 +5185,10 @@
       "split": "test",
       "got": [
         "paper-parkProperScoringRulebased2026",
-        "paper-damaniBinaryRewardsTraining2025",
-        "paper-bani-harouniRewardingDoubtReinforcement2025"
+        "paper-parkProperScoringRulebased2026",
+        "paper-damaniBinaryRewardsTraining2025"
       ],
-      "top_score": 37.64621938630942,
+      "top_score": 36.39816957982603,
       "score_kind": "bm25",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -5210,7 +5210,7 @@
         "paper-xiaoStreetSideVehicle2016",
         "paper-xiaoStreetSideVehicle2016"
       ],
-      "top_score": 19.969916577464343,
+      "top_score": 20.102663615462724,
       "score_kind": "bm25",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -5230,9 +5230,9 @@
       "got": [
         "paper-greenwoodFlyingHurricaneCase2020",
         "paper-greenwoodFlyingHurricaneCase2020",
-        "soundcloud-console"
+        "paper-greenwoodFlyingHurricaneCase2020"
       ],
-      "top_score": 19.69673154206808,
+      "top_score": 19.699072718918636,
       "score_kind": "bm25",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -5254,7 +5254,7 @@
         "paper-burdaLargeScaleStudyCuriosityDriven2018",
         "paper-bakerEmergentToolUse2019"
       ],
-      "top_score": 18.143379401716725,
+      "top_score": 18.361838213234854,
       "score_kind": "bm25",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -5276,7 +5276,7 @@
         "research-project-log-1",
         "paper-batraObjectNavRevisitedEvaluation2020"
       ],
-      "top_score": 17.672997399811965,
+      "top_score": 17.815566825077887,
       "score_kind": "bm25",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -5298,7 +5298,7 @@
         "paper-nansenCalibrationMaximizeTemporal2023",
         "paper-pelegRepeatabilityHyperspectralImaging2005"
       ],
-      "top_score": 30.25712076358826,
+      "top_score": 30.693966593714997,
       "score_kind": "bm25",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -5316,11 +5316,11 @@
       "query": "finding what was built or demolished between two street-level camera drives",
       "split": "dev",
       "got": [
-        "thesis-problem",
-        "paper-nisingizweEffectUnmannedAerial2022",
-        "research-project-log-2"
+        "paper-yadavBuildingChangeDetection2022",
+        "research-project-log-2",
+        "thesis-problem"
       ],
-      "top_score": 13.766220956675385,
+      "top_score": 14.616731886940517,
       "score_kind": "bm25",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -5342,7 +5342,7 @@
         "paper-hauerEstimatingSafetyEmpirical2002",
         "paper-chenEmpiricalBayesShrinkage2025"
       ],
-      "top_score": 20.20880982867412,
+      "top_score": 20.335281963694467,
       "score_kind": "bm25",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -5361,10 +5361,10 @@
       "split": "test",
       "got": [
         "thesis-problem",
-        "large-entry",
-        "agent-autonomy"
+        "agent-autonomy",
+        "large-entry"
       ],
-      "top_score": 18.228109513300648,
+      "top_score": 17.829983722096927,
       "score_kind": "bm25",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -5386,7 +5386,7 @@
         "paper-linTruthfulQAMeasuringHow2022",
         "paper-yangCompTabComprehensiveBenchmark2026"
       ],
-      "top_score": 21.714574661002462,
+      "top_score": 21.619902655976688,
       "score_kind": "bm25",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -5408,7 +5408,7 @@
         "paper-deereENGINEERINGCLASSIFICATIONINDEX1966",
         "paper-deereENGINEERINGCLASSIFICATIONINDEX1966"
       ],
-      "top_score": 19.072021858915324,
+      "top_score": 19.122289663955943,
       "score_kind": "bm25",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -5430,7 +5430,7 @@
         "paper-abellanDetectionMillimetricDeformation2009",
         "paper-winiwarterINFLUENCERANGINGUNCERTAINTY2020"
       ],
-      "top_score": 10.817341581553954,
+      "top_score": 10.953196454672351,
       "score_kind": "bm25",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -5452,7 +5452,7 @@
         "paper-papireddygariContractsInformationAcquisition2022",
         "paper-osbandOptimalForecastingIncentives1989"
       ],
-      "top_score": 27.21965603480089,
+      "top_score": 27.255939946224956,
       "score_kind": "bm25",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -5470,11 +5470,11 @@
       "query": "scheduling mixed fleets of drones and ground vehicles when some may not be available",
       "split": "dev",
       "got": [
+        "paper-xiongSkyDriveLearningDrive2026",
         "thesis-problem",
-        "thesis-problem",
-        "paper-venkatachalamUVMissionPlanning2020"
+        "thesis-problem"
       ],
-      "top_score": 17.162524942679298,
+      "top_score": 18.193321303137438,
       "score_kind": "bm25",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -5482,7 +5482,7 @@
       "expect_block": null,
       "hard": false,
       "bucket": "paper",
-      "rank": 3,
+      "rank": 4,
       "block_hit": null,
       "family_rescued": false,
       "cluster": "paper-venkatachalamUVMissionPlanning2020"
@@ -5493,10 +5493,10 @@
       "split": "test",
       "got": [
         "paper-howellStateWiseConstrainedPolicy2026",
-        "large-entry",
-        "paper-cesareoCALOSControlAffineLyapunov2026"
+        "paper-howellStateWiseConstrainedPolicy2026",
+        "large-entry"
       ],
-      "top_score": 29.659839525977223,
+      "top_score": 29.56017801619636,
       "score_kind": "bm25",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -5518,7 +5518,7 @@
         "paper-agha-mohammadiConfidencerichGridMapping2020",
         "increment-paper"
       ],
-      "top_score": 18.087704593857413,
+      "top_score": 18.417942283680166,
       "score_kind": "bm25",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -5540,7 +5540,7 @@
         "paper-gneitingStrictlyProperScoring2007",
         "paper-gneitingStrictlyProperScoring2007"
       ],
-      "top_score": 26.28535366249554,
+      "top_score": 25.738801154561298,
       "score_kind": "bm25",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -5558,11 +5558,11 @@
       "query": "argument that a decades-old drill core fracture metric should be retired",
       "split": "dev",
       "got": [
+        "gestalt-system-map-health",
         "paper-pellsRockQualityDesignation2017",
-        "phone-hub",
-        "gestalt-system-map-health"
+        "phone-hub"
       ],
-      "top_score": 13.934760655222833,
+      "top_score": 14.566959007440294,
       "score_kind": "bm25",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -5570,7 +5570,7 @@
       "expect_block": null,
       "hard": false,
       "bucket": "paper",
-      "rank": 1,
+      "rank": 2,
       "block_hit": null,
       "family_rescued": false,
       "cluster": "paper-pellsRockQualityDesignation2017"
@@ -5584,7 +5584,7 @@
         "mcp-demo",
         "paper-siebenmannOGD4AllFrameworkAccessible2025"
       ],
-      "top_score": 15.793140086022353,
+      "top_score": 15.817845119466227,
       "score_kind": "bm25",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -5602,11 +5602,11 @@
       "query": "why learning-agent results change with random seeds and hyperparameter choices",
       "split": "dev",
       "got": [
-        "research-project",
+        "paper-sanchez-gonzalezLearningSimulateComplex2020",
         "research-project",
         "research-project"
       ],
-      "top_score": 15.52031006587373,
+      "top_score": 16.19158214843927,
       "score_kind": "bm25",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -5628,7 +5628,7 @@
         "paper-dabestaniComparativeAssessmentYOLOOBB2026",
         "paper-brownAutomatedAerialAnimal2021"
       ],
-      "top_score": 23.036288369672093,
+      "top_score": 23.050191393699226,
       "score_kind": "bm25",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -5648,9 +5648,9 @@
       "got": [
         "paper-brownAutomatedAerialAnimal2021",
         "data-center-thermal-detection",
-        "paper-brownAutomatedAerialAnimal2021"
+        "worcester-canopy-audit"
       ],
-      "top_score": 19.65775560272407,
+      "top_score": 19.526622642461597,
       "score_kind": "bm25",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -5672,7 +5672,7 @@
         "paper-cheAbstentionActionCan2026",
         "paper-cheAbstentionActionCan2026"
       ],
-      "top_score": 28.740382541608014,
+      "top_score": 28.858713991367296,
       "score_kind": "bm25",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -5690,11 +5690,11 @@
       "query": "hidden state model for how road surface defects worsen over the years",
       "split": "test",
       "got": [
+        "paper-greeneLiDARBasedRoadSurface2026a",
         "paper-lethanhInfrastructureDeteriorationPrediction2015",
-        "paper-greeneLiDARBasedRoadSurface2026",
-        "paper-greeneLiDARBasedRoadSurface2026a"
+        "paper-greeneLiDARBasedRoadSurface2026"
       ],
-      "top_score": 15.240330019006752,
+      "top_score": 17.09733678439826,
       "score_kind": "bm25",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -5702,7 +5702,7 @@
       "expect_block": null,
       "hard": false,
       "bucket": "paper",
-      "rank": 1,
+      "rank": 2,
       "block_hit": null,
       "family_rescued": false,
       "cluster": "paper-lethanhInfrastructureDeteriorationPrediction2015"
@@ -5716,7 +5716,7 @@
         "paper-ciolinoPixelsPlanesMinimum2024",
         "paper-chenFlightPathSetting2023"
       ],
-      "top_score": 19.838908545261155,
+      "top_score": 19.59945621720889,
       "score_kind": "bm25",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -5734,11 +5734,11 @@
       "query": "spotting land changes when the before and after images come from different sensor types",
       "split": "test",
       "got": [
-        "monitoring-cities",
-        "research-project",
-        "paper-cluster-c"
+        "paper-songSpotDifferencesRegistrationrobust2026",
+        "paper-songSpotDifferencesRegistrationrobust2026",
+        "paper-songSpotDifferencesRegistrationrobust2026"
       ],
-      "top_score": 14.899923208795842,
+      "top_score": 18.825276352387533,
       "score_kind": "bm25",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -5760,7 +5760,7 @@
         "paper-agarwalDeepReinforcementLearning2021",
         "paper-burdaLargeScaleStudyCuriosityDriven2018"
       ],
-      "top_score": 23.081482235858587,
+      "top_score": 23.07570441573285,
       "score_kind": "bm25",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -5780,9 +5780,9 @@
       "got": [
         "paper-tianOcc3DLargeScale3D2023",
         "paper-tianOcc3DLargeScale3D2023",
-        "paper-tianOcc3DLargeScale3D2023"
+        "paper-zhengOccWorldLearning3D2023"
       ],
-      "top_score": 30.103371594124212,
+      "top_score": 28.926485312842722,
       "score_kind": "bm25",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -5802,9 +5802,9 @@
       "got": [
         "paper-kegeleirsAppliedSwarmRobotics2025",
         "paper-farjadnasabCooperativeAsynchronousTransformerbased2024",
-        "paper-leeCooperativeInformativeSensing2026"
+        "paper-pintoAsymmetricActorCritic2017"
       ],
-      "top_score": 18.218172334393504,
+      "top_score": 18.284494266862445,
       "score_kind": "bm25",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -5826,7 +5826,7 @@
         "paper-ciolinoPixelsPlanesMinimum2024",
         "phi-voice"
       ],
-      "top_score": 17.177579824192836,
+      "top_score": 17.16144739661497,
       "score_kind": "bm25",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -5845,10 +5845,10 @@
       "split": "dev",
       "got": [
         "paper-raileanuRIDERewardingImpactDriven2020",
-        "paper-raileanuRIDERewardingImpactDriven2020",
-        "paper-zhangOptimisticEGreedyExploration2025"
+        "paper-duptyProductiveStateSpaceExploration2026",
+        "paper-raileanuRIDERewardingImpactDriven2020"
       ],
-      "top_score": 22.321080869178413,
+      "top_score": 21.946938443949477,
       "score_kind": "bm25",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -5866,11 +5866,11 @@
       "query": "why extreme measurements tend to look less extreme when taken again",
       "split": "test",
       "got": [
+        "paper-basteNeedUncertaintyWhy2026",
         "paper-barnettRegressionMeanWhat2004",
-        "paper-siranecAdvancedPowerLine2021",
-        "paper-barnettRegressionMeanWhat2004"
+        "paper-siranecAdvancedPowerLine2021"
       ],
-      "top_score": 15.322035960104744,
+      "top_score": 17.52417162243642,
       "score_kind": "bm25",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -5889,10 +5889,10 @@
       "split": "test",
       "got": [
         "paper-leiningerGaussianProcessbasedTraversability2024",
-        "paper-oleynikovaSafeLocalExploration2017",
-        "thesis-problem"
+        "paper-xiongSkyDriveLearningDrive2026",
+        "paper-oleynikovaSafeLocalExploration2017"
       ],
-      "top_score": 24.459697928751087,
+      "top_score": 24.175286610667058,
       "score_kind": "bm25",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -5914,7 +5914,7 @@
         "paper-cluster-a",
         "paper-farjadnasabCooperativeAsynchronousTransformerbased2024"
       ],
-      "top_score": 17.04504060362912,
+      "top_score": 16.790890060658725,
       "score_kind": "bm25",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -5936,7 +5936,7 @@
         "paper-zhongPavementCrackDetection2020",
         "paper-zhongPavementCrackDetection2020"
       ],
-      "top_score": 19.118885398232226,
+      "top_score": 19.393456234911895,
       "score_kind": "bm25",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -5958,7 +5958,7 @@
         "paper-pathakCuriosityDrivenExploration2017",
         "paper-ramakrishnanOccupancyAnticipationEfficient2020"
       ],
-      "top_score": 21.21922543243913,
+      "top_score": 21.156950608074787,
       "score_kind": "bm25",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -5980,7 +5980,7 @@
         "paper-heActivePerceptionGame2024",
         "paper-tianOcc3DLargeScale3D2023"
       ],
-      "top_score": 14.568038921733885,
+      "top_score": 14.52434988509907,
       "score_kind": "bm25",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -6002,7 +6002,7 @@
         "paper-hauerEstimatingSafetyEmpirical2002",
         "paper-pantusoDevelopmentNetworklevelPavement2019"
       ],
-      "top_score": 27.128007386864333,
+      "top_score": 27.33171696805137,
       "score_kind": "bm25",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -6024,7 +6024,7 @@
         "paper-zhangRealTimeHDMap2021",
         "paper-khanMobileLaserScanning2025"
       ],
-      "top_score": 19.889615698746987,
+      "top_score": 19.862725144164926,
       "score_kind": "bm25",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -6046,7 +6046,7 @@
         "paper-gawlikowskiSurveyUncertaintyDeep2021",
         "paper-kirichenkoAbstentionBenchReasoningLLMs2025"
       ],
-      "top_score": 16.54434506380426,
+      "top_score": 16.363886166532026,
       "score_kind": "bm25",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -6068,7 +6068,7 @@
         "paper-laneEstimationErosionDeposition2003",
         "paper-wheatonAccountingUncertaintyDEMs2010"
       ],
-      "top_score": 23.087245335380736,
+      "top_score": 23.1080343946273,
       "score_kind": "bm25",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -6088,9 +6088,9 @@
       "got": [
         "paper-cluster-a",
         "paper-maPrivilegedReinforcementCommunication2024",
-        "paper-cluster-c"
+        "paper-leiningerGaussianProcessbasedTraversability2024"
       ],
-      "top_score": 19.86889454594293,
+      "top_score": 19.946019201859144,
       "score_kind": "bm25",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -6108,11 +6108,11 @@
       "query": "best drone height and speed for imaging road surface condition",
       "split": "dev",
       "got": [
-        "paper-hakimipanahAssessingDronePerformance2025",
         "paper-greeneLiDARBasedRoadSurface2026a",
-        "paper-greeneLiDARBasedRoadSurface2026"
+        "paper-hakimipanahAssessingDronePerformance2025",
+        "paper-greeneLiDARBasedRoadSurface2026a"
       ],
-      "top_score": 16.50785328667433,
+      "top_score": 15.995716416691428,
       "score_kind": "bm25",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -6134,7 +6134,7 @@
         "paper-siebenmannOGD4AllFrameworkAccessible2025",
         "paper-mamalisCanLargeLanguage2023"
       ],
-      "top_score": 23.058508435544386,
+      "top_score": 23.18239671830746,
       "score_kind": "bm25",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -6156,7 +6156,7 @@
         "nyu-data-lake",
         "paper-hamrazForestUnderstoryTrees2017"
       ],
-      "top_score": 14.417900889157371,
+      "top_score": 14.511846339313443,
       "score_kind": "bm25",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -6178,7 +6178,7 @@
         "paper-cluster-c",
         "paper-andriotisDeepReinforcementLearning2021"
       ],
-      "top_score": 24.64498573493607,
+      "top_score": 24.734018503380536,
       "score_kind": "bm25",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -6198,9 +6198,9 @@
       "got": [
         "paper-aryanAbideGymTurningStatic2025",
         "paper-aryanAbideGymTurningStatic2025",
-        "paper-cluster-a"
+        "paper-zhengAuditingEscalationReliability2026"
       ],
-      "top_score": 20.382828370105532,
+      "top_score": 20.07473504747622,
       "score_kind": "bm25",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -6218,11 +6218,11 @@
       "query": "how state agencies check the quality of road condition surveys",
       "split": "dev",
       "got": [
-        "paper-bogusAssessmentDataQuality2010",
         "paper-greeneLiDARBasedRoadSurface2026a",
-        "paper-greeneLiDARBasedRoadSurface2026"
+        "paper-bogusAssessmentDataQuality2010",
+        "paper-greeneLiDARBasedRoadSurface2026a"
       ],
-      "top_score": 26.887269853351885,
+      "top_score": 29.27620704972218,
       "score_kind": "bm25",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -6230,7 +6230,7 @@
       "expect_block": null,
       "hard": false,
       "bucket": "paper",
-      "rank": 4,
+      "rank": 5,
       "block_hit": null,
       "family_rescued": false,
       "cluster": "paper-flintschQualityManagementPavement2009"
@@ -6244,7 +6244,7 @@
         "paper-degelisChangeDetectionUrban2021",
         "paper-xiao3DUrbanObject2023"
       ],
-      "top_score": 20.66685485377874,
+      "top_score": 19.614549105011427,
       "score_kind": "bm25",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -6266,7 +6266,7 @@
         "data-center-thermal-detection",
         "data-center-thermal-detection"
       ],
-      "top_score": 15.09807865592786,
+      "top_score": 15.292949524400655,
       "score_kind": "bm25",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -6288,7 +6288,7 @@
         "paper-pathakCuriosityDrivenExplorationSelfSupervised2017",
         "paper-pathakCuriosityDrivenExplorationSelfSupervised2017"
       ],
-      "top_score": 43.07985336280784,
+      "top_score": 43.179865009629836,
       "score_kind": "bm25",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -6310,7 +6310,7 @@
         "paper-cadenaPresentFutureSimultaneous2016",
         "paper-placedSurveyActiveSimultaneous2023"
       ],
-      "top_score": 18.12619520118054,
+      "top_score": 18.14211695503594,
       "score_kind": "bm25",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -6332,7 +6332,7 @@
         "paper-parkDODGERSafetyGuidedReinforcement2026",
         "paper-mohnotFilterAwareFineTuningSafe2026"
       ],
-      "top_score": 33.106488654302325,
+      "top_score": 32.38059656308576,
       "score_kind": "bm25",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -6354,7 +6354,7 @@
         "paper-linTeachingModelsExpress2022",
         "paper-damaniBinaryRewardsTraining2025"
       ],
-      "top_score": 30.242960808082405,
+      "top_score": 29.779706144578604,
       "score_kind": "bm25",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -6373,10 +6373,10 @@
       "split": "dev",
       "got": [
         "paper-scarioloUncertaintyAwareHybridMathematicalMachineLearning2026",
-        "paper-cluster-intake",
-        "paper-liIncentivizingForecastersLearn2023"
+        "paper-scarioloUncertaintyAwareHybridMathematicalMachineLearning2026",
+        "paper-agroUnsupervisedOccupancyFields2024"
       ],
-      "top_score": 28.84893316950279,
+      "top_score": 28.422211501958145,
       "score_kind": "bm25",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -6398,7 +6398,7 @@
         "paper-pintoAsymmetricActorCritic2017",
         "paper-maPrivilegedReinforcementCommunication2024"
       ],
-      "top_score": 32.87542303358217,
+      "top_score": 33.033643427233955,
       "score_kind": "bm25",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -6420,7 +6420,7 @@
         "paper-georgiouPoDCurvesDerivation2007",
         "paper-cluster-b"
       ],
-      "top_score": 21.06561378585965,
+      "top_score": 21.28792676120234,
       "score_kind": "bm25",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -6442,7 +6442,7 @@
         "paper-fengPavementDistressDetection2022",
         "paper-zhongPavementCrackDetection2020"
       ],
-      "top_score": 28.871363637192964,
+      "top_score": 29.18619906052343,
       "score_kind": "bm25",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -6464,7 +6464,7 @@
         "research-project-log-1",
         "phd-paper-pipeline"
       ],
-      "top_score": 22.641398931332255,
+      "top_score": 22.853669748594626,
       "score_kind": "bm25",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -6483,10 +6483,10 @@
       "split": "dev",
       "got": [
         "artifacts",
-        "paper-aguera-vegaEffectsPointCloud2020",
-        "gestalt-system-review-2026-10-06"
+        "paper-degelisChangeDetectionUrban2021",
+        "paper-aguera-vegaEffectsPointCloud2020"
       ],
-      "top_score": 9.261414361052967,
+      "top_score": 9.31263190669109,
       "score_kind": "bm25",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -6508,7 +6508,7 @@
         "phi-voice",
         "gestalt-portability-traps"
       ],
-      "top_score": 11.864143426709695,
+      "top_score": 11.906432308541788,
       "score_kind": "bm25",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -6530,7 +6530,7 @@
         "greenspace-economics-literature",
         "greenspace-economics-literature"
       ],
-      "top_score": 14.500612598810537,
+      "top_score": 14.413781604694776,
       "score_kind": "bm25",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -6552,7 +6552,7 @@
         "paper-chenLEAPLikelihoodElicitation2026",
         "gestalt"
       ],
-      "top_score": 9.88323457041019,
+      "top_score": 9.981069433561519,
       "score_kind": "bm25",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -6574,7 +6574,7 @@
         "claude-code-telemetry",
         "phi-voice"
       ],
-      "top_score": 12.274776408851384,
+      "top_score": 12.42506536159203,
       "score_kind": "bm25",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -6596,7 +6596,7 @@
         "paper-barnettRegressionMeanWhat2004",
         "gestalt-system-map-hub"
       ],
-      "top_score": 11.163340639698323,
+      "top_score": 11.168196681695672,
       "score_kind": "bm25",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -6618,7 +6618,7 @@
         "research-project",
         "research-project"
       ],
-      "top_score": 10.084502674014566,
+      "top_score": 10.250257704195318,
       "score_kind": "bm25",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -6640,7 +6640,7 @@
         "phi-voice",
         "phi-voice"
       ],
-      "top_score": 11.864144575544238,
+      "top_score": 11.906433459205616,
       "score_kind": "bm25",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -6658,11 +6658,11 @@
       "query": "what are the symptoms of a vitamin D deficiency",
       "split": "test",
       "got": [
+        "phi-formal-voice",
         "research-project-log-2",
-        "research-project-log-1",
-        "retrieval-paper-techniques-2026-10"
+        "research-project-log-1"
       ],
-      "top_score": 10.69914243219539,
+      "top_score": 10.421209708367503,
       "score_kind": "bm25",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -6681,10 +6681,10 @@
       "split": "dev",
       "got": [
         "claude-1m-hallucination",
-        "agent-autonomy",
-        "no-unverified-claims"
+        "no-unverified-claims",
+        "agent-autonomy"
       ],
-      "top_score": 12.721240831449183,
+      "top_score": 12.856865311945226,
       "score_kind": "bm25",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -6706,7 +6706,7 @@
         "generic-cms",
         "generic-cms"
       ],
-      "top_score": 16.503277366815098,
+      "top_score": 16.747656346855837,
       "score_kind": "bm25",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -6726,9 +6726,9 @@
       "got": [
         "large-entry",
         "large-entry",
-        "paper-bianchiniInterraterReliabilityManual2010"
+        "large-entry"
       ],
-      "top_score": 13.141478487421244,
+      "top_score": 12.320281325270603,
       "score_kind": "bm25",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -6747,10 +6747,10 @@
       "split": "dev",
       "got": [
         "gestalt-system-map-memory",
-        "research-project-log-1",
-        "gestalt-system-map-memory"
+        "gestalt-system-map-memory",
+        "research-project-log-1"
       ],
-      "top_score": 13.827645960093907,
+      "top_score": 13.930968087770166,
       "score_kind": "bm25",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -6772,7 +6772,7 @@
         "paper-raileanuRIDERewardingImpactDriven2020",
         "paper-houthooftVIMEVariationalInformation2016"
       ],
-      "top_score": 19.30254918607455,
+      "top_score": 19.47165135183848,
       "score_kind": "bm25",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -6790,11 +6790,11 @@
       "query": "how do I set up a VPN exit node so the fleet can browse through the hub",
       "split": "dev",
       "got": [
-        "nyu-data-lake",
         "gestalt-system-map-tools",
+        "nyu-data-lake",
         "nyu-data-lake"
       ],
-      "top_score": 19.55412350086139,
+      "top_score": 20.872308346863832,
       "score_kind": "bm25",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -6812,11 +6812,11 @@
       "query": "which Earth Engine collection holds daily sea ice thickness over Antarctica",
       "split": "test",
       "got": [
-        "worcester-canopy-audit",
         "outage-equity-nightlights-2026-09",
+        "worcester-canopy-audit",
         "outage-equity-nightlights-2026-09"
       ],
-      "top_score": 15.386289506993243,
+      "top_score": 15.506850804805932,
       "score_kind": "bm25",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -6835,10 +6835,10 @@
       "split": "dev",
       "got": [
         "dual-agent-sync",
-        "proactive-parallelism",
+        "generic-cms",
         "generic-cms"
       ],
-      "top_score": 12.682971034865481,
+      "top_score": 12.804092689365534,
       "score_kind": "bm25",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -6857,10 +6857,10 @@
       "split": "dev",
       "got": [
         "data-recovery",
-        "paper-pengReviewDynamicObject2024",
-        "phi-voice"
+        "phi-voice",
+        "paper-pengReviewDynamicObject2024"
       ],
-      "top_score": 12.315192530033862,
+      "top_score": 12.356178197645036,
       "score_kind": "bm25",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -6879,10 +6879,10 @@
       "split": "dev",
       "got": [
         "large-entry",
-        "paper-PARCSteeringGroup2022",
-        "paper-PARCSteeringGroup2022"
+        "large-entry",
+        "large-entry"
       ],
-      "top_score": 16.414539550949655,
+      "top_score": 16.19185305129406,
       "score_kind": "bm25",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -6904,7 +6904,7 @@
         "paper-gerkeyFormalAnalysisTaxonomy2004",
         "capture-inbox"
       ],
-      "top_score": 10.540862226632074,
+      "top_score": 10.597898637720942,
       "score_kind": "bm25",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -6926,7 +6926,7 @@
         "home-mesh",
         "claude-code-dispatch-and-environments"
       ],
-      "top_score": 18.261085656553238,
+      "top_score": 18.579950753997256,
       "score_kind": "bm25",
       "rerank_fallback": false,
       "fts_failed": false,
@@ -6948,7 +6948,7 @@
         "generic-cms",
         "home-mesh"
       ],
-      "top_score": 14.220533764270664,
+      "top_score": 14.437378069035312,
       "score_kind": "bm25",
       "rerank_fallback": false,
       "fts_failed": false,

@@ -33,3 +33,30 @@ cat "$WATCH_STUB"
 ```
 
 Run as `WATCH_STUB=sample.txt PATH=stubdir:$PATH bash watcher.sh 3`. Reference implementation and its test transcript: the phase-2 watcher of 2026-10-09 in the-relevant-entry. Related: `feedback_test_watchers_before_arming` and `feedback_watchers_stall_detection` in the session memory, hub-invariants for what a hub watcher may act on.
+
+
+## watch-run, the only sanctioned arming path (2026-11-02)
+
+`tools/fleet/bin/watch-run` replaces hand-written loops. It takes `--ok` (effect observed, exit 0; not yet, exit 1; anything else is a blind poll), `--fail` (producer failed, exit 0), `--progress` with `--stall` (a line that must keep changing), `--timeout`, `--interval`, `--beat`, `--probe-timeout`, `--blind-max`, `--note`, `--no-push` and `--detach`. Every probe runs under `timeout`. The run ends in exactly one terminal line, `WATCH <id> OK|FAIL|TIMEOUT|STALL|BLIND|ENDED <detail>`, with exit codes 0 to 5 in that order. An EXIT trap writes ENDED when the process is killed, so a watcher that dies with its session still leaves a record. The registry is `~/.fleet/watchers/<id>.json`. `watch-run status --brief` lists armed watchers past their deadline, armed watchers whose pid is dead (ENDED-UNREPORTED), and non-OK terminals not yet acknowledged. `watch-run ack <id>` clears one. `watch-run selftest` exercises all six branches plus a must-not-fire case in about 15 seconds. The hook `claude-tree/hooks/watcher-registry-hook.sh` injects the status as `additionalContext` on UserPromptSubmit and as a `systemMessage` at Stop.
+
+Use it as a Monitor command for a wait inside the session, so each heartbeat and the terminal line arrive as events. Use `--detach` for a wait that must outlive the session. Keep a Monitor's `timeout_ms` under 30 minutes, which is the harness cap regardless of the value asked (anthropics/claude-code #94393), and set `--timeout` a minute below it so the tool's own TIMEOUT line lands before the harness expiry notice.
+
+### Incident 2026-11-02, a success-only Monitor through a hub push failure
+
+**What happened.** At 23:11:18Z a Monitor was armed to poll `git ls-remote` until origin reached `315c10a`, the hub's index commit. The hub's push failed at 23:13:42Z on the retrieval ratchet (the golden set hash had changed). The Monitor had one success branch and a ten-minute cap, so it emitted nothing. The assistant idled. Phi asked "how far in is it" at 23:19:31Z. The assistant learned of the failure at 23:19:36Z, 5 min 54 s after it happened, by running the check it should have armed. The Monitor's own cap line arrived at 23:21:43Z. Minutes later the same shape recurred in a sister session: its re-bank producer on the hub was killed by a `gpu-unclamp-watchdog` WSL restart at 23:31:38Z, and its Monitor polled only for a done flag.
+
+**Root causes.** (1) The watcher observed the effect, not the producer. No `--fail` probe read the hub log. (2) No dry run. The five-check rule existed since 2026-10-08 and was applied to about 6% of the 184 watchers armed in the previous 35 days (ledger in the 2026-11-02 audit). (3) The Monitor tool's own contract, "silence is not success", was not followed. (4) Nothing re-stated the pending watcher to the assistant between turns.
+
+**Fixes.** `watch-run` with a registry and push (shipped 2026-11-02, this commit). The registry hook (shipped to `~/artifacts/gestalt-audit-2026-11/hooks/`, installed by Phi through `install.sh`). `dispatch-watch` probe timeout and blind-poll lines, `watch-pr-checks.sh` poll cap, repeated failure line and `ghp` (shipped, this commit). Rule `claude-tree/rules/watcher-dry-run.md` rewritten around `watch-run` (shipped, this commit).
+
+**Standing rule.** A watcher names its failure before it is armed, ends in exactly one terminal line, and is re-stated to the assistant on every turn until acknowledged. Silence is never success.
+
+**Stop hook (approved by Phi 2026-11-02).** The registry hook's `stop` mode blocks the turn once, with the reason, when a watcher has an unhandled outcome: armed with a dead pid, armed past its deadline, or ended non-OK and unacknowledged. It never blocks on a healthy armed watcher, because ending the turn is how Monitor events arrive. It respects `stop_hook_active`, so a second stop gets a system message instead of a block. It does not read `background_tasks`, which is unreliable (#102617, #98816). Attribution is per machine, not per session, since `CLAUDE_SESSION_ID` does not reach the Bash environment.
+
+**What did NOT ship.** A hook event on background-task end does not exist in Claude Code (anthropics/claude-code #100201), so a task that ends mid-turn still fires no hook; the registry hook covers it at the next prompt or stop. Per-session attribution of watchers waits on a session id in the tool environment.
+
+### Supersession and leftover processes (2026-11-02, from session github-2d)
+
+A new watcher first ends the one it supersedes. `TaskStop` the Monitor or `kill` the pid, confirm with `pgrep -af '[w]atch-run --id <id>'` (the bracket keeps the grep from matching itself), then `watch-run ack <id>` so the ENDED record stops repeating. Two live watchers on one job is the ceiling, and only when two sessions split the work.
+
+A Monitor built as `tail -F log | grep -m1 pattern` leaves the `tail` alive after the match until the log gets another line, so every wake leaves one orphan. Five lingered on 2026-11-02. Kill it in the same command: `tail -F log | grep -m1 pattern; pkill -f "tail -F log"`. `watch-run` with `--progress` and `--fail` probes avoids the pattern altogether.

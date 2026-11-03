@@ -28,15 +28,19 @@ REPO="${1:?usage: watch-pr-checks.sh <owner/repo> <pr> [min-checks] [interval]}"
 PR="${2:?missing PR number}"
 MIN_EXPECTED="${3:-1}"   # raise this to the real expected count to catch false greens
 INTERVAL="${4:-120}"
+MAX_POLLS="${WATCH_PR_MAX_POLLS:-180}"   # 180 x 120 s = 6 h; the loop then ends with a TIMEOUT line instead of running forever (2026-11-02)
+GH="${GHP:-$(command -v ghp 2>/dev/null || echo gh)}"   # ghp pins the account per call; plain gh follows the global active account (2026-09 incident)
 
-prev=""; last_head=""; fail_streak=0; first=1
+prev=""; last_head=""; fail_streak=0; first=1; polls=0
 
 while :; do
-  raw=$(gh pr checks "$PR" --repo "$REPO" --json name,bucket,link 2>/dev/null)
+  polls=$((polls + 1))
+  if [ "$polls" -gt "$MAX_POLLS" ]; then echo "TIMEOUT: $MAX_POLLS polls without settling — not green, not red, watcher gave up"; exit 2; fi
+  raw=$($GH pr checks "$PR" --repo "$REPO" --json name,bucket,link 2>/dev/null)
   rc=$?
   if ! printf '%s' "$raw" | python3 -c 'import sys,json;json.load(sys.stdin)' 2>/dev/null; then
     fail_streak=$((fail_streak + 1))
-    [ "$fail_streak" = 1 ] && echo "QUERY FAILING (rc=$rc) — watcher is blind, not green"
+    if [ "$fail_streak" = 1 ] || [ $((fail_streak % 5)) = 0 ]; then echo "QUERY FAILING (rc=$rc, streak $fail_streak) — watcher is blind, not green"; fi
     sleep "$INTERVAL"; continue
   fi
   [ "$fail_streak" -gt 0 ] && { echo "QUERY RECOVERED after $fail_streak attempt(s)"; fail_streak=0; }
@@ -45,7 +49,7 @@ while :; do
   # literal "unknown" and then reported `HEAD MOVED unknown -> abc1234`, which
   # is this file's own bug class turned on itself: a failure laundered into
   # data. On failure, keep the last known head and say the lookup failed.
-  head=$(gh pr view "$PR" --repo "$REPO" --json headRefOid --jq .headRefOid 2>/dev/null)
+  head=$($GH pr view "$PR" --repo "$REPO" --json headRefOid --jq .headRefOid 2>/dev/null)
   if [ -z "$head" ]; then
     [ "$first" = 1 ] && echo "HEAD LOOKUP FAILED — counts below are for the PR head, exact SHA unconfirmed"
     head="$last_head"
@@ -85,6 +89,7 @@ print(line.replace(' ', '~'), fails.replace(' ', '~'), pend, len(d))
       echo "SETTLED on head ${head:0:9}: $line"
       if [ "$fails" = "-" ]; then
         echo "  ALL GREEN"
+        exit 0
       else
         printf '%s' "$raw" | python3 -c "
 import sys, json

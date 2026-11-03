@@ -1,9 +1,9 @@
-# Watcher Dry Run
+# Watchers Never End in Silence
 
-Test every background watcher, waiter or launcher on every branch before leaving it running, and report it armed only after the test. Full protocol, stub recipe and incidents: `gestalt/.claude/references/watcher-dry-run.md`.
+Every background wait is armed through `watch-run`. It ends in exactly one terminal line, `WATCH <id> OK|FAIL|TIMEOUT|STALL|BLIND|ENDED`, records it in `~/.fleet/watchers/`, pushes to the phone on anything but OK, and heartbeats. The hooks re-state that registry at every prompt and stop. Instituted 2026-10-08, extended 2026-11-02 (incident record in the reference).
 
-- The watcher is a script under `~/artifacts/<topic>/watch/`, armed with `setsid nohup ... & disown` and a pid file, so it survives a session restart.
-- Before arming, run and quote five checks: must fire (one line per producer `log` statement, copied from the producer's source), must not fire (the real log with no marker), each terminal branch through a stub `ssh` on PATH (done, vanished session, cap exit without done), the stall branch with `STALL_SECS` and `SLEEP_SECS` cut to seconds on a frozen stub and a moving one, and the live first event and heartbeat after arming.
-- The stall clock follows the active step's progress line too, and the heartbeat carries the state that tells silence from progress.
-- Test senders with their own `..._DRY_RUN=1` flag, never a PATH stub, because `bash -lc` resets PATH. A report or mail failure is itself an event with a named subject.
-- Stop the old watcher and prove it gone with `pgrep -af` before editing or re-arming. Never edit a running script.
+- **Name the failure before arming.** `--ok` is the effect, `--fail` the producer's failure signal (a log line, an rc file, a dead pid), `--progress` plus `--stall` the proof of motion. A watcher with only `--ok` is the bug this rule kills. If no failure probe exists, say so when arming.
+- **Silence is never success.** After any wait, verify the effect directly before reporting it ([[no-unverified-claims]]). A Monitor filter covers every terminal state.
+- **Inline `until ...; do sleep; done` loops are banned.** Use `watch-run`, with `--detach` when the wait must outlive the session.
+- **Test before arming.** Run each probe once by hand and quote its exit code. Bespoke watchers follow the five checks in the reference.
+- **Acknowledge, never ignore.** When the hook reports a watcher, act and run `watch-run ack <id>`. A successor ends and acks the watcher it supersedes.
