@@ -256,6 +256,15 @@ def render(src: Path, want_pdf: bool, out_dir: Path | None = None) -> list[Path]
             return f'<div class="eq">{svg}</div>' if svg else m.group(0)
         md_text = re.sub(r"\$\$(.+?)\$\$", one, md_text, flags=re.DOTALL)
 
+    # bare URLs become links; every URL on a rendered page is clickable (Phi, 2026-11-05).
+    # Skips URLs already inside a markdown link target, angle brackets or inline code.
+    md_text = re.sub(
+        r"(?<![\(<`\]])(https?://[^\s<>\)\]`]+?)(?=[.,;:]?(?:\s|$))",
+        lambda m: f"<{m.group(1)}>",
+        md_text,
+        flags=re.MULTILINE,
+    )
+
     body = markdown.markdown(
         md_text,
         extensions=["tables", "fenced_code", "sane_lists", "attr_list", "footnotes"],
