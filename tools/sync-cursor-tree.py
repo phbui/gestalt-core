@@ -81,7 +81,7 @@ RULE_DESCRIPTIONS = {
     'no-hard-wrapping': 'One paragraph is one line; never hard-wrap prose source unless asked',
     'no-silent-deferral': 'No silent deferral — mid-task work ends done-with-proof or surfaced-for-approval; no quiet "later" bucket',
     'no-unverified-claims': 'No unverified claims — transport acknowledgments are not outcomes; VERIFIED / DISPATCHED / BLOCKED never blur',
-    'proactive-parallelism': 'Requires spinning up parallel agents only when subtasks are genuinely independent and the value justifies the token cost; single agent is the default for coding-shaped work. Includes agent selection, model choice, and worker prompt structure guidelines.',
+    'proactive-parallelism': 'Run the delegation check on every turn and fan out whenever a turn holds two or more independent subtasks; token cost is not a gate. Includes agent selection, model choice and the fan-out cap.',
     'prompt-intelligence': 'Detect underspecified prompts and trigger proactive web research for external tech — applies to every conversation',
     'requirements-engineering': 'Requirements engineering workflow for pitches and systems using IEEE 29148 methodology',
     'resource-cleanup': 'Tear down background shells, subagents, monitors, worktrees, and cloud compute you created; never kill what you cannot prove is finished',

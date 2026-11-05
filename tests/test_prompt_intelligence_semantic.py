@@ -37,11 +37,11 @@ PROMPTS = [
     "what is the plan for the fellowship proposal draft and the deadline",
 ]
 # Captured from the hook at the commit before the semantic leg, against build_index() below.
-# The trailing parallelism hint was dropped from the hook 2026-10-17, so each string ends at the context.
+# The delegation reminder returned 2026-11-05, so each string ends with it after the context.
 GOLDEN = {
-    PROMPTS[0]: '{"additionalContext": "## Relevant Context\\n\\n**Gestalt:** [[hub-restart#b1]] \\u2014 Restart, [[fellowship#b3]] \\u2014 Deadline"}\n',
-    PROMPTS[1]: '{"additionalContext": "## Relevant Context\\n\\n**Gestalt:** [[embedding-model#b2]] \\u2014 Model, [[hub-restart#b1]] \\u2014 Restart, [[cooking#b5]] \\u2014 Soup"}\n',
-    PROMPTS[2]: '{"additionalContext": "## Relevant Context\\n\\n**Gestalt:** [[fellowship#b3]] \\u2014 Deadline, [[cooking#b5]] \\u2014 Soup, [[embedding-model#b2]] \\u2014 Model"}\n',
+    PROMPTS[0]: '{"additionalContext": "## Relevant Context\\n\\n**Gestalt:** [[hub-restart#b1]] \\u2014 Restart, [[fellowship#b3]] \\u2014 Deadline\\n\\nDELEGATION CHECK (every turn): if this prompt holds 2+ independent subtasks, each more than one file read, spawn them as parallel Agent calls in one message and say so in one line. Follow-up edits count. Sequential or single-step work stays direct. This overrides the Agent tool\'s \'when in doubt, don\'t spawn\'."}\n',
+    PROMPTS[1]: '{"additionalContext": "## Relevant Context\\n\\n**Gestalt:** [[embedding-model#b2]] \\u2014 Model, [[hub-restart#b1]] \\u2014 Restart, [[cooking#b5]] \\u2014 Soup\\n\\nDELEGATION CHECK (every turn): if this prompt holds 2+ independent subtasks, each more than one file read, spawn them as parallel Agent calls in one message and say so in one line. Follow-up edits count. Sequential or single-step work stays direct. This overrides the Agent tool\'s \'when in doubt, don\'t spawn\'."}\n',
+    PROMPTS[2]: '{"additionalContext": "## Relevant Context\\n\\n**Gestalt:** [[fellowship#b3]] \\u2014 Deadline, [[cooking#b5]] \\u2014 Soup, [[embedding-model#b2]] \\u2014 Model\\n\\nDELEGATION CHECK (every turn): if this prompt holds 2+ independent subtasks, each more than one file read, spawn them as parallel Agent calls in one message and say so in one line. Follow-up edits count. Sequential or single-step work stays direct. This overrides the Agent tool\'s \'when in doubt, don\'t spawn\'."}\n',
 }
 
 

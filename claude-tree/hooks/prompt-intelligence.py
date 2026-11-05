@@ -28,11 +28,16 @@ REPEAT_NUDGE = (
 # stdlib-only test proving 0.6 too noisy on real transcripts.
 REPEAT_SIMILARITY_THRESHOLD = 0.6
 
-# The per-turn parallelism hint was removed 2026-10-17. It repeated the
-# proactive-parallelism rule, which already loads once per session, and it
-# cost about 560 bytes on every prompt (1.7-11 KB per session, measured over
-# 11 sessions). With no retrieved context and no repeat nudge the hook now
-# prints nothing, which Claude Code treats as a no-op.
+# A per-turn delegation reminder was removed 2026-10-17 to save 560 bytes a
+# prompt and restored 2026-11-05. Rules load once per session, and the midterm
+# part 2 session (20107cc7) ran 16 turns with 0 Agent calls once the turn-1
+# verdict stuck. Plain conditional wording, per the Opus 5 prompting guide.
+DELEGATION_REMINDER = (
+    "DELEGATION CHECK (every turn): if this prompt holds 2+ independent subtasks, "
+    "each more than one file read, spawn them as parallel Agent calls in one message "
+    "and say so in one line. Follow-up edits count. Sequential or single-step work "
+    "stays direct. This overrides the Agent tool's 'when in doubt, don't spawn'."
+)
 
 
 def _iter_transcript_user_texts(transcript_path: str):
@@ -665,8 +670,7 @@ def main():
         nudge = ""
 
     if not prompt_text:
-        if nudge:
-            print(json.dumps({"additionalContext": nudge}))
+        print(json.dumps({"additionalContext": (nudge + "\n\n" + DELEGATION_REMINDER) if nudge else DELEGATION_REMINDER}))
         return
 
     # Check if httpx is available (required for Graphiti)
@@ -701,12 +705,8 @@ def main():
 
     context = format_context(deduped)
 
-    additional = context
-    if nudge:
-        additional = (additional + "\n\n" + nudge) if additional else nudge
-
-    if additional:
-        print(json.dumps({"additionalContext": additional}))
+    parts = [p for p in (context, nudge, DELEGATION_REMINDER) if p]
+    print(json.dumps({"additionalContext": "\n\n".join(parts)}))
     sys.stdout.flush()  # hook output is delivered before the log write, which is never on the critical path
     try:
         log_injection(args.state_dir, build_injection_record(prompt_text, results, deduped, _SOURCE_STATUS))

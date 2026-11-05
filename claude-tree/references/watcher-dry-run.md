@@ -47,7 +47,7 @@ Use it as a Monitor command for a wait inside the session, so each heartbeat and
 
 **Root causes.** (1) The watcher observed the effect, not the producer. No `--fail` probe read the hub log. (2) No dry run. The five-check rule existed since 2026-10-08 and was applied to about 6% of the 184 watchers armed in the previous 35 days (ledger in the 2026-11-02 audit). (3) The Monitor tool's own contract, "silence is not success", was not followed. (4) Nothing re-stated the pending watcher to the assistant between turns.
 
-**Fixes.** `watch-run` with a registry and push (shipped 2026-11-02, this commit). The registry hook (shipped to `~/artifacts/gestalt-audit-2026-11/hooks/`, installed by Phi through `install.sh`). `dispatch-watch` probe timeout and blind-poll lines, `watch-pr-checks.sh` poll cap, repeated failure line and `ghp` (shipped, this commit). Rule `claude-tree/rules/watcher-dry-run.md` rewritten around `watch-run` (shipped, this commit).
+**Fixes.** `watch-run` with a registry and push (shipped 2026-11-02, this commit). The registry hook (shipped to `~/artifacts/the-relevant-entry/hooks/`, installed by Phi through `install.sh`). `dispatch-watch` probe timeout and blind-poll lines, `watch-pr-checks.sh` poll cap, repeated failure line and `ghp` (shipped, this commit). Rule `claude-tree/rules/watcher-dry-run.md` rewritten around `watch-run` (shipped, this commit).
 
 **Standing rule.** A watcher names its failure before it is armed, ends in exactly one terminal line, and is re-stated to the assistant on every turn until acknowledged. Silence is never success.
 

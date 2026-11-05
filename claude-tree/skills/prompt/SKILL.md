@@ -58,6 +58,7 @@ Silently (without outputting to the user):
 2. **Ground.** `gestalt_search` the request to find relevant knowledge entries — pass `semantic: true` (param added 2026-08-30): leaf nodes default to FTS-only, and a lexical-only grounding pass surfaces every entry sharing a proper noun with the query instead of the topically right ones (the campus VPN incident; falls back to FTS with a logged line when the local index has no vectors).
 3. Read the `<gestalt-memory>` block (injected at session start) for relevant user preferences, pending items, or prior work on this topic
 4. **Standing leverage — `research` and `investigate` are default-available**: treat these two gestalt skills as tools you reach for on your own judgment, not ones the user must request. If any part of the request would benefit from deep investigation ("why/how does X work", root-cause tracing) or external research (libraries, prior art, best practices, venues), fold that into the enhanced request or Team Manifest in Step 4 without being asked. The user should never need to say "use research/investigate as needed" — that instruction is now standing.
+5. **Slash tokens in the args are invocations.** If the raw request contains `/investigate`, `/research`, `/discuss`, `/fix` or `/build`, list each under "Skills to invoke" in the manifest. After the user confirms, call the Skill tool for each one with the enhanced request. Never fold a named skill into prose. (The 2026-11-05 midterm part 2 session typed `/investigate` and `/research` inside `/prompt` nine times and none ran.)
 
 ### Step 3: Detect Caveman Mode
 
@@ -79,7 +80,9 @@ Construct an enhanced version of the request that includes:
 
 **Team Design** (dynamic — compose, don't preset):
 
-**Gate first: is this direct-execution?** If the request is direct, mechanical, or single-step, state "Direct execution — no agents" and skip the rest of Step 4 entirely. Only proceed with scoring if multi-agent work is plausibly warranted. Spawning a team for trivial work wastes ~15x the tokens of a single call.
+**Decompose first.** Split the request into its asks, one verb and object each ("find GDP by borough", "add Addis to both charts", "rebuild the PDF"). Score independence per ask, never for the request as a whole. The midterm part 2 session judged "research + script + doc read + PDF" as one sequential pipeline and ran 67 tool calls alone (2026-11-05).
+
+**Then gate: is this direct-execution?** If there is one ask, or every ask needs the last ask's output, state "Direct execution — no agents" and skip the rest of Step 4. Otherwise score. A direct-execution verdict binds only this request. Re-score the next `/prompt` from scratch. Token cost is not a gate for Phi (2026-11-05).
 
 Reason about the task across 9 dimensions, then *derive* the team shape from the scores. Do not pick from a fixed strategy list.
 
@@ -95,12 +98,12 @@ Score the task:
 | **Inter-agent collaboration** | one-shot / debate / handoff | Subagents vs Agent Team |
 | **Hallucination risk** | low / medium / high | Discipline-block strength, CitationAgent injection, quote-extraction prerequisite, 1M-vs-200K context, effort level (see the-relevant-entry) |
 | **Latency sensitivity** | blocking / async | Foreground vs `run_in_background`; whether to prefer fewer, faster agents |
-| **Cost ceiling** | unconstrained / budget-capped | Model tier selection; agent count; whether to skip optional agents |
+| **Cost ceiling** | unconstrained (Phi's default, Max plus API credits) / budget-capped only when he says so | Model tier selection; agent count; whether to skip optional agents |
 
 Derive team shape using these authoritative rules:
 
 1. **Scale agent count to breadth** — 1 agent for fact-finding (3-10 tool calls), 2-4 for comparison/analysis, 5-6 for breadth research. Default 3-5; ceiling 6 subagents per wave. Above 6 → batch into sequential waves with context pass-through. (Anthropic multi-agent research system; Claude Code agent-teams)
-2. **Pattern selection by predictability** — predictable subtasks → static parallel plan; unpredictable subtasks → orchestrator-workers (you decompose at runtime, possibly emitting a worker spec list). Always start simple — only escalate beyond a single agent when single-call underperforms.
+2. **Pattern selection by predictability** — predictable subtasks → static parallel plan; unpredictable subtasks → orchestrator-workers (you decompose at runtime, possibly emitting a worker spec list). Start at the breadth the scores give. Do not wait for a single call to underperform first.
 3. **Subagents vs Agent Team** — subagents (default) for one-shot independent work that returns to you for synthesis; Agent Team only when teammates must message each other, debate, or share a task list.
 4. **Agent type + model selection — strict rules** (this is where most hallucination originates; mismatched type/model produces fabricated constraints, see the-relevant-entry):
 
@@ -176,8 +179,8 @@ If 0 agents are warranted, state "Direct execution — no agents" and proceed in
 - [ ] **Default `effort` on a verifier subagent on Opus-tier models** — defaults are high (xhigh specifically for Opus 4.7 in Claude Code; Opus 4.8 and Fable 5 default to high on all surfaces). A medium-effort default regression shipped 2026-03-04 and was reverted 2026-04-07 (historical context — https://www.anthropic.com/engineering/april-23-postmortem). Defaults have changed twice in 2026 — pin effort explicitly rather than relying on defaults; explicitly set `effort: "xhigh"` for verifiers and synthesizers
 - [ ] **`tool_choice: any` or `{type: "tool"}` with thinking enabled** — returns a 400 error, not a silent disabling of thinking. `tool_choice: auto` and `tool_choice: none` are both compatible with thinking — use one of those for thinking-enabled agents
 - [ ] Same-file writes across agents without worktree isolation
-- [ ] Spawning a team for sequential or single-file work
-- [ ] Multi-agent overhead without genuine parallelization payoff
+- [ ] Spawning a team for asks that each need the previous ask's output
+- [ ] Judging a multi-ask request as one pipeline without listing the asks first
 
 **LOW — style/structure:**
 - [ ] Fixed concurrency cap regardless of work size (size to actual breadth)
@@ -188,7 +191,7 @@ If 0 agents are warranted, state "Direct execution — no agents" and proceed in
 
 **Constraints** (from user preferences in Letta):
 - Terse responses, no trailing summaries
-- Prefer efficiency — use appropriate model tiers (Haiku for scan, Sonnet for build, Opus for orchestration only)
+- Model tier follows the matrix in rule 4, never cost. Token cost is not a gate for Phi (2026-11-05).
 - Follow existing codebase conventions
 
 **Caveman propagation** (if `caveman = true`):
@@ -299,6 +302,7 @@ Run? (y/n)
 If the user confirms:
 - If 0 agents (direct execution), execute the enhanced request inline
 - If a single skill was recommended, invoke it with the enhanced context
+- If the args named skills (Step 2.5), call the Skill tool for each one with the enhanced request before any inline work
 - If a Team Manifest was emitted, spawn each agent per its row — type, model, scope, tools, isolation, foreground/background, sequencing — and respect the Coordination mode (parallel `Agent` calls in a single message for subagents; Agent Team setup if specified)
 - If caveman is active and gestalt writes are involved, ensure the write safeguard is included in every agent prompt that touches gestalt files
 
@@ -324,6 +328,7 @@ Before completing this skill:
 - Count: steps completed / total. If any skipped, state why explicitly.
 - Verify all outputs have the required format and content.
 - Verify the Team Manifest passes the anti-pattern checklist in Step 4.
+- Confirm every `/skill` token in the args maps to a Skill call in Step 6.
 
 ## Evals — see EVALS.md (dev-time only)
 

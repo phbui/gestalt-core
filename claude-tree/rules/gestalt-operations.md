@@ -1,8 +1,12 @@
 ---
 paths:
-  - "gestalt/**"
-  - "knowledge/**"
-  - "claude-tree/**"
+  - "**/gestalt/**"
+  - "**/knowledge/**"
+  - "**/claude-tree/**"
+  - "**/MANIFEST*.md"
+  - "**/GRAPH.md"
+  - "**/SOURCES.md"
+  - "**/BRANCHES.md"
 ---
 
 # Gestalt Operations

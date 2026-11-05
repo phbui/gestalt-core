@@ -11,6 +11,7 @@ on 2026-09-04 and is the most likely mechanism behind the earlier two-week FTS-o
 The test asserts the property that actually matters, in both directions, without needing to
 run a build: outside the venv the guard must re-exec, inside it must not, or it would loop.
 """
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -47,7 +48,14 @@ outside = probe("python3")
 inside = probe(str(VENV))
 
 print("--- the old resolved-path check is broken in the dangerous direction ---")
-check("outside the venv, resolved-path check wrongly says 'in venv'", outside["resolved"], True)
+# The misfire needs the system python3 to BE the venv's base interpreter (the 2026-09-04 hub shape).
+# On a node whose system python3 is a different build (laptop: 3.14 beside a 3.12 venv, 2026-11-03)
+# the old check happens to answer correctly, so the demonstration is skipped, not failed.
+same_base = Path(shutil.which("python3") or "python3").resolve() == VENV.resolve()
+if same_base:
+    check("outside the venv, resolved-path check wrongly says 'in venv'", outside["resolved"], True)
+else:
+    print("  skip: system python3 is not the venv's base interpreter here, so the old check cannot misfire on this node")
 
 print("--- sys.prefix answers correctly in both directions ---")
 check("outside the venv, prefix check says 'not in venv'", outside["prefix"], False)

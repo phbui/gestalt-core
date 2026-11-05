@@ -1,6 +1,6 @@
 ---
 description: Gestalt operational conventions — write philosophy, linking rules, agent teams, symlinks. Applies when working on gestalt files.
-globs: "gestalt/**,knowledge/**,claude-tree/**"
+globs: "**/gestalt/**,**/knowledge/**,**/claude-tree/**,**/MANIFEST*.md,**/GRAPH.md,**/SOURCES.md,**/BRANCHES.md"
 alwaysApply: false
 ---
 

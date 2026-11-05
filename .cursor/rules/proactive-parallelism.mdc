@@ -1,33 +1,26 @@
 ---
-description: Requires spinning up parallel agents only when subtasks are genuinely independent and the value justifies the token cost; single agent is the default for coding-shaped work. Includes agent selection, model choice, and worker prompt structure guidelines.
+description: Run the delegation check on every turn and fan out whenever a turn holds two or more independent subtasks; token cost is not a gate. Includes Cursor agent types, model choice and the 4-agent cap.
 alwaysApply: true
 ---
 
 # Proactive Parallelism
 
-Single agent is the default: most coding-shaped work (build a feature, fix a bug, edit related files) is sequential and cheaper done directly. Fan out only when subtasks are genuinely independent AND the value justifies the cost — multi-agent runs 3-15x the tokens of a single agent, and coding tasks have fewer truly parallelizable pieces than research does ([Anthropic: multi-agent research system](https://www.anthropic.com/engineering/multi-agent-research-system); [when and how to use multi-agent systems](https://claude.com/blog/building-multi-agent-systems-when-and-how-to-use-them)). Breadth fan-out is endorsed for research, audit, and verification — independent lookups/checks across files, repos, or claims — where parallelism pays for itself.
+Fan out whenever a turn holds two or more independent subtasks, each more than one file read. Token cost is not a gate. Phi runs Max plus API credits and wants speed (2026-11-05). Breadth fan-out pays most in research, audit and verification. Evidence, full text and worker-prompt structure: `gestalt/.cursor/references/proactive-parallelism.md` and `references/orchestration.md`.
 
 ## Decision Heuristic
 
-Before starting any multi-step task, ask:
-
-1. **Are there 2+ subtasks?** (If only 1, just do it yourself.)
-2. **Are they independent?** (No subtask needs another's output to start.)
-3. **Is each subtask non-trivial?** (Reading one file doesn't warrant an agent.)
-4. **Does the value justify 3-15x tokens?** (A cross-repo audit or N-way verification does; a single-file edit or quick lookup doesn't.)
-
-If all four → spawn agents. If the task is coding-shaped and sequential, or you're unsure the value clears the cost bar → default to a single agent.
+Run this check on every turn, not only at task start. A follow-up on an existing artifact ("also add X", "update Y and Z") is a new task. Ask: (1) Are there 2+ subtasks? (2) Are they independent, with none needing another's output to start? (3) Is each more than reading one file? If all three, spawn agents and say so in one line. An earlier "direct execution" verdict binds only its own turn.
 
 ## Concurrency Limits
 
-Max 4 agents per message in Cursor. Batch into waves if more work exists.
+Max 4 `Task()` agents per message in Cursor. Beyond 4 subtasks, batch into waves and pass context forward.
 
 ## Agent Selection Guide
 
 | Task Nature | Agent Type | Why |
 |-------------|-----------|-----|
-| Search, scan, read code, verify | `explore` | Optimized for file search, read-only |
-| Multi-step research, web lookup, MCP queries | `generalPurpose` | Needs all tools, complex reasoning |
+| Narrow lookup: where is X defined, which files reference Y | `explore` | Read-only file search |
+| Anything that interprets: multi-file analysis, research, web or MCP queries, synthesis | `generalPurpose` | Needs all tools and reasoning |
 | Code writing, file creation | `generalPurpose` | Needs write access |
 | Named gestalt agent (builder, verifier, etc.) | Use agent by name | Specialized persona |
 
@@ -35,34 +28,15 @@ Max 4 agents per message in Cursor. Batch into waves if more work exists.
 
 | Workload | Model | Rationale |
 |----------|-------|-----------|
-| Read-only scanning, verification, staleness checks | `fast` | Fast, cheap, sufficient for pattern matching |
-| Code writing, design, research, complex analysis | `inherit` | Needs reasoning depth |
+| Deterministic lookups only: grep, counts, yes/no with file:line | `fast` | No judgment asked |
+| Judgment, writing, research, analysis | `inherit` | Needs reasoning depth |
 
-## Common Parallelizable Patterns
-
-Research/audit-shaped: 1 agent per claim cluster (up to 4), file group, config domain, option, repo, or lookup source. Doc-vs-implementation validation splits by section (API, config, structure, pipeline, tests, deploy). SDD builds split 1 agent per workstream.
-
-For worker prompt structure (CONTEXT/YOUR TASK/RULES/RETURN) and shared orchestration patterns, follow `gestalt/.cursor/references/orchestration.md`.
+Partition research and audit work by file group, repo or source, one agent each.
 
 ## Skill Suggestion
 
-When the request closely matches a gestalt skill, suggest it — don't auto-invoke:
+When the request matches a gestalt skill, suggest it and do not auto-invoke: deep investigation, "why does X", "trace how" → `/investigate`; architecture trade-off, "should we use X" → `/discuss`; 3+ independent fixes, error lists, review comments → `/fix`; build from spec or description → `/build`. A `/skill` token typed inside a request is an invocation, not a hint.
 
-| Intent pattern | Skill |
-|---|---|
-| Deep investigation, "why does X", "trace how" | `/investigate` |
-| Architecture trade-off, "should we use X" | `/discuss` |
-| 3+ independent fixes, error lists, review comments | `/fix` |
-| Build from spec/description, "create X" | `/build` |
+## When Not To, and Synthesis
 
-Never auto-invoke skills costing >10K tokens without confirmation. For simple, scoped requests, just do the work directly.
-
-## When NOT to Parallelize
-
-- Subtasks have sequential dependencies (one's output feeds the next)
-- Total work is a single simple step, or coding-shaped with few genuinely independent pieces
-- You need interactive user input between steps, or the task is conversational
-
-## Synthesis
-
-After all agents return, you — the orchestrator — merge findings into a unified view, resolve conflicts between agent outputs, present a cohesive result, and act on findings (fix, write, update) yourself or via a second wave.
+Do not parallelize sequential dependencies, a single simple step, or work that needs interactive input between steps. After all agents return, merge findings into one view, resolve conflicts, present one result, and act on findings yourself or via a second wave.

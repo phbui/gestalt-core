@@ -118,7 +118,7 @@ PYEOF2
 fi
 
 # --- 3. Build and output additionalContext ---
-STATIC_REMINDERS="Session resumed after context compaction. Key reminders: (1) Always check gestalt/MANIFEST.md before answering questions — the knowledge base has curated repo entries. (2) Use parallel agents for 3+ independent subtasks (up to 6 per wave). (3) Available skills: /investigate, /discuss, /build, /fix, /audit, /save, /learn, /review, /sync. (4) If working on a task, check if prior context was lost and re-read relevant files."
+STATIC_REMINDERS="Session resumed after context compaction. Key reminders: (1) Always check gestalt/MANIFEST.md before answering questions — the knowledge base has curated repo entries. (2) Use parallel agents for 2+ independent subtasks (up to 6 per wave), on follow-up turns too. (3) Available skills: /investigate, /discuss, /build, /fix, /audit, /save, /learn, /review, /sync. (4) If working on a task, check if prior context was lost and re-read relevant files."
 
 ADDITIONAL=""
 if [ -n "$LETTA_CONTEXT" ]; then
