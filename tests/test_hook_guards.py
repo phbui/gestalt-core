@@ -41,6 +41,15 @@ CASES = [
 ]
 
 
+@pytest.fixture(autouse=True, scope="module")
+def _hook_state_dir(tmp_path_factory):
+    """The hook appends every denial to $GESTALT_STATE_DIR/health.log, else to claude-tree/gestalt/health.log of the checkout under test.
+    Without this the suite wrote its synthetic denials into the live log, and into the export tree at publish time (2026-11-05)."""
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setenv("GESTALT_STATE_DIR", str(tmp_path_factory.mktemp("hook-state")))
+        yield
+
+
 def _run(cmd: str) -> bool:
     payload = json.dumps({"tool_name": "Bash", "tool_input": {"command": cmd}})
     env = {**os.environ, "CLAUDE_PROJECT_DIR": str(REPO)}

@@ -167,10 +167,22 @@ def _summary():
     return {"results": {"beir/scifact": dataset(0.5), "beir/nfcorpus": dataset(0.3), "beir/fiqa": dataset(0.2)}}  # three sets since 2026-10-12: a summary without FiQA stops the export
 
 
+def _heldout(key: str) -> dict:
+    """One held-out summary (2026-10-26): three systems, two tests, and the counts the docs quote."""
+    def sysrow(v):
+        return {"ndcg10": v, "ci95_bootstrap": [v - 0.01, v + 0.01]}
+    return {"results": {key: {"systems": {"bm25": sysrow(0.4), "dense": sysrow(0.45), "hybrid_rerank": sysrow(0.5)},
+                             "tests": {"hybrid_vs_bm25": {"mean_difference": 0.1, "p_value": 0.001},
+                                       "rerank_vs_hybrid": {"mean_difference": 0.05, "p_value": 0.02}},
+                             "documents": 8674, "queries": 1406, "rerank_fallback_queries": 0}}}
+
+
 def _export(tmp_path: Path, readme: str, bench: str = "plain text") -> Path:
     res = tmp_path / "evals" / "retrieval" / "results"
-    res.mkdir(parents=True)
+    (res / "heldout").mkdir(parents=True)
     (res / "summary.json").write_text(json.dumps(_summary()))
+    for tag, key in (("arguana", "beir/arguana"), ("scidocs", "beir/scidocs")):  # fill_results reads both held-out summaries since 2026-10-26
+        (res / "heldout" / f"beir-{tag}.summary.json").write_text(json.dumps(_heldout(key)))
     (tmp_path / "README.md").write_text(readme)
     (tmp_path / "evals" / "retrieval" / "BENCHMARKS.md").write_text(bench)
     return tmp_path

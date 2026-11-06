@@ -17,15 +17,8 @@ At SessionStart, the injected `<gestalt-memory>` block holds Letta memory blocks
 - **`guidance`** — Follow it this session.
 - **`tool_guidelines`** — Apply when using those tools.
 
-If `<gestalt-memory>` is absent (Letta down), proceed normally, since it is supplementary. If a Letta block contradicts a gestalt curated entry, the curated entry wins (human-reviewed). If a Letta block contradicts native Claude memory (`MEMORY.md`), prefer whichever was updated more recently.
+If `<gestalt-memory>` is absent (Letta down), proceed normally. A gestalt curated entry wins over a Letta block (human-reviewed). Between a Letta block and native Claude memory (`MEMORY.md`), prefer the one updated more recently.
 
 ## Staleness Check
 
-At the start of a session, if `gestalt/STALENESS_REPORT.md` exists:
-
-1. Read the report
-2. Summarize the HIGH/MEDIUM risk entries (one line each)
-3. Ask the user: **(a)** run `/review` on HIGH-risk entries, **(b)** show git diff summaries first, **(c)** skip for now
-4. Do NOT auto-update gestalt without confirmation
-
-If `gestalt/STALENESS_REPORT.md` does not exist, do nothing.
+If `gestalt/STALENESS_REPORT.md` exists at session start, read it, summarize the HIGH and MEDIUM entries in one line each, and ask: **(a)** run `/review` on the HIGH entries, **(b)** show git diff summaries first, **(c)** skip for now. Never update gestalt from it without confirmation. If the file is absent, do nothing.

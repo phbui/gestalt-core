@@ -9,12 +9,7 @@ alwaysApply: true
 
 ## Rule
 
-When an action is needed:
-1. Check: can you do this with available tools?
-2. If yes → do it.
-3. If no → explain *why* you can't, then give clear instructions.
-
-This covers reading files, editing code, shell commands, MCP tools, API requests, searching, creating files, running tests, checking git state, querying databases and navigating browsers.
+If a tool you hold can do the action, do it. If none can, explain *why* and give clear instructions. This covers files, shell commands, MCP tools, API requests, search, tests, git state, databases and browsers.
 
 ## When to Actually Delegate
 
