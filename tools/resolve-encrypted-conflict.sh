@@ -48,8 +48,14 @@ else
   echo "using refs: base=$BASE ours=$OURS theirs=$THEIRS"
 fi
 
+# The magic is NUL GITCRYPT NUL, ten bytes; eight never matched (2026-10-11). Until 2026-11-06 the
+# error branch sat inside this comment, so under set -e a plaintext side made grep exit 1 and the
+# script died before the merge, leaving git's own leftover (the upstream side) in the tree with no
+# markers and no message. The hub lost four intake lines that way.
 for f in base ours theirs; do
-  head -c 10 "$TMP/$f.md" | grep -q GITCRYPT   # the magic is NUL GITCRYPT NUL, ten bytes; eight never matched (2026-10-11) && { echo "ERROR: $f side is still ciphertext — is this clone unlocked? (git-crypt unlock)" >&2; exit 1; }
+  if head -c 10 "$TMP/$f.md" | grep -q GITCRYPT; then
+    echo "ERROR: $f side is still ciphertext — is this clone unlocked? (git-crypt unlock)" >&2; exit 1
+  fi
 done
 
 set +e
@@ -64,4 +70,8 @@ if [ "$RC" -gt 0 ]; then
 else
   echo "merged cleanly into $FILE"
 fi
+# A line that theirs added over base must survive the merge. Count the ones that did not, so a
+# dropped side is loud instead of silent.
+lost=$(grep -vxF -f "$TMP/base.md" "$TMP/theirs.md" | grep -vxF -f "$FILE" | grep -c . || true)
+[ "$lost" -gt 0 ] && echo "WARNING: $lost line(s) added by theirs are missing from the merge; check $FILE against $TMP/theirs.md before you continue" >&2
 echo "then: ./tools/gestalt rebuild && git add $FILE MANIFEST.md MANIFEST-papers.md GRAPH.md && git rebase --continue"
