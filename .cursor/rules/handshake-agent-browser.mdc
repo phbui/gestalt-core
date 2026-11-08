@@ -1,0 +1,13 @@
+---
+description: Any request to read or edit Phi's Handshake (the university) profile runs `uv run --with playwright python3 tools/handshake-agent-browser.py login|check|dump|probe|edit ...` with the tool sandbox disa
+alwaysApply: true
+---
+
+# Handshake Edits Go Through the Agent Chromium Profile
+
+Any request to read or edit Phi's Handshake (the university) profile runs `uv run --with playwright python3 tools/handshake-agent-browser.py login|check|dump|probe|edit ...` with the tool sandbox disabled. The persistent profile `~/.local/share/agent-chromium/handshake-nyu` on `mobile` holds his login, signed in once by him through the university SSO and Duo in the tool's headed `login` window (2026-11-07, [[handshake-agent-browser]]).
+
+- Never copy the profile to another host, and never copy cookies in from another browser (linkedin-agent-browser).
+- If `check` reports NOT LOGGED IN, Phi runs `login` once from a desktop terminal on `mobile`. Say so and stop.
+- The script opens Phi's own pages only. No people search, no bulk reads, no schedule. The Terms reading and the gray area Phi accepted are in the knowledge entry.
+- Edits follow [[diff-then-apply]]: the plan is shown as a diff, `--dry-run` types nothing, apply runs only on his go, every save is read back, the first checkpoint stops the run. Keep sittings under 15 saves, 7 s per load, 12 s between saves.

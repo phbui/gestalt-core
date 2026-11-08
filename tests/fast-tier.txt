@@ -5,3 +5,4 @@ tests/test_hook_guards.py
 tests/test_hook_hygiene.py
 tests/test_shell_read_loops.py
 tests/test_dual_agent_parity.py
+tests/test_skill_metadata.py
