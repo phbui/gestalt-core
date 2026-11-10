@@ -17,6 +17,8 @@ import zlib
 from collections import namedtuple
 from pathlib import Path
 
+import hashlib
+
 import pytest
 
 # The suite's ranking and prefix expectations were written against the nomic pipeline (RRF at K=60, the bge reranker, the search_
@@ -131,7 +133,8 @@ _LIVE_INDEX = [Path(__file__).resolve().parent.parent / n for n in ("MANIFEST.md
 
 
 def _live_index_sig() -> tuple:
-    return tuple((p.stat().st_mtime_ns, p.stat().st_size) if p.exists() else None for p in _LIVE_INDEX)
+    """A content hash per file, so a rewrite with identical bytes (the post-merge hook after a pull) is not a change."""
+    return tuple(hashlib.sha256(p.read_bytes()).hexdigest() if p.exists() else None for p in _LIVE_INDEX)
 
 
 @pytest.fixture(autouse=True)
