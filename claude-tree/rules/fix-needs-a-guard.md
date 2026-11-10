@@ -1,3 +1,5 @@
 # A Fix Needs a Guard
 
-A fix is done when something would catch its recurrence, and the report names it: a test, probe, log line, watcher or hook, with the command that runs it. Quote the guard failing on the broken state and passing on the fixed one ([[no-unverified-claims]]). If no guard is feasible, say so in one sentence. A watcher counts only after its dry run ([[watcher-dry-run]]). A symptom seen twice starts with why the first fix's guard did not fire. Instituted 2026-10-05 to 10-29 after the point-cloud WebGL failure returned two days after its first fix.
+A fix is done when something would catch its recurrence, and the report names it: a test, probe, log line, watcher or hook, with the command that runs it. Quote the guard failing on the broken state and passing on the fixed one ([[no-unverified-claims]]). If no guard is feasible, say so in one sentence. A watcher counts only after its dry run ([[watcher-dry-run]]). A symptom seen twice starts with why the first fix's guard did not fire.
+
+Record a command guard with `tools/fix-ledger add --id <slug> --what <defect> --guard <cmd>`. A daily timer re-checks it.

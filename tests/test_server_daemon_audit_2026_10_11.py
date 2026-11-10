@@ -42,7 +42,7 @@ def test_a_local_hybrid_search_falls_back_to_full_text_on_any_model_error(monkey
     monkeypatch.setattr(server, "get_model", boom)
     monkeypatch.setattr(server, "gestalt_search_fts", lambda q, limit: [{"slug": "fts-row"}])
     got = server._open_local_hybrid("quokka", 3)
-    assert got == (None, None, [{"slug": "fts-row"}]) and db.closed
+    assert got == (None, None, [{"slug": "fts-row", "degraded": "fts-only:model-load-failed:RuntimeError"}]) and db.closed
     assert "model cache offline" in capsys.readouterr().err
 
 

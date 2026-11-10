@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from collections import Counter
 from pathlib import Path
@@ -63,13 +64,14 @@ def load_reads(fleet: bool) -> list[dict]:
 
 
 READ_WINDOW_S = 600
+NON_USAGE_SRC = frozenset({"hook", "eval", "test"})  # automated searches, never a model or person looking something up
 
 
 def read_rates(searches: list[dict], reads: list[dict], depths=(1, 3, 5), window: int = READ_WINDOW_S) -> dict:
     """Read rate at each depth over per-search events, hook searches excluded.
 
     A read follows a search when it came within `window` seconds after it and joins by session id when both rows carry one. A row without a session id joins by preceding_q. It counts at depth d when the entry sits in the search's first d slugs. no_read is the share of searches with no matching read of any result."""
-    events = [e for e in searches if e.get("src", "mcp") != "hook"]
+    events = [e for e in searches if e.get("src", "mcp") not in NON_USAGE_SRC]
     hit = {d: 0 for d in depths}
     none = 0
     for e in events:
@@ -109,6 +111,7 @@ def main() -> None:
     args = ap.parse_args()
 
     import importlib.util
+    os.environ["GESTALT_HITS_LOG"] = "off"  # replay re-runs captured queries and must never append to the log it reads (reads above already happened)
     spec = importlib.util.spec_from_file_location("gms", REPO / "tools" / "gestalt-mcp-server.py")
     gms = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(gms)

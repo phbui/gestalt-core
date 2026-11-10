@@ -984,6 +984,19 @@ def _rerank_alias_for_search() -> str | None:
     return gestalt_rank.rerank_for(_is_hub())
 
 
+_RELAY_ERR = contextvars.ContextVar("gestalt_relay_err", default=None)  # the hub relay's failure for the search in flight, read by the leaf fallback
+
+
+def _mark_degraded(rows: list, reason: str) -> list:
+    """Stamp every result row with `degraded: <reason>` (additive; ranking, scores and order are untouched).
+
+    Set when a hybrid or semantic search was answered without a leg for an unintended reason. Mode-forced FTS is intended and never marked."""
+    for r in rows:
+        if isinstance(r, dict) and not r.get("error"):
+            r["degraded"] = reason
+    return rows
+
+
 def _try_hub_relay(query: str, limit: int):
     """Relay the semantic leg to the hub. Returns its rows, or `None` to fall through to the local path."""
     # Leaf nodes relay the semantic leg to the hub's server (<kb-entry>): the hub
@@ -995,6 +1008,7 @@ def _try_hub_relay(query: str, limit: int):
             _remember_search(query, _loggable_slugs(rows))  # the hub logged the search, this process still needs it to link a later read
             return rows
         except Exception as e:
+            _RELAY_ERR.set(type(e).__name__)
             print(f"gestalt-mcp: hub relay failed ({type(e).__name__}: {str(e)[:120]}) — trying local hybrid, then FTS", file=sys.stderr)
     return None
 
@@ -1016,10 +1030,11 @@ def _open_local_hybrid(query: str, limit: int):
             # the missing vec table — measured on the laptop 2026-08-18. Fall back before loading.
             print("gestalt-mcp: index has no sections_vec (FTS-only build) — hybrid search unavailable, using FTS", file=sys.stderr)
             db.close()
-            return None, None, gestalt_search_fts(query, limit)
+            return None, None, _mark_degraded(gestalt_search_fts(query, limit), "fts-only:no-vectors-table")
         if not _vector_leg_ok(db):
             db.close()
-            return None, None, gestalt_search_fts(query, limit)
+            print("gestalt-mcp: index/model mismatch — answering from full text (rows carry degraded=fts-only:index-model-mismatch)", file=sys.stderr)
+            return None, None, _mark_degraded(gestalt_search_fts(query, limit), "fts-only:index-model-mismatch")
         model = DaemonModel.connect() or get_model()
     except ImportError as e:
         print(
@@ -1029,14 +1044,14 @@ def _open_local_hybrid(query: str, limit: int):
         )
         if db is not None:
             db.close()
-        return None, None, gestalt_search_fts(query, limit)
+        return None, None, _mark_degraded(gestalt_search_fts(query, limit), "fts-only:import-error")
     except Exception as e:
         # Until 2026-10-11 only ImportError was caught: an offline model fetch or a bad dtype left the database open and escaped
         # gestalt_search. Every failure of the hybrid leg answers from full text, with one line that says why.
         print(f"gestalt-mcp: hybrid leg unavailable ({type(e).__name__}: {str(e)[:160]}) — answering from full text", file=sys.stderr)
         if db is not None:
             db.close()
-        return None, None, gestalt_search_fts(query, limit)
+        return None, None, _mark_degraded(gestalt_search_fts(query, limit), f"fts-only:model-load-failed:{type(e).__name__}")
     return db, model, None
 
 
@@ -1085,6 +1100,9 @@ def _rank_local(db, model, query: str, limit: int) -> list[dict]:
         _log_dedup(gestalt_rank.slug_decay(), st)
 
     results = [_search_row(meta, found, query) for meta in found.rows]
+    if found.fts_failed:
+        print("gestalt-mcp: FTS leg failed — rows carry degraded=dense-only:fts-failed", file=sys.stderr)
+        _mark_degraded(results, "dense-only:fts-failed")
     return _annotate_results(results, query, rr=rr_used)
 
 
@@ -1117,12 +1135,14 @@ def _gestalt_search_raw(query: str, limit: int = 10, semantic: bool | None = Non
     mode_fts = (search_mode() == "fts") if semantic is None else (not semantic)
     if mode_fts:
         return gestalt_search_fts(query, limit)  # public name: the FTS leg already withholds restricted rows
+    _RELAY_ERR.set(None)
     relayed = _try_hub_relay(query, limit)
     if relayed is not None:
         return relayed
     if not _leaf_may_load_model():
         print("gestalt-mcp: leaf node keeps the embedding model unloaded (GESTALT_LEAF_LOCAL_MODEL=1 overrides) — using FTS", file=sys.stderr)
-        return gestalt_search_fts(query, limit)
+        err = _RELAY_ERR.get()
+        return _mark_degraded(gestalt_search_fts(query, limit), f"fts-only:hub-relay-failed:{err}" if err else "fts-only:leaf-no-local-model")
     db, model, fallback = _open_local_hybrid(query, limit)
     if fallback is not None:
         return fallback
@@ -1166,7 +1186,8 @@ def read_entry(slug: str, include_restricted: bool = False) -> str:
     text = path.read_text(encoding="utf-8")
     if not include_restricted and _frontmatter_sensitivity(text) == "restricted":
         return _withheld_note(slug)
-    _write_hit_row({"ts": int(time.time()), "kind": "read", "slug": slug, "preceding_q": _preceding_query(slug), "sid": _sid()})
+    _write_hit_row({"ts": int(time.time()), "kind": "read", "slug": slug, "preceding_q": _preceding_query(slug), "sid": _sid(),
+                    "src": os.environ.get("GESTALT_HIT_SRC", "mcp")})
     return text
 
 

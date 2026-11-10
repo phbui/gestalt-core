@@ -35,6 +35,9 @@ os.environ.setdefault("GESTALT_BENCH_ALLOW_CPU", "1")  # the fake encoders live 
 os.environ.setdefault("GESTALT_LEAF_LOCAL_MODEL", "1")
 # The reranker defaults to auto, which turns on at the hub with CUDA. Tests stub the model and must never load a real one.
 os.environ.setdefault("GESTALT_RERANK", "off")
+# The server appends a row per search to ~/.claude/gestalt/retrieval-hits.jsonl. Fixture slugs reached the live log that way
+# (2026-11-09). A test that exercises the log sets its own tmp path with monkeypatch.setenv("GESTALT_HITS_LOG", ...).
+os.environ.setdefault("GESTALT_HITS_LOG", "off")
 
 
 def _load(name: str, relpath: str):

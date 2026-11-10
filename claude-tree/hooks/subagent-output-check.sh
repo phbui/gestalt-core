@@ -1,18 +1,16 @@
 #!/usr/bin/env bash
-# SubagentStop hook — advisory-only check for ungrounded subagent returns.
+# SubagentStop hook -- advisory-only checks on subagent returns.
 #
-# Per code.claude.com/docs/en/hooks (fetched 2026-09-06), the SubagentStop
-# payload carries session_id, prompt_id, transcript_path, cwd, permission_mode,
-# hook_event_name, agent_id, agent_type, and last_assistant_message (the
-# subagent's final assistant text, provided directly so callers do not need to
-# re-read the transcript). This hook uses last_assistant_message first, and
-# falls back to scanning transcript_path for the last assistant turn only if
-# that field is absent (older harness build, or a payload shape this hook
-# hasn't seen). NEEDS APPROVAL: last_assistant_message's exact key name could
-# not be confirmed against a live payload capture (no SubagentStop fired during
-# development) -- only against the docs page prose, which is not a JSON schema
-# dump; if the harness names this field differently, the fallback below is what
-# actually fires in practice.
+# Per code.claude.com/docs/en/hooks (SubagentStop, fetched 2026-11-09) the payload
+# carries session_id, transcript_path, agent_id, agent_type, agent_transcript_path
+# and last_assistant_message ("the text content of the subagent's final response, so
+# hooks can access it without parsing the transcript file"). This hook reads only
+# last_assistant_message. It never opens a transcript.
+#
+# Second check: a verifier or reviewer return must end with one line
+# "VERDICT: <PASS|FAIL|PARTIAL|BLOCKED> -- <one sentence>". A well-formed line is
+# logged as one JSON record in $STATE_DIR/subagent-verdicts.jsonl. A missing or
+# malformed line writes "VERDICT-MISSING" to health.log. Advisory only.
 #
 # Per claude-tree/references/discipline-block.md RETURN DISCIPLINE, a subagent
 # following the standard discipline block returns numbered single-claim rows
@@ -26,8 +24,8 @@ source "$SCRIPT_DIR/lib.sh" && gestalt_init
 
 INPUT=$(cat)
 
-python3 -c "
-import json, re, sys
+STATE_DIR_OUT="$STATE_DIR" python3 -c "
+import json, os, re, sys
 from datetime import datetime
 
 try:
@@ -37,35 +35,7 @@ except Exception:
 
 agent_type = payload.get('agent_type', 'unknown-agent')
 
-# Primary source: last_assistant_message, provided directly on SubagentStop
-# payloads so callers do not need to re-read the transcript.
 output_text = str(payload.get('last_assistant_message', '') or '')
-
-if not output_text:
-    transcript_path = payload.get('transcript_path', '')
-    try:
-        if transcript_path:
-            with open(transcript_path, 'r', encoding='utf-8', errors='replace') as f:
-                lines = [l.strip() for l in f if l.strip()]
-            for line in reversed(lines):
-                try:
-                    entry = json.loads(line)
-                except Exception:
-                    continue
-                if entry.get('type') != 'assistant':
-                    continue
-                message = entry.get('message', {})
-                content = message.get('content', '') if isinstance(message, dict) else ''
-                if isinstance(content, list):
-                    content = ' '.join(
-                        c.get('text', '') for c in content if isinstance(c, dict) and c.get('type') == 'text'
-                    )
-                text = str(content).strip()
-                if text:
-                    output_text = text
-                    break
-    except Exception:
-        output_text = ''
 
 output_text = output_text.strip()
 
@@ -80,6 +50,26 @@ word_count = len(output_text.split())
 
 if output_text and not is_abstain and word_count >= WORD_COUNT_FLOOR and not has_source_slot:
     print(f'{datetime.now().astimezone().isoformat()} ADVISORY: subagent ({agent_type}) return has {word_count} words of prose with no Source: line -- see discipline-block.md RETURN DISCIPLINE.')
+
+VERDICT_RE = re.compile(r'^VERDICT:\s*(PASS|FAIL|PARTIAL|BLOCKED)\s+(?:\u2014|--?)\s+(\S.*)\$')
+if str(agent_type).lower() in ('verifier', 'reviewer'):
+    last = ''
+    for ln in reversed(output_text.splitlines()):
+        if ln.strip():
+            last = ln.strip()
+            break
+    m = VERDICT_RE.match(last)
+    now = datetime.now().astimezone().isoformat()
+    if m:
+        try:
+            rec = {'ts': now, 'session_id': payload.get('session_id', ''), 'agent_type': agent_type,
+                   'verdict': m.group(1), 'sentence': m.group(2)}
+            with open(os.path.join(os.environ.get('STATE_DIR_OUT', ''), 'subagent-verdicts.jsonl'), 'a', encoding='utf-8') as f:
+                f.write(json.dumps(rec) + '\n')
+        except Exception:
+            pass
+    else:
+        print(f'{now} VERDICT-MISSING: subagent ({agent_type}) return lacks a well-formed final VERDICT line -- see agents/{agent_type}.md.')
 " <<< "$INPUT" >> "$LOG" 2>&1 || true
 
 exit 0

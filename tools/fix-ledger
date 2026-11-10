@@ -1,0 +1,197 @@
+#!/usr/bin/env python3
+"""fix-ledger: a flat ledger of fixes and the guards that catch their recurrence.
+
+Enforces claude-tree/rules/fix-needs-a-guard.md. Each row is a defect, a guard (a shell command that
+exits 0 while the fix holds) and a status: resolved, reopened or dismissed. `check` re-runs every
+resolved guard. A failing or timed-out guard reopens its row. A dismissed row never reopens.
+Status changes use compare-and-set (--expect), borrowed from TraceRoot's signal lifecycle.
+
+Storage: JSON Lines at ~/.fleet/fix-ledger.jsonl (FIX_LEDGER env or --ledger overrides).
+Writes take an fcntl lock and replace the file atomically.
+
+TRUST BOUNDARY: guards run with shell=True. The ledger is the owner's own file, so its commands are
+as trusted as the owner's crontab. Never point --ledger at a file another user can write.
+
+Failure push: on REOPENED rows a real `check` posts to ntfy with the same env as tools/fleet/bin/watch-run
+(FLEET_NTFY_URL, FLEET_NTFY_TOPIC from ~/.fleet/fleet.env). It skips quietly when they are unset.
+"""
+import argparse, fcntl, json, os, subprocess, sys, tempfile, time, urllib.request, contextlib
+
+STATUSES = ("resolved", "reopened", "dismissed")
+
+
+def now():
+    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+
+
+def ledger_path(a):
+    return os.path.expanduser(a.ledger or os.environ.get("FIX_LEDGER") or "~/.fleet/fix-ledger.jsonl")
+
+
+@contextlib.contextmanager
+def locked(path):
+    os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
+    with open(path + ".lock", "w") as lf:
+        fcntl.flock(lf, fcntl.LOCK_EX)
+        yield
+
+
+def load(path):
+    if not os.path.exists(path):
+        return []
+    with open(path) as f:
+        return [json.loads(l) for l in f if l.strip()]
+
+
+def save(path, rows):
+    d = os.path.dirname(os.path.abspath(path))
+    fd, tmp = tempfile.mkstemp(dir=d, prefix=".fix-ledger.")
+    with os.fdopen(fd, "w") as f:
+        for r in rows:
+            f.write(json.dumps(r) + "\n")
+        f.flush()
+        os.fsync(f.fileno())
+    os.replace(tmp, path)
+
+
+def run_guard(row):
+    """Return (rc, tail, timed_out). rc is None on timeout."""
+    try:
+        p = subprocess.run(row["guard"], shell=True, cwd=row.get("cwd") or None, capture_output=True,
+                           text=True, timeout=row.get("timeout", 120))
+        out = (p.stdout or "") + (p.stderr or "")
+        return p.returncode, "\n".join(out.splitlines()[-20:]), False
+    except subprocess.TimeoutExpired as e:
+        out = e.stdout or b""
+        out = out.decode(errors="replace") if isinstance(out, bytes) else out
+        return None, "\n".join(out.splitlines()[-20:]), True
+
+
+def set_status(row, status, **info):
+    row["history"].append({"ts": now(), "from": row["status"], "to": status, **info})
+    row["status"] = status
+
+
+def push(title, body):
+    env = {}
+    try:
+        for l in open(os.environ.get("FLEET_ENV_FILE", os.path.expanduser("~/.fleet/fleet.env"))):
+            if "=" in l and not l.lstrip().startswith("#"):
+                k, v = l.strip().split("=", 1)
+                env[k.replace("export ", "")] = v.strip("'\"")
+    except OSError:
+        pass
+    url = os.environ.get("FLEET_NTFY_URL") or env.get("FLEET_NTFY_URL")
+    topic = os.environ.get("FLEET_NTFY_TOPIC") or env.get("FLEET_NTFY_TOPIC")
+    if not (url and topic):
+        print("FIX PUSH-SKIPPED no ntfy env", file=sys.stderr)
+        return
+    try:
+        req = urllib.request.Request(url.rstrip("/") + "/" + topic, data=body.encode(),
+                                     headers={"Title": title, "Priority": "high"})
+        urllib.request.urlopen(req, timeout=8).read()
+    except Exception as e:
+        print(f"FIX PUSH-FAILED {e}", file=sys.stderr)
+
+
+def cmd_add(a, path):
+    with locked(path):
+        rows = load(path)
+        if any(r["id"] == a.id for r in rows):
+            sys.exit(f"refused: id {a.id} already exists")
+        row = {"id": a.id, "what": a.what, "guard": a.guard, "commit": a.commit, "cwd": a.cwd,
+               "timeout": a.timeout, "status": "resolved", "added": now(),
+               "history": []}
+        row["history"].append({"ts": now(), "from": None, "to": "resolved"})
+        rc, tail, to = run_guard(row)
+        if rc != 0 and not a.allow_failing:
+            sys.exit(f"refused: guard fails right now ({'timeout' if to else 'rc=' + str(rc)}), "
+                     f"so it is not a fix. Use --allow-failing to record it anyway.\n{tail}")
+        if rc != 0:
+            row["status"] = "reopened"
+            row["history"].append({"ts": now(), "from": "resolved", "to": "reopened", "note": "added failing"})
+        rows.append(row)
+        save(path, rows)
+    print(f"FIX {a.id} ADDED {row['status']}")
+
+
+def cmd_check(a, path):
+    bad = 0
+    with locked(path):
+        rows = load(path)
+        reopened = []
+        for r in rows:
+            if a.id and r["id"] != a.id:
+                continue
+            if r["status"] == "dismissed":
+                print(f"FIX {r['id']} DISMISSED-SKIP")
+                continue
+            if r["status"] == "reopened":
+                print(f"FIX {r['id']} REOPENED")
+                bad += 1
+                continue
+            rc, tail, to = run_guard(r)
+            r["last_check"] = now()
+            if rc == 0:
+                print(f"FIX {r['id']} HOLDS")
+                continue
+            bad += 1
+            print(f"FIX {r['id']} {'TIMEOUT' if to else 'REOPENED'}")
+            reopened.append(r)
+            if not a.dry_run:
+                set_status(r, "reopened", rc=rc, timeout=to, output=tail)
+        if a.id and not any(r["id"] == a.id for r in rows):
+            sys.exit(f"no such id {a.id}")
+        if not a.dry_run:
+            save(path, rows)
+    if reopened and not a.dry_run:
+        push("fix-ledger reopened", "\n".join(f"{r['id']}: {r['what']}" for r in reopened))
+    sys.exit(1 if bad else 0)
+
+
+def cas(a, path, new):
+    with locked(path):
+        rows = load(path)
+        for r in rows:
+            if r["id"] == a.id:
+                if r["status"] != a.expect:
+                    sys.exit(f"refused: {a.id} is {r['status']}, expected {a.expect}")
+                set_status(r, new, by="cli")
+                save(path, rows)
+                print(f"FIX {a.id} {new.upper()}")
+                return
+    sys.exit(f"no such id {a.id}")
+
+
+def cmd_list(a, path):
+    for r in load(path):
+        if a.status and r["status"] != a.status:
+            continue
+        print(f"{r['id']:<28} {r['status']:<10} {r.get('last_check') or r['added']:<21} {r['what']}")
+
+
+def main(argv=None):
+    p = argparse.ArgumentParser(prog="fix-ledger")
+    p.add_argument("--ledger")
+    s = p.add_subparsers(dest="cmd", required=True)
+    x = s.add_parser("add")
+    x.add_argument("--id", required=True); x.add_argument("--what", required=True)
+    x.add_argument("--guard", required=True); x.add_argument("--commit"); x.add_argument("--cwd")
+    x.add_argument("--timeout", type=int, default=120); x.add_argument("--allow-failing", action="store_true")
+    x = s.add_parser("check")
+    x.add_argument("--id"); x.add_argument("--dry-run", action="store_true")
+    x = s.add_parser("resolve")
+    x.add_argument("--id", required=True); x.add_argument("--expect", required=True, choices=STATUSES)
+    x = s.add_parser("dismiss")
+    x.add_argument("--id", required=True); x.add_argument("--expect", required=True, choices=STATUSES)
+    x = s.add_parser("list")
+    x.add_argument("--status", choices=STATUSES)
+    a = p.parse_args(argv)
+    path = ledger_path(a)
+    {"add": cmd_add, "check": cmd_check, "list": cmd_list,
+     "resolve": lambda a, p_: cas(a, p_, "resolved"),
+     "dismiss": lambda a, p_: cas(a, p_, "dismissed")}[a.cmd](a, path)
+
+
+if __name__ == "__main__":
+    main()

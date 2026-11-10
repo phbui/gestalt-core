@@ -40,6 +40,7 @@ Your verification matrix MUST have one row per requirement. Missing rows = incom
 - Integration gaps — orphan components, unwired routes, unused exports
 - Contract mismatches — field name or type misalignments
 - Edge case risks — untested scenarios reachable in practice that could break in production
+- Final line, exactly: `VERDICT: <PASS|FAIL|PARTIAL|BLOCKED> — <one sentence>`. All VERIFIED is PASS. Any FAILED is FAIL. Otherwise PARTIAL. A named blocker is BLOCKED. It is the last non-empty line.
 
 ## Finding Threshold
 

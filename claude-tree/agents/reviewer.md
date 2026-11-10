@@ -62,7 +62,11 @@ For each entry, check:
 - Update: {what to change}
 - Add: {what's missing}
 - Remove: {what's stale}
+
+VERDICT: <PASS|FAIL|PARTIAL|BLOCKED> — <one sentence>
 ```
+
+The `VERDICT:` line is mandatory and is the last non-empty line. Status PASS is PASS. STALE, OUTDATED and MISSING_LINKS are FAIL, with the status named in the sentence.
 
 ## Grounding & Confidence
 
