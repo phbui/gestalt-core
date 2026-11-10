@@ -120,6 +120,7 @@ def test_gestalt_read_gate(srv) -> None:
 def test_hook_never_injects_restricted(built, monkeypatch) -> None:
     hook = _load("prompt_intelligence_sens", "claude-tree/hooks/prompt-intelligence.py")
     import sys
+    monkeypatch.setitem(sys.modules, "gestalt_mcp_server", None)  # teardown restores the shim, or removes the key when it was absent
     sys.modules.pop("gestalt_mcp_server", None)
     srvmod = _load("gestalt_mcp_server", "tools/gestalt-mcp-server.py")
     monkeypatch.setattr(srvmod, "GESTALT_DIR", built)
